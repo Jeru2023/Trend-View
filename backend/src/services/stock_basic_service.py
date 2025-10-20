@@ -53,16 +53,18 @@ def sync_stock_basic(
         return 0
 
     dao = StockBasicDAO(settings.postgres)
+    logger.info("Clearing existing stock_basic rows before insert")
+    dao.clear_table()
 
     logger.info(
-        "Upserting %s stock_basic rows into %s.%s",
+        "Inserting %s stock_basic rows into %s.%s",
         len(dataframe),
         settings.postgres.schema,
         settings.postgres.stock_table,
     )
 
     affected = dao.upsert(dataframe)
-    logger.info("Upsert completed, affected rows: %s", affected)
+    logger.info("Insert completed, affected rows: %s", affected)
     return affected
 
 
@@ -109,5 +111,6 @@ __all__ = [
     "sync_stock_basic",
     "get_stock_overview",
 ]
+
 
 

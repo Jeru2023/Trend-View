@@ -16,8 +16,7 @@
     runNow: "Run Now",
     lastStatus: "Status",
     lastUpdated: "Last Updated",
-    lastMarket: "Last Market",
-    lastWindow: "Window (days)",
+    lastDuration: "Last Duration",
     records: "Records",
     configSectionTitle: "Configuration",
     configSectionSubtitle: "Adjust query filters and default window sizes for automated jobs.",
@@ -53,8 +52,7 @@
     runNow: "立即执行",
     lastStatus: "当前状态",
     lastUpdated: "上次更新时间",
-    lastMarket: "上次市场",
-    lastWindow: "时间窗口(天)",
+    lastDuration: "上次耗时",
     records: "记录数",
     configSectionTitle: "配置项",
     configSectionSubtitle: "调整筛选开关以及自动任务的历史窗口。",
@@ -89,7 +87,7 @@ const elements = {
   stockBasic: {
     status: document.getElementById("stock-basic-status"),
     updated: document.getElementById("stock-basic-updated"),
-    market: document.getElementById("stock-basic-market"),
+    duration: document.getElementById("stock-basic-duration"),
     rows: document.getElementById("stock-basic-rows"),
     message: document.getElementById("stock-basic-message"),
     progress: document.getElementById("stock-basic-progress"),
@@ -98,7 +96,7 @@ const elements = {
   dailyTrade: {
     status: document.getElementById("daily-trade-status"),
     updated: document.getElementById("daily-trade-updated"),
-    window: document.getElementById("daily-trade-window"),
+    duration: document.getElementById("daily-trade-duration"),
     rows: document.getElementById("daily-trade-rows"),
     message: document.getElementById("daily-trade-message"),
     progress: document.getElementById("daily-trade-progress"),
@@ -163,29 +161,44 @@ function jobStatusLabel(status) {
   }
 }
 
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return "—";
+  if (seconds < 1) return `${(seconds * 1000).toFixed(0)} ms`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins === 0) return `${secs.toFixed(1)} s`;
+  return `${mins}m ${secs.toFixed(0)}s`;
+}
+
+function updateJobCard(cardElements, snapshot) {
+  cardElements.status.textContent = jobStatusLabel(snapshot.status);
+  cardElements.updated.textContent = formatDateTime(
+    snapshot.finishedAt || snapshot.startedAt
+  );
+  if (cardElements.duration) {
+    const durationValue =
+      snapshot.lastDuration ?? snapshot.lastMarket ?? null;
+    cardElements.duration.textContent = formatDuration(durationValue);
+  }
+  cardElements.rows.textContent = formatNumber(snapshot.totalRows);
+  cardElements.message.textContent =
+    snapshot.message || translations[currentLang].messageNone;
+  const isRunning = snapshot.status === "running";
+  updateProgressBar(
+    cardElements.progress,
+    isRunning ? snapshot.progress : 0
+  );
+  cardElements.button.disabled = isRunning;
+}
+
 function updateProgressBar(bar, progress) {
   const clamped = Math.max(0, Math.min(1, progress ?? 0));
   bar.style.width = `${(clamped * 100).toFixed(0)}%`;
-}
-
-function updateJobCard(cardElements, snapshot, extra = {}) {
-  cardElements.status.textContent = jobStatusLabel(snapshot.status);
-  cardElements.updated.textContent = formatDateTime(snapshot.finishedAt || snapshot.startedAt);
-  if ("market" in cardElements) {
-    cardElements.market.textContent = snapshot.lastMarket || "—";
+  if (clamped > 0) {
+    bar.classList.add("is-active");
+  } else {
+    bar.classList.remove("is-active");
   }
-  if ("window" in cardElements) {
-    if (snapshot.lastMarket && snapshot.lastMarket.startsWith("WINDOW:")) {
-      cardElements.window.textContent = snapshot.lastMarket.split(":")[1] || "—";
-    } else {
-      cardElements.window.textContent = extra.windowOverride ?? "—";
-    }
-  }
-  cardElements.rows.textContent = formatNumber(snapshot.totalRows);
-  cardElements.message.textContent = snapshot.message || translations[currentLang].messageNone;
-  updateProgressBar(cardElements.progress, snapshot.progress);
-  const isRunning = snapshot.status === "running";
-  cardElements.button.disabled = isRunning;
 }
 
 async function loadStatus() {

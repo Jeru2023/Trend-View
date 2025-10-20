@@ -404,8 +404,12 @@ body {
 .progress__bar {
   height: 100%;
   width: 0;
-  background: var(--primary);
+  background: var(--border);
   transition: width 0.3s ease;
+}
+
+.progress__bar.is-active {
+  background: var(--primary);
 }
 
 .job-meta {

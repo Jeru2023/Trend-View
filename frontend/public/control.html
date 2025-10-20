@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="title">Trend View – Control Panel</title>
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8001";
+    </script>
   </head>
   <body>
     <div class="layout">
@@ -80,8 +83,8 @@
                   <strong id="stock-basic-updated">—</strong>
                 </div>
                 <div>
-                  <span data-i18n="lastMarket">Last Market</span>
-                  <strong id="stock-basic-market">—</strong>
+                  <span data-i18n="lastDuration">Last Duration</span>
+                  <strong id="stock-basic-duration">—</strong>
                 </div>
                 <div>
                   <span data-i18n="records">Records</span>
@@ -116,8 +119,8 @@
                   <strong id="daily-trade-updated">—</strong>
                 </div>
                 <div>
-                  <span data-i18n="lastWindow">Window (days)</span>
-                  <strong id="daily-trade-window">—</strong>
+                  <span data-i18n="lastDuration">Last Duration</span>
+                  <strong id="daily-trade-duration">—</strong>
                 </div>
                 <div>
                   <span data-i18n="records">Records</span>
@@ -171,3 +174,4 @@
     <script src="control.js"></script>
   </body>
 </html>
+

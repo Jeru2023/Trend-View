@@ -1,4 +1,4 @@
-"""
+﻿"""
 Data access object for daily trade prices.
 """
 
@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Sequence
+from typing import Dict, Optional, Sequence
 
 import pandas as pd
 from psycopg2 import sql
@@ -43,6 +43,19 @@ class DailyTradeDAO(PostgresDAOBase):
             table=self._table_name,
         )
 
+    def clear_table(self) -> int:
+        """Remove all rows from the daily trade table."""
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL("DELETE FROM {schema}.{table}").format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self._table_name),
+                    )
+                )
+                return cur.rowcount or 0
+
     def delete_date_range(self, start_date: str, end_date: str) -> int:
         """
         Remove rows whose ``trade_date`` falls within the provided range (inclusive).
@@ -65,6 +78,20 @@ class DailyTradeDAO(PostgresDAOBase):
                 rowcount = cur.rowcount or 0
 
         return rowcount
+
+    def stats(self) -> dict[str, Optional[datetime]]:
+        """Return total row count and latest updated timestamp."""
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL("SELECT COUNT(*), MAX(updated_at) FROM {schema}.{table}").format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self._table_name),
+                    )
+                )
+                count, last_updated = cur.fetchone()
+        return {"count": count or 0, "updated_at": last_updated}
 
     def upsert(self, dataframe: pd.DataFrame) -> int:
         """Synchronise the provided DataFrame into the daily trade table."""
@@ -129,3 +156,4 @@ class DailyTradeDAO(PostgresDAOBase):
 __all__ = [
     "DailyTradeDAO",
 ]
+

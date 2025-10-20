@@ -8,7 +8,9 @@ import logging
 import math
 import time
 from datetime import datetime, timedelta
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Iterable, List, Sequence
+
+import pandas as pd
 
 import tushare as ts
 
@@ -90,14 +92,6 @@ def sync_daily_trade(
     start_str, end_str = _prepare_date_range(start_date, end_date, window_days)
 
     daily_dao = DailyTradeDAO(settings.postgres)
-    deleted_rows = daily_dao.delete_date_range(start_str, end_str)
-    if deleted_rows:
-        logger.info(
-            "Removed %s existing rows in date range %s-%s",
-            deleted_rows,
-            start_str,
-            end_str,
-        )
 
     total_codes = len(code_list)
     logger.info("Total codes to download: %s", total_codes)
@@ -110,7 +104,8 @@ def sync_daily_trade(
 
     pro_client = ts.pro_api(resolved_token)
 
-    total_rows = 0
+    frames: List[pd.DataFrame] = []
+    fetched_rows = 0
 
     for batch_index in range(num_batches):
         start_idx = batch_index * batch_size
@@ -139,25 +134,47 @@ def sync_daily_trade(
         if dataframe.empty:
             logger.warning("No data returned for batch %s", batch_index + 1)
         else:
-            inserted = daily_dao.upsert(dataframe)
+            dataframe = dataframe.drop_duplicates(subset=["ts_code", "trade_date"])
+            frames.append(dataframe)
+            fetched_rows += len(dataframe.index)
             logger.info(
-                "Successfully upserted %s rows for batch %s", inserted, batch_index + 1
+                "Fetched %s rows for batch %s", len(dataframe.index), batch_index + 1
             )
-            total_rows += inserted
 
         if batch_index < num_batches - 1 and batch_pause_seconds > 0:
             time.sleep(batch_pause_seconds)
 
         if progress_callback:
-            progress_callback((batch_index + 1) / num_batches, f"Processed batch {batch_index + 1}/{num_batches}", total_rows)
+            progress_callback(
+                (batch_index + 1) / num_batches,
+                f"Processed batch {batch_index + 1}/{num_batches}",
+                fetched_rows,
+            )
 
     elapsed = time.perf_counter() - overall_start
-    logger.info("All batches processed successfully in %.2f seconds.", elapsed)
+
+    if not frames:
+        message = "No daily trade data retrieved."
+        logger.warning(message)
+        if progress_callback:
+            progress_callback(1.0, message, 0)
+        return {"rows": 0, "elapsed_seconds": elapsed}
+
+    combined = (
+        pd.concat(frames, ignore_index=True)
+        .drop_duplicates(subset=["ts_code", "trade_date"])
+        .sort_values(["ts_code", "trade_date"])
+    )
+
+    logger.info("Clearing existing daily_trade rows before insert")
+    daily_dao.clear_table()
+    inserted = daily_dao.upsert(combined)
+    logger.info("Insert completed, affected rows: %s", inserted)
 
     if progress_callback:
-        progress_callback(1.0, "Daily trade sync completed", total_rows)
+        progress_callback(1.0, "Daily trade sync completed", inserted)
 
-    return {"rows": total_rows, "elapsed_seconds": elapsed}
+    return {"rows": inserted, "elapsed_seconds": elapsed}
 
 
 __all__ = [

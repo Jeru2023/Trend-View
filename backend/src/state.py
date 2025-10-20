@@ -1,11 +1,11 @@
-"""
+﻿"""
 Shared in-memory state for sync jobs and progress tracking.
 """
 
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -18,6 +18,7 @@ class JobProgress:
     progress: float = 0.0
     message: Optional[str] = None
     total_rows: Optional[int] = None
+    last_duration: Optional[float] = None
     last_market: Optional[str] = None
     error: Optional[str] = None
 
@@ -44,6 +45,9 @@ class SyncMonitor:
             state.progress = 0.0
             state.message = message
             state.error = None
+            state.total_rows = None
+            state.last_duration = None
+            state.last_market = None
 
     def update(
         self,
@@ -52,6 +56,7 @@ class SyncMonitor:
         progress: Optional[float] = None,
         message: Optional[str] = None,
         total_rows: Optional[int] = None,
+        last_duration: Optional[float] = None,
         last_market: Optional[str] = None,
     ) -> None:
         with self._lock:
@@ -62,6 +67,8 @@ class SyncMonitor:
                 state.message = message
             if total_rows is not None:
                 state.total_rows = total_rows
+            if last_duration is not None:
+                state.last_duration = last_duration
             if last_market is not None:
                 state.last_market = last_market
 
@@ -77,13 +84,18 @@ class SyncMonitor:
         with self._lock:
             state = self._get(job)
             state.status = "success" if success else "failed"
-            state.finished_at = datetime.utcnow()
+            finished_at = datetime.utcnow()
+            state.finished_at = finished_at
+            if state.started_at is None:
+                state.started_at = finished_at
             state.progress = 1.0 if success else state.progress
             if total_rows is not None:
                 state.total_rows = total_rows
             if message is not None:
                 state.message = message
             state.error = error
+            if state.started_at and state.finished_at:
+                state.last_duration = (state.finished_at - state.started_at).total_seconds()
 
     def snapshot(self) -> Dict[str, Dict[str, Optional[str]]]:
         with self._lock:
@@ -96,6 +108,7 @@ class SyncMonitor:
                     "progress": state.progress,
                     "message": state.message,
                     "totalRows": state.total_rows,
+                    "lastDuration": state.last_duration,
                     "lastMarket": state.last_market,
                     "error": state.error,
                 }
@@ -105,3 +118,8 @@ class SyncMonitor:
 monitor = SyncMonitor()
 
 __all__ = ["monitor", "SyncMonitor"]
+
+
+
+
+

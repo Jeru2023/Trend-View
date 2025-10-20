@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .config.runtime_config import RuntimeConfig, load_runtime_config, save_runtime_config
+from .config.settings import load_settings
+from .dao import DailyTradeDAO, StockBasicDAO
 from .services import (
     get_stock_overview,
     sync_daily_trade,
@@ -87,6 +89,7 @@ class JobStatusPayload(BaseModel):
     progress: float
     message: Optional[str]
     total_rows: Optional[int]
+    last_duration: Optional[float]
     last_market: Optional[str]
     error: Optional[str]
 
@@ -95,6 +98,7 @@ class JobStatusPayload(BaseModel):
             "started_at": "startedAt",
             "finished_at": "finishedAt",
             "total_rows": "totalRows",
+            "last_duration": "lastDuration",
             "last_market": "lastMarket",
         }
 
@@ -200,7 +204,7 @@ async def start_stock_basic_job(payload: SyncStockBasicRequest) -> None:
     if _job_running("stock_basic"):
         raise HTTPException(status_code=409, detail="Stock basic sync already running")
     monitor.start("stock_basic", message="Syncing stock basics")
-    monitor.update("stock_basic", progress=0.0, last_market=payload.market or "ALL")
+    monitor.update("stock_basic", progress=0.0)
     asyncio.create_task(_run_stock_basic_job(payload.list_statuses, payload.market))
 
 
@@ -208,7 +212,7 @@ async def start_daily_trade_job(payload: SyncDailyTradeRequest) -> None:
     if _job_running("daily_trade"):
         raise HTTPException(status_code=409, detail="Daily trade sync already running")
     monitor.start("daily_trade", message="Syncing daily trade data")
-    monitor.update("daily_trade", progress=0.0, last_market=None)
+    monitor.update("daily_trade", progress=0.0)
     asyncio.create_task(_run_daily_trade_job(payload))
 
 
@@ -297,19 +301,41 @@ def list_stocks(
 @app.get("/control/status", response_model=ControlStatusResponse)
 def get_control_status() -> ControlStatusResponse:
     config = load_runtime_config()
-    jobs = {
-        name: JobStatusPayload(
-            status=info["status"],
-            started_at=info["startedAt"],
-            finished_at=info["finishedAt"],
-            progress=info["progress"],
+    settings = load_settings()
+
+    stats_map: Dict[str, dict] = {}
+    try:
+        stats_map["stock_basic"] = StockBasicDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect stock_basic stats: %s", exc)
+        stats_map["stock_basic"] = {}
+    try:
+        stats_map["daily_trade"] = DailyTradeDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect daily_trade stats: %s", exc)
+        stats_map["daily_trade"] = {}
+
+    jobs: Dict[str, JobStatusPayload] = {}
+    for name, info in monitor.snapshot().items():
+        stats = stats_map.get(name, {})
+        finished_at = info.get("finishedAt") or stats.get("updated_at")
+        if finished_at is not None and hasattr(finished_at, "isoformat"):
+            finished_at = finished_at.isoformat()
+        total_rows = info.get("totalRows")
+        if total_rows is None:
+            total_rows = stats.get("count")
+        jobs[name] = JobStatusPayload(
+            status=info.get("status"),
+            started_at=info.get("startedAt"),
+            finished_at=finished_at,
+            progress=info.get("progress", 0.0),
             message=info.get("message"),
-            total_rows=info.get("totalRows"),
+            total_rows=total_rows,
+            last_duration=info.get("lastDuration"),
             last_market=info.get("lastMarket"),
             error=info.get("error"),
         )
-        for name, info in monitor.snapshot().items()
-    }
+
     return ControlStatusResponse(jobs=jobs, config=_runtime_config_to_payload(config))
 
 
