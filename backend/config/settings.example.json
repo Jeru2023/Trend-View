@@ -1,0 +1,14 @@
+{
+  "tushare": {
+    "token": "REPLACE_WITH_YOUR_TUSHARE_TOKEN"
+  },
+  "postgres": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "trend_view",
+    "user": "trend_view",
+    "password": "REPLACE_WITH_DB_PASSWORD",
+    "schema": "public",
+    "stock_table": "stock_basic"
+  }
+}
