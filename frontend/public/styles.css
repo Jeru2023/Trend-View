@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: light;
   font-family: "Segoe UI", Arial, sans-serif;
   --bg: #f4f6fb;
@@ -105,11 +105,12 @@ body {
 }
 
 .nav__section-title {
-  font-size: 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #9ca3af;
-  margin-bottom: 4px;
+  letter-spacing: 0.05em;
+  color: #f3f4f6;
+  margin-bottom: 8px;
 }
 
 .nav__item {
@@ -344,3 +345,4 @@ body {
     flex: 1;
   }
 }
+

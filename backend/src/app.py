@@ -84,7 +84,6 @@ def list_stocks(
     keyword: Optional[str] = Query(None, description="Keyword to search code/name/industry"),
     market: Optional[str] = Query(None, description="Filter by market"),
     exchange: Optional[str] = Query(None, description="Filter by exchange"),
-    status: Optional[str] = Query(None, description="Filter by listing status"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> StockListResponse:
@@ -93,7 +92,6 @@ def list_stocks(
         keyword=keyword,
         market=market,
         exchange=exchange,
-        status=status,
         limit=limit,
         offset=offset,
     )

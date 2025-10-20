@@ -70,7 +70,6 @@ def get_stock_overview(
     keyword: str | None = None,
     market: str | None = None,
     exchange: str | None = None,
-    status: str | None = None,
     limit: int = 50,
     offset: int = 0,
     settings_path: str | None = None,
@@ -84,7 +83,8 @@ def get_stock_overview(
         keyword=keyword,
         market=market,
         exchange=exchange,
-        status=status,
+        exclude_statuses=("D", "P"),
+        exclude_name_prefixes=("ST", "*ST"),
         limit=limit,
         offset=offset,
     )
@@ -107,3 +107,4 @@ __all__ = [
     "sync_stock_basic",
     "get_stock_overview",
 ]
+

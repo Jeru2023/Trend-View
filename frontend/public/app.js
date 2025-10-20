@@ -1,25 +1,22 @@
-const translations = {
+﻿const translations = {
   en: {
-    title: "Trend View – Stock Overview",
+    title: "Trend View – Basic Info",
     brandName: "Trend View",
     brandTagline: "Investment Intelligence Hub",
     navBasics: "Basic Insights",
-    navStocks: "Stock Overview",
+    navBasicInfo: "Basic Info",
     navNews: "Market News",
     navSignals: "Technical Signals",
     navPortfolio: "Portfolio Monitor",
-    pageTitle: "Stock Screener",
-    pageSubtitle:
-      "Filter the market and monitor real-time performance with ease.",
+    pageTitle: "Basic Information",
+    pageSubtitle: "Review fundamentals and recent market performance with ease.",
     filterKeyword: "Keyword",
     filterMarket: "Market",
     filterExchange: "Exchange",
-    filterStatus: "Status",
     filterAll: "All",
     filterMainboard: "Main Board",
     filterChiNext: "ChiNext",
-    filterListed: "Listed",
-    filterPaused: "Paused",
+    filterStar: "STAR Market",
     reset: "Reset",
     apply: "Apply",
     tabBasic: "Basic",
@@ -37,27 +34,28 @@ const translations = {
     paginationNext: "Next",
     paginationInfo: "Page {current} of {totalPages} · {total} results",
     noData: "No data available",
+    exchangeSSE: "SSE",
+    exchangeSZSE: "SZSE",
+    exchangeBSE: "BSE"
   },
   zh: {
-    title: "趋势视图 - 股票列表",
+    title: "趋势视图 - 基础信息",
     brandName: "趋势视图",
     brandTagline: "智能投研中心",
     navBasics: "基础洞察",
-    navStocks: "股票基础信息",
+    navBasicInfo: "基础信息",
     navNews: "市场资讯",
     navSignals: "技术信号",
     navPortfolio: "组合监控",
-    pageTitle: "股票筛选器",
-    pageSubtitle: "快速筛选市场，实时掌握股票行情。",
+    pageTitle: "基础信息",
+    pageSubtitle: "快速掌握核心基本面与最新行情。",
     filterKeyword: "关键词",
     filterMarket: "市场",
     filterExchange: "交易所",
-    filterStatus: "状态",
     filterAll: "全部",
     filterMainboard: "主板",
     filterChiNext: "创业板",
-    filterListed: "上市",
-    filterPaused: "停牌",
+    filterStar: "科创板",
     reset: "重置",
     apply: "应用",
     tabBasic: "基础数据",
@@ -75,7 +73,10 @@ const translations = {
     paginationNext: "下一页",
     paginationInfo: "第 {current} / {totalPages} 页 · 共 {total} 条",
     noData: "暂无数据",
-  },
+    exchangeSSE: "上交所",
+    exchangeSZSE: "深交所",
+    exchangeBSE: "北交所"
+  }
 };
 
 const API_BASE =
@@ -84,6 +85,30 @@ const API_BASE =
     ? "http://localhost:8000"
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 const PAGE_SIZE = 20;
+
+const exchangeLabels = {
+  en: { SSE: "SSE", SZSE: "SZSE", BSE: "BSE" },
+  zh: { SSE: "上交所", SZSE: "深交所", BSE: "北交所" },
+};
+
+const marketLabels = {
+  en: {
+    "主板": "Main Board",
+    "创业板": "ChiNext",
+    "科创板": "STAR Market",
+    "Main Board": "Main Board",
+    "ChiNext": "ChiNext",
+    "STAR Market": "STAR Market",
+  },
+  zh: {
+    "主板": "主板",
+    "创业板": "创业板",
+    "科创板": "科创板",
+    "Main Board": "主板",
+    "ChiNext": "创业板",
+    "STAR Market": "科创板",
+  },
+};
 
 let currentLang = "en";
 const state = {
@@ -94,7 +119,6 @@ const state = {
     keyword: "",
     market: "all",
     exchange: "all",
-    status: "all",
   },
 };
 
@@ -110,7 +134,6 @@ const elements = {
   keywordInput: document.getElementById("keyword"),
   marketSelect: document.getElementById("market"),
   exchangeSelect: document.getElementById("exchange"),
-  statusSelect: document.getElementById("status"),
   applyButton: document.getElementById("apply-filters"),
   resetButton: document.getElementById("reset-filters"),
   prevPage: document.getElementById("prev-page"),
@@ -125,7 +148,7 @@ function formatNumber(value) {
   );
 }
 
-function formatOptionalNumber(value, options) {
+function formatOptionalNumber(value, options = {}) {
   if (value === null || value === undefined) {
     return "—";
   }
@@ -155,7 +178,7 @@ function formatChange(value) {
     return "—";
   }
   const formatted = value.toFixed(2);
-  return `${value >= 0 ? "+" : ""}${formatted}`;
+  return `${value >= 0 ? "+" : ""}${formatted}%`;
 }
 
 function renderTable(data = state.items) {
@@ -173,29 +196,36 @@ function renderTable(data = state.items) {
   }
 
   data.forEach((item) => {
+    const marketLabel = marketLabels[currentLang][item.market] || item.market || "—";
+    const exchangeLabel = exchangeLabels[currentLang][item.exchange] || item.exchange || "—";
     const changeClass =
       item.pct_change == null
         ? ""
         : item.pct_change >= 0
         ? "text-up"
         : "text-down";
+    const lastPrice = formatOptionalNumber(item.last_price, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const changeDisplay = formatChange(item.pct_change);
+    const volumeDisplay =
+      item.volume == null
+        ? "—"
+        : formatOptionalNumber(item.volume, { maximumFractionDigits: 0 });
+
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${item.code}</td>
       <td>${item.name ?? "—"}</td>
       <td>${item.industry ?? "—"}</td>
-      <td>${item.market ?? "—"}</td>
-      <td>${item.exchange}</td>
-      <td>${formatOptionalNumber(item.last_price, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}</td>
+      <td>${marketLabel}</td>
+      <td>${exchangeLabel}</td>
+      <td>${lastPrice}</td>
       <td class="${changeClass}">
-        ${formatChange(item.pct_change)}
+        ${changeDisplay}
       </td>
-      <td>${
-        item.volume == null ? "—" : formatOptionalNumber(item.volume, {})
-      }</td>
+      <td>${volumeDisplay}</td>
     `;
     elements.fundamentalsBody.appendChild(row);
   });
@@ -206,7 +236,6 @@ function collectFilters() {
     keyword: elements.keywordInput.value.trim(),
     market: elements.marketSelect.value,
     exchange: elements.exchangeSelect.value,
-    status: elements.statusSelect.value,
   };
 }
 
@@ -262,8 +291,6 @@ async function loadStocks(page = 1) {
     params.set("market", filters.market);
   if (filters.exchange && filters.exchange !== "all")
     params.set("exchange", filters.exchange);
-  if (filters.status && filters.status !== "all")
-    params.set("status", filters.status);
 
   try {
     const response = await fetch(`${API_BASE}/stocks?${params.toString()}`);
@@ -278,7 +305,6 @@ async function loadStocks(page = 1) {
       industry: item.industry,
       market: item.market,
       exchange: item.exchange,
-      status: item.status,
       last_price: item.lastPrice,
       pct_change: item.pctChange,
       volume: item.volume,
@@ -306,7 +332,6 @@ elements.resetButton.addEventListener("click", () => {
   elements.keywordInput.value = "";
   elements.marketSelect.value = "all";
   elements.exchangeSelect.value = "all";
-  elements.statusSelect.value = "all";
   elements.searchBox.value = "";
   loadStocks(1);
 });
@@ -340,3 +365,17 @@ applyTranslations();
 setActiveTab("fundamentals");
 updateLanguage("en");
 loadStocks(1);
+
+
+
+
+
+
+
+
+
+
+
+
+
+

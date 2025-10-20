@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-i18n="title">Trend View – Stock Overview</title>
+    <title data-i18n="title">Trend View – Basic Info</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -24,8 +24,8 @@
           <div class="nav__section-title" data-i18n="navBasics">
             Basic Insights
           </div>
-          <button class="nav__item nav__item--active" data-i18n="navStocks">
-            Stock Overview
+          <button class="nav__item nav__item--active" data-i18n="navBasicInfo">
+            Basic Info
           </button>
           <button class="nav__item" data-i18n="navNews">Market News</button>
           <button class="nav__item" data-i18n="navSignals">
@@ -57,10 +57,8 @@
         <section class="page">
           <header class="page__header">
             <div class="page__title">
-              <h1 data-i18n="pageTitle">Stock Screener</h1>
-              <p data-i18n="pageSubtitle">
-                Filter the market and monitor real-time performance with ease.
-              </p>
+              <h1 data-i18n="pageTitle">Basic Information</h1>
+              <p data-i18n="pageSubtitle">Review fundamentals and recent performance with ease.</p>
             </div>
           </header>
 
@@ -79,28 +77,18 @@
               <label for="market" data-i18n="filterMarket">Market</label>
               <select id="market">
                 <option value="all" data-i18n="filterAll">All</option>
-                <option value="主板" data-i18n="filterMainboard">
-                  Main Board
-                </option>
-                <option value="创业板" data-i18n="filterChiNext">
-                  ChiNext
-                </option>
+                <option value="主板" data-i18n="filterMainboard">Main Board</option>
+                <option value="创业板" data-i18n="filterChiNext">ChiNext</option>
+                <option value="科创板" data-i18n="filterStar">STAR Market</option>
               </select>
             </div>
             <div class="filter-group">
               <label for="exchange" data-i18n="filterExchange">Exchange</label>
               <select id="exchange">
                 <option value="all" data-i18n="filterAll">All</option>
-                <option value="SSE">SSE</option>
-                <option value="SZSE">SZSE</option>
-              </select>
-            </div>
-            <div class="filter-group">
-              <label for="status" data-i18n="filterStatus">Status</label>
-              <select id="status">
-                <option value="all" data-i18n="filterAll">All</option>
-                <option value="L" data-i18n="filterListed">Listed</option>
-                <option value="P" data-i18n="filterPaused">Paused</option>
+                <option value="SSE" data-i18n="exchangeSSE">SSE</option>
+                <option value="SZSE" data-i18n="exchangeSZSE">SZSE</option>
+                <option value="BSE" data-i18n="exchangeBSE">BSE</option>
               </select>
             </div>
             <div class="filters__actions">
@@ -164,3 +152,9 @@
     <script src="app.js"></script>
   </body>
 </html>
+
+
+
+
+
+
