@@ -84,8 +84,8 @@ class StockBasicDAO(PostgresDAOBase):
         keyword: str | None = None,
         market: str | None = None,
         exchange: str | None = None,
-        exclude_statuses: Sequence[str] | None = None,
-        exclude_name_prefixes: Sequence[str] | None = None,
+        include_st: bool = True,
+        include_delisted: bool = True,
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, object]:
@@ -132,15 +132,16 @@ class StockBasicDAO(PostgresDAOBase):
             conditions.append(sql.SQL("exchange = %s"))
             params.append(exchange)
 
-        if exclude_statuses:
+        if not include_delisted:
+            exclude_statuses = ["D", "P"]
             placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in exclude_statuses)
             conditions.append(
                 sql.SQL("list_status NOT IN ({statuses})").format(statuses=placeholders)
             )
             params.extend(exclude_statuses)
 
-        if exclude_name_prefixes:
-            for prefix in exclude_name_prefixes:
+        if not include_st:
+            for prefix in ("ST", "*ST"):
                 conditions.append(sql.SQL("name NOT ILIKE %s"))
                 params.append(f"{prefix}%")
 

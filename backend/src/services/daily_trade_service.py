@@ -1,4 +1,4 @@
-"""
+﻿"""
 Service layer responsible for fetching and persisting daily trade data.
 """
 
@@ -8,11 +8,12 @@ import logging
 import math
 import time
 from datetime import datetime, timedelta
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 import tushare as ts
 
 from ..api_clients import get_daily_trade
+from ..config.runtime_config import load_runtime_config
 from ..config.settings import AppSettings, load_settings
 from ..dao import DailyTradeDAO, StockBasicDAO
 
@@ -53,7 +54,8 @@ def sync_daily_trade(
     token: str | None = None,
     *,
     batch_size: int = 20,
-    window_days: int = 420,
+    window_days: int | None = None,
+    progress_callback: Callable[[float, str | None, int | None], None] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     codes: Iterable[str] | None = None,
@@ -67,7 +69,13 @@ def sync_daily_trade(
     """
     overall_start = time.perf_counter()
     settings = load_settings(settings_path)
+    runtime_config = load_runtime_config()
+    window_days = window_days if window_days is not None else runtime_config.daily_trade_window_days
     resolved_token = _resolve_token(token, settings)
+
+    if progress_callback:
+        progress_callback(0.0, "Preparing daily trade sync", None)
+
 
     stock_basic_dao = StockBasicDAO(settings.postgres)
     if codes is None:
@@ -140,8 +148,14 @@ def sync_daily_trade(
         if batch_index < num_batches - 1 and batch_pause_seconds > 0:
             time.sleep(batch_pause_seconds)
 
+        if progress_callback:
+            progress_callback((batch_index + 1) / num_batches, f"Processed batch {batch_index + 1}/{num_batches}", total_rows)
+
     elapsed = time.perf_counter() - overall_start
     logger.info("All batches processed successfully in %.2f seconds.", elapsed)
+
+    if progress_callback:
+        progress_callback(1.0, "Daily trade sync completed", total_rows)
 
     return {"rows": total_rows, "elapsed_seconds": elapsed}
 
@@ -149,3 +163,10 @@ def sync_daily_trade(
 __all__ = [
     "sync_daily_trade",
 ]
+
+
+
+
+
+
+

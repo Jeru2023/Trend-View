@@ -1,4 +1,4 @@
-"""
+﻿"""
 Service layer for synchronising Tushare stock basic data into PostgreSQL.
 """
 
@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Sequence
 
 from ..api_clients import fetch_stock_basic
+from ..config.runtime_config import load_runtime_config
 from ..config.settings import AppSettings, load_settings
 from ..dao import DailyTradeDAO, StockBasicDAO
 
@@ -79,12 +80,13 @@ def get_stock_overview(
     """
     settings = load_settings(settings_path)
     stock_dao = StockBasicDAO(settings.postgres)
+    runtime_config = load_runtime_config()
     result = stock_dao.query_fundamentals(
         keyword=keyword,
         market=market,
         exchange=exchange,
-        exclude_statuses=("D", "P"),
-        exclude_name_prefixes=("ST", "*ST"),
+        include_st=runtime_config.include_st,
+        include_delisted=runtime_config.include_delisted,
         limit=limit,
         offset=offset,
     )
@@ -107,4 +109,5 @@ __all__ = [
     "sync_stock_basic",
     "get_stock_overview",
 ]
+
 

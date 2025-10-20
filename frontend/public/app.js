@@ -8,6 +8,7 @@
     navNews: "Market News",
     navSignals: "Technical Signals",
     navPortfolio: "Portfolio Monitor",
+    navControl: "Control Panel",
     pageTitle: "Basic Information",
     pageSubtitle: "Review fundamentals and recent market performance with ease.",
     filterKeyword: "Keyword",
@@ -47,6 +48,7 @@
     navNews: "市场资讯",
     navSignals: "技术信号",
     navPortfolio: "组合监控",
+    navControl: "控制面板",
     pageTitle: "基础信息",
     pageSubtitle: "快速掌握核心基本面与最新行情。",
     filterKeyword: "关键词",
@@ -196,8 +198,10 @@ function renderTable(data = state.items) {
   }
 
   data.forEach((item) => {
-    const marketLabel = marketLabels[currentLang][item.market] || item.market || "—";
-    const exchangeLabel = exchangeLabels[currentLang][item.exchange] || item.exchange || "—";
+    const marketMap = marketLabels[currentLang] || {};
+    const exchangeMap = exchangeLabels[currentLang] || {};
+    const marketLabel = item.market ? marketMap[item.market] ?? item.market : "—";
+    const exchangeLabel = item.exchange ? exchangeMap[item.exchange] ?? item.exchange : "—";
     const changeClass =
       item.pct_change == null
         ? ""
@@ -365,6 +369,8 @@ applyTranslations();
 setActiveTab("fundamentals");
 updateLanguage("en");
 loadStocks(1);
+
+
 
 
 

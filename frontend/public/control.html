@@ -1,0 +1,173 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View – Control Panel</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand__logo">TV</div>
+          <div class="brand__text">
+            <div class="brand__name" data-i18n="brandName">Trend View</div>
+            <div class="brand__tagline" data-i18n="brandTagline">
+              Investment Intelligence Hub
+            </div>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <div class="nav__section-title" data-i18n="navBasics">
+            Basic Insights
+          </div>
+          <a class="nav__item" data-i18n="navBasicInfo" href="index.html">
+            Basic Info
+          </a>
+          <a class="nav__item nav__item--active" data-i18n="navControl" href="control.html">
+            Control Panel
+          </a>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="content__header">
+          <h1 class="page-heading" data-i18n="pageTitle">Control Panel</h1>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <header class="page__header control-header">
+            <div class="page__title">
+              <h2 data-i18n="syncSectionTitle">Data Synchronization</h2>
+              <p data-i18n="syncSectionSubtitle">
+                Trigger updates manually and monitor automated job status in real time.
+              </p>
+            </div>
+          </header>
+
+          <div class="control-grid">
+            <div class="card" id="stock-basic-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="stockBasicTitle">Stock Basic Data</h3>
+                  <p class="card__subtitle" data-i18n="stockBasicSubtitle">
+                    Monthly refresh (1st of each month) or run manually as needed.
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-stock-basic" data-i18n="runNow">
+                  Run Now
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="stock-basic-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div>
+                  <span data-i18n="lastStatus">Status</span>
+                  <strong id="stock-basic-status">—</strong>
+                </div>
+                <div>
+                  <span data-i18n="lastUpdated">Last Updated</span>
+                  <strong id="stock-basic-updated">—</strong>
+                </div>
+                <div>
+                  <span data-i18n="lastMarket">Last Market</span>
+                  <strong id="stock-basic-market">—</strong>
+                </div>
+                <div>
+                  <span data-i18n="records">Records</span>
+                  <strong id="stock-basic-rows">—</strong>
+                </div>
+              </div>
+              <p class="job-message" id="stock-basic-message"></p>
+            </div>
+
+            <div class="card" id="daily-trade-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="dailyTradeTitle">Daily Trade Data</h3>
+                  <p class="card__subtitle" data-i18n="dailyTradeSubtitle">
+                    Scheduled daily at 17:00; follow batch progress when running.
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-daily-trade" data-i18n="runNow">
+                  Run Now
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="daily-trade-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div>
+                  <span data-i18n="lastStatus">Status</span>
+                  <strong id="daily-trade-status">—</strong>
+                </div>
+                <div>
+                  <span data-i18n="lastUpdated">Last Updated</span>
+                  <strong id="daily-trade-updated">—</strong>
+                </div>
+                <div>
+                  <span data-i18n="lastWindow">Window (days)</span>
+                  <strong id="daily-trade-window">—</strong>
+                </div>
+                <div>
+                  <span data-i18n="records">Records</span>
+                  <strong id="daily-trade-rows">—</strong>
+                </div>
+              </div>
+              <p class="job-message" id="daily-trade-message"></p>
+            </div>
+          </div>
+
+          <header class="page__header control-header">
+            <div class="page__title">
+              <h2 data-i18n="configSectionTitle">Configuration</h2>
+              <p data-i18n="configSectionSubtitle">
+                Adjust query filters and default window sizes for automated jobs.
+              </p>
+            </div>
+          </header>
+
+          <div class="config-grid">
+            <label class="switch">
+              <input type="checkbox" id="config-include-st" />
+              <span>
+                <strong data-i18n="includeStLabel">Include ST stocks in queries</strong>
+                <small data-i18n="includeStHint">When enabled, ST/*ST securities appear in list results.</small>
+              </span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="config-include-delisted" />
+              <span>
+                <strong data-i18n="includeDelistedLabel">Include delisted stocks</strong>
+                <small data-i18n="includeDelistedHint">When disabled, delisted/paused securities are hidden.</small>
+              </span>
+            </label>
+            <div class="config-field">
+              <label for="config-window" data-i18n="windowLabel">Daily trade window (days)</label>
+              <input type="number" id="config-window" min="1" max="3650" value="420" />
+              <small data-i18n="windowHint">Used by scheduled and manual daily trade updates.</small>
+            </div>
+          </div>
+
+          <div class="config-actions">
+            <button class="primary-btn" id="save-config" data-i18n="saveSettings">
+              Save Settings
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="control.js"></script>
+  </body>
+</html>
