@@ -1,0 +1,342 @@
+const translations = {
+  en: {
+    title: "Trend View – Stock Overview",
+    brandName: "Trend View",
+    brandTagline: "Investment Intelligence Hub",
+    navBasics: "Basic Insights",
+    navStocks: "Stock Overview",
+    navNews: "Market News",
+    navSignals: "Technical Signals",
+    navPortfolio: "Portfolio Monitor",
+    pageTitle: "Stock Screener",
+    pageSubtitle:
+      "Filter the market and monitor real-time performance with ease.",
+    filterKeyword: "Keyword",
+    filterMarket: "Market",
+    filterExchange: "Exchange",
+    filterStatus: "Status",
+    filterAll: "All",
+    filterMainboard: "Main Board",
+    filterChiNext: "ChiNext",
+    filterListed: "Listed",
+    filterPaused: "Paused",
+    reset: "Reset",
+    apply: "Apply",
+    tabBasic: "Basic",
+    tabStatistics: "Statistics",
+    colCode: "Code",
+    colName: "Name",
+    colIndustry: "Industry",
+    colMarket: "Market",
+    colExchange: "Exchange",
+    colPrice: "Last Price",
+    colChange: "Change (%)",
+    colVolume: "Volume",
+    statsPlaceholder: "Statistical metrics are coming soon.",
+    paginationPrev: "Previous",
+    paginationNext: "Next",
+    paginationInfo: "Page {current} of {totalPages} · {total} results",
+    noData: "No data available",
+  },
+  zh: {
+    title: "趋势视图 - 股票列表",
+    brandName: "趋势视图",
+    brandTagline: "智能投研中心",
+    navBasics: "基础洞察",
+    navStocks: "股票基础信息",
+    navNews: "市场资讯",
+    navSignals: "技术信号",
+    navPortfolio: "组合监控",
+    pageTitle: "股票筛选器",
+    pageSubtitle: "快速筛选市场，实时掌握股票行情。",
+    filterKeyword: "关键词",
+    filterMarket: "市场",
+    filterExchange: "交易所",
+    filterStatus: "状态",
+    filterAll: "全部",
+    filterMainboard: "主板",
+    filterChiNext: "创业板",
+    filterListed: "上市",
+    filterPaused: "停牌",
+    reset: "重置",
+    apply: "应用",
+    tabBasic: "基础数据",
+    tabStatistics: "统计数据",
+    colCode: "代码",
+    colName: "名称",
+    colIndustry: "行业",
+    colMarket: "板块",
+    colExchange: "交易所",
+    colPrice: "最新价",
+    colChange: "涨跌幅",
+    colVolume: "成交量",
+    statsPlaceholder: "统计指标即将上线。",
+    paginationPrev: "上一页",
+    paginationNext: "下一页",
+    paginationInfo: "第 {current} / {totalPages} 页 · 共 {total} 条",
+    noData: "暂无数据",
+  },
+};
+
+const API_BASE =
+  window.API_BASE_URL ||
+  (window.location.hostname === "localhost"
+    ? "http://localhost:8000"
+    : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
+const PAGE_SIZE = 20;
+
+let currentLang = "en";
+const state = {
+  page: 1,
+  total: 0,
+  items: [],
+  filters: {
+    keyword: "",
+    market: "all",
+    exchange: "all",
+    status: "all",
+  },
+};
+
+const elements = {
+  fundamentalsBody: document.getElementById("fundamentals-body"),
+  tabs: document.querySelectorAll(".tab"),
+  tables: {
+    fundamentals: document.getElementById("fundamentals-table"),
+    statistics: document.getElementById("statistics-placeholder"),
+  },
+  langButtons: document.querySelectorAll(".lang-btn"),
+  searchBox: document.querySelector(".search-box"),
+  keywordInput: document.getElementById("keyword"),
+  marketSelect: document.getElementById("market"),
+  exchangeSelect: document.getElementById("exchange"),
+  statusSelect: document.getElementById("status"),
+  applyButton: document.getElementById("apply-filters"),
+  resetButton: document.getElementById("reset-filters"),
+  prevPage: document.getElementById("prev-page"),
+  nextPage: document.getElementById("next-page"),
+  pageInfo: document.getElementById("page-info"),
+};
+
+function formatNumber(value) {
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(
+    value ?? 0
+  );
+}
+
+function formatOptionalNumber(value, options) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  return new Intl.NumberFormat(locale, options).format(value);
+}
+
+function applyTranslations() {
+  const dict = translations[currentLang];
+  document.documentElement.lang = currentLang;
+  document.title = dict.title;
+
+  document
+    .querySelectorAll("[data-i18n]")
+    .forEach((el) => (el.textContent = dict[el.dataset.i18n]));
+
+  document
+    .querySelectorAll("[data-placeholder-en]")
+    .forEach((el) => {
+      const placeholder = el.dataset[`placeholder${currentLang.toUpperCase()}`];
+      if (placeholder) el.placeholder = placeholder;
+    });
+}
+
+function formatChange(value) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+  const formatted = value.toFixed(2);
+  return `${value >= 0 ? "+" : ""}${formatted}`;
+}
+
+function renderTable(data = state.items) {
+  elements.fundamentalsBody.innerHTML = "";
+  if (!data.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 8;
+    cell.textContent = translations[currentLang].noData;
+    cell.style.textAlign = "center";
+    cell.style.color = "#6b7280";
+    row.appendChild(cell);
+    elements.fundamentalsBody.appendChild(row);
+    return;
+  }
+
+  data.forEach((item) => {
+    const changeClass =
+      item.pct_change == null
+        ? ""
+        : item.pct_change >= 0
+        ? "text-up"
+        : "text-down";
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${item.code}</td>
+      <td>${item.name ?? "—"}</td>
+      <td>${item.industry ?? "—"}</td>
+      <td>${item.market ?? "—"}</td>
+      <td>${item.exchange}</td>
+      <td>${formatOptionalNumber(item.last_price, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}</td>
+      <td class="${changeClass}">
+        ${formatChange(item.pct_change)}
+      </td>
+      <td>${
+        item.volume == null ? "—" : formatOptionalNumber(item.volume, {})
+      }</td>
+    `;
+    elements.fundamentalsBody.appendChild(row);
+  });
+}
+
+function collectFilters() {
+  return {
+    keyword: elements.keywordInput.value.trim(),
+    market: elements.marketSelect.value,
+    exchange: elements.exchangeSelect.value,
+    status: elements.statusSelect.value,
+  };
+}
+
+function setActiveTab(tabName) {
+  elements.tabs.forEach((tab) => {
+    const isActive = tab.dataset.tab === tabName;
+    tab.classList.toggle("tab--active", isActive);
+  });
+
+  elements.tables.fundamentals.classList.toggle(
+    "hidden",
+    tabName !== "fundamentals"
+  );
+  elements.tables.statistics.classList.toggle(
+    "hidden",
+    tabName !== "statistics"
+  );
+}
+
+function updateLanguage(lang) {
+  currentLang = lang;
+  elements.langButtons.forEach((btn) =>
+    btn.classList.toggle("active", btn.dataset.lang === lang)
+  );
+  applyTranslations();
+  renderTable();
+  updatePaginationControls();
+}
+
+function updatePaginationControls() {
+  const totalPages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
+  const dict = translations[currentLang];
+  const pageText = dict.paginationInfo
+    .replace("{current}", state.page)
+    .replace("{totalPages}", totalPages)
+    .replace("{total}", formatNumber(state.total));
+  elements.pageInfo.textContent = pageText;
+  elements.prevPage.disabled = state.page <= 1;
+  elements.nextPage.disabled = state.page >= totalPages;
+}
+
+async function loadStocks(page = 1) {
+  state.page = page;
+  const filters = collectFilters();
+  state.filters = filters;
+
+  const params = new URLSearchParams();
+  params.set("limit", PAGE_SIZE.toString());
+  params.set("offset", ((state.page - 1) * PAGE_SIZE).toString());
+
+  if (filters.keyword) params.set("keyword", filters.keyword);
+  if (filters.market && filters.market !== "all")
+    params.set("market", filters.market);
+  if (filters.exchange && filters.exchange !== "all")
+    params.set("exchange", filters.exchange);
+  if (filters.status && filters.status !== "all")
+    params.set("status", filters.status);
+
+  try {
+    const response = await fetch(`${API_BASE}/stocks?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const data = await response.json();
+    state.total = data.total;
+    state.items = data.items.map((item) => ({
+      code: item.code,
+      name: item.name,
+      industry: item.industry,
+      market: item.market,
+      exchange: item.exchange,
+      status: item.status,
+      last_price: item.lastPrice,
+      pct_change: item.pctChange,
+      volume: item.volume,
+      trade_date: item.tradeDate,
+    }));
+  } catch (error) {
+    console.error("Failed to fetch stock data:", error);
+    state.total = 0;
+    state.items = [];
+  }
+
+  renderTable();
+  updatePaginationControls();
+}
+
+elements.langButtons.forEach((btn) =>
+  btn.addEventListener("click", () => updateLanguage(btn.dataset.lang))
+);
+
+elements.applyButton.addEventListener("click", () => {
+  loadStocks(1);
+});
+
+elements.resetButton.addEventListener("click", () => {
+  elements.keywordInput.value = "";
+  elements.marketSelect.value = "all";
+  elements.exchangeSelect.value = "all";
+  elements.statusSelect.value = "all";
+  elements.searchBox.value = "";
+  loadStocks(1);
+});
+
+elements.tabs.forEach((tab) =>
+  tab.addEventListener("click", () => setActiveTab(tab.dataset.tab))
+);
+
+elements.prevPage.addEventListener("click", () => {
+  if (state.page > 1) {
+    loadStocks(state.page - 1);
+  }
+});
+
+elements.nextPage.addEventListener("click", () => {
+  const totalPages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
+  if (state.page < totalPages) {
+    loadStocks(state.page + 1);
+  }
+});
+
+elements.searchBox.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    elements.keywordInput.value = event.target.value.trim();
+    loadStocks(1);
+  }
+});
+
+// Initial render
+applyTranslations();
+setActiveTab("fundamentals");
+updateLanguage("en");
+loadStocks(1);

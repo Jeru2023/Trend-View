@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View – Stock Overview</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand__logo">TV</div>
+          <div class="brand__text">
+            <div class="brand__name" data-i18n="brandName">Trend View</div>
+            <div class="brand__tagline" data-i18n="brandTagline">
+              Investment Intelligence Hub
+            </div>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <div class="nav__section-title" data-i18n="navBasics">
+            Basic Insights
+          </div>
+          <button class="nav__item nav__item--active" data-i18n="navStocks">
+            Stock Overview
+          </button>
+          <button class="nav__item" data-i18n="navNews">Market News</button>
+          <button class="nav__item" data-i18n="navSignals">
+            Technical Signals
+          </button>
+          <button class="nav__item" data-i18n="navPortfolio">
+            Portfolio Monitor
+          </button>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="content__header">
+          <input
+            type="search"
+            class="search-box"
+            placeholder="Search symbols or industries"
+            data-placeholder-en="Search symbols or industries"
+            data-placeholder-zh="搜索股票代码或行业"
+          />
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <header class="page__header">
+            <div class="page__title">
+              <h1 data-i18n="pageTitle">Stock Screener</h1>
+              <p data-i18n="pageSubtitle">
+                Filter the market and monitor real-time performance with ease.
+              </p>
+            </div>
+          </header>
+
+          <section class="filters">
+            <div class="filter-group">
+              <label for="keyword" data-i18n="filterKeyword">Keyword</label>
+              <input
+                id="keyword"
+                type="text"
+                placeholder="Ping An Bank"
+                data-placeholder-en="Ping An Bank"
+                data-placeholder-zh="平安银行"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="market" data-i18n="filterMarket">Market</label>
+              <select id="market">
+                <option value="all" data-i18n="filterAll">All</option>
+                <option value="主板" data-i18n="filterMainboard">
+                  Main Board
+                </option>
+                <option value="创业板" data-i18n="filterChiNext">
+                  ChiNext
+                </option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="exchange" data-i18n="filterExchange">Exchange</label>
+              <select id="exchange">
+                <option value="all" data-i18n="filterAll">All</option>
+                <option value="SSE">SSE</option>
+                <option value="SZSE">SZSE</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="status" data-i18n="filterStatus">Status</label>
+              <select id="status">
+                <option value="all" data-i18n="filterAll">All</option>
+                <option value="L" data-i18n="filterListed">Listed</option>
+                <option value="P" data-i18n="filterPaused">Paused</option>
+              </select>
+            </div>
+            <div class="filters__actions">
+              <button id="reset-filters" class="secondary-btn" data-i18n="reset">
+                Reset
+              </button>
+              <button id="apply-filters" class="primary-btn" data-i18n="apply">
+                Apply
+              </button>
+            </div>
+          </section>
+
+          <section class="tabs">
+            <button class="tab tab--active" data-tab="fundamentals" data-i18n="tabBasic">
+              Basic
+            </button>
+            <button class="tab" data-tab="statistics" data-i18n="tabStatistics">
+              Statistics
+            </button>
+          </section>
+
+          <section class="table-wrapper">
+            <table class="stock-table" id="fundamentals-table">
+              <thead>
+                <tr>
+                  <th data-i18n="colCode">Code</th>
+                  <th data-i18n="colName">Name</th>
+                  <th data-i18n="colIndustry">Industry</th>
+                  <th data-i18n="colMarket">Market</th>
+                  <th data-i18n="colExchange">Exchange</th>
+                  <th data-i18n="colPrice">Last Price</th>
+                  <th data-i18n="colChange">Change (%)</th>
+                  <th data-i18n="colVolume">Volume</th>
+                </tr>
+              </thead>
+              <tbody id="fundamentals-body"></tbody>
+            </table>
+
+            <div class="empty-placeholder hidden" id="statistics-placeholder">
+              <p data-i18n="statsPlaceholder">
+                Statistical metrics are coming soon.
+              </p>
+            </div>
+          </section>
+
+          <div class="pagination">
+            <button class="secondary-btn" id="prev-page" data-i18n="paginationPrev">
+              Previous
+            </button>
+            <span class="pagination__info" id="page-info" data-i18n="paginationInfo">
+              Page 1
+            </span>
+            <button class="secondary-btn" id="next-page" data-i18n="paginationNext">
+              Next
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

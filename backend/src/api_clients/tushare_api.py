@@ -34,6 +34,20 @@ STOCK_BASIC_FIELDS: Sequence[str] = (
 
 DATE_COLUMNS: Sequence[str] = ("list_date", "delist_date")
 
+DAILY_TRADE_FIELDS: Sequence[str] = (
+    "ts_code",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "change",
+    "pct_chg",
+    "vol",
+    "amount",
+)
+
 
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
@@ -95,8 +109,41 @@ def fetch_stock_basic(
     return pd.concat(frames, ignore_index=True).drop_duplicates(subset=["ts_code"])
 
 
+def get_daily_trade(
+    pro: ts.pro_api,
+    code_list: Sequence[str],
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame:
+    """
+    Fetch daily trade data for the provided codes within the given date range.
+
+    Args:
+        pro: An authenticated ``tushare.pro_api`` client.
+        code_list: Iterable of Tushare ``ts_code`` identifiers.
+        start_date: Start date in ``YYYYMMDD`` format.
+        end_date: End date in ``YYYYMMDD`` format.
+    """
+    if not code_list:
+        return pd.DataFrame(columns=DAILY_TRADE_FIELDS)
+
+    code_list_str = ",".join(code_list)
+    df = pro.daily(ts_code=code_list_str, start_date=start_date, end_date=end_date)
+    if df is None or df.empty:
+        logger.warning("No daily trade data returned for codes: %s", code_list_str)
+        return pd.DataFrame(columns=DAILY_TRADE_FIELDS)
+
+    missing_columns = [col for col in DAILY_TRADE_FIELDS if col not in df.columns]
+    for column in missing_columns:
+        df[column] = None
+
+    return df.loc[:, list(DAILY_TRADE_FIELDS)]
+
+
 __all__ = [
     "DATE_COLUMNS",
+    "DAILY_TRADE_FIELDS",
     "STOCK_BASIC_FIELDS",
     "fetch_stock_basic",
+    "get_daily_trade",
 ]

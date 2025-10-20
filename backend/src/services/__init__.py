@@ -1,7 +1,10 @@
 # Service package exports.
 
-from .stock_basic_service import sync_stock_basic
+from .daily_trade_service import sync_daily_trade
+from .stock_basic_service import get_stock_overview, sync_stock_basic
 
 __all__ = [
+    "get_stock_overview",
+    "sync_daily_trade",
     "sync_stock_basic",
 ]
