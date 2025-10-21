@@ -124,6 +124,9 @@ body {
   cursor: pointer;
   transition: background 0.2s ease;
   text-decoration: none;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.4;
 }
 
 .nav__item:hover,

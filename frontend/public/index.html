@@ -5,8 +5,23 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="title">Trend View – Basic Info</title>
-    <link rel="stylesheet" href="styles.css" />
-      <script>window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8001";</script>\n  </head>
+    <link rel="stylesheet" href="styles.css?v=20251021" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
   <body>
     <div class="layout">
       <aside class="sidebar">
@@ -31,7 +46,9 @@
           </button>
           <button class="nav__item" data-i18n="navPortfolio">
             Portfolio Monitor
-          </button>\n          <a class="nav__item" data-i18n="navControl" href="control.html">Control Panel</a>\n        </nav>
+          </button>
+          <a class="nav__item" data-i18n="navControl" href="control.html">Control Panel</a>
+        </nav>
       </aside>
 
       <main class="content">
@@ -146,7 +163,7 @@
       </main>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20251021"></script>
   </body>
 </html>
 

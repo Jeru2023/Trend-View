@@ -5,6 +5,9 @@
     brandTagline: "Investment Intelligence Hub",
     navBasics: "Basic Insights",
     navBasicInfo: "Basic Info",
+    navNews: "Market News",
+    navSignals: "Technical Signals",
+    navPortfolio: "Portfolio Monitor",
     navControl: "Control Panel",
     pageTitle: "Control Panel",
     syncSectionTitle: "Data Synchronization",
@@ -41,6 +44,9 @@
     brandTagline: "智能投研中心",
     navBasics: "基础洞察",
     navBasicInfo: "基础信息",
+    navNews: "市场资讯",
+    navSignals: "技术信号",
+    navPortfolio: "组合监控",
     navControl: "控制面板",
     pageTitle: "控制面板",
     syncSectionTitle: "数据同步",
@@ -79,7 +85,39 @@ const API_BASE =
     ? "http://localhost:8000"
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 
-let currentLang = "en";
+const LANG_STORAGE_KEY = "trend-view-lang";
+
+function getInitialLanguage() {
+  const attr = document.documentElement.getAttribute("data-pref-lang");
+  if (attr && translations[attr]) {
+    return attr;
+  }
+  const htmlLang = document.documentElement.lang;
+  if (htmlLang && translations[htmlLang]) {
+    return htmlLang;
+  }
+  try {
+    const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (stored && translations[stored]) {
+      return stored;
+    }
+  } catch (error) {
+    /* no-op */
+  }
+  const browserLang = (navigator.language || "").toLowerCase();
+  return browserLang.startsWith("zh") ? "zh" : "en";
+}
+
+function persistLanguage(lang) {
+  try {
+    window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch (error) {
+    /* no-op */
+  }
+  document.documentElement.setAttribute("data-pref-lang", lang);
+}
+
+let currentLang = getInitialLanguage();
 let pollTimer = null;
 
 const elements = {
@@ -127,6 +165,7 @@ function formatNumber(value) {
 }
 
 function setLang(lang) {
+  persistLanguage(lang);
   currentLang = lang;
   elements.langButtons.forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.lang === lang)
@@ -142,7 +181,13 @@ function applyTranslations() {
 
   document
     .querySelectorAll("[data-i18n]")
-    .forEach((el) => (el.textContent = dict[el.dataset.i18n]));
+    .forEach((el) => {
+      const key = el.dataset.i18n;
+      const value = dict[key];
+      if (typeof value === "string") {
+        el.textContent = value;
+      }
+    });
 }
 
 function jobStatusLabel(status) {
@@ -291,8 +336,7 @@ function initActions() {
 }
 
 // Boot
-applyTranslations();
 initLanguageSwitch();
 initActions();
-setLang("en");
+setLang(currentLang);
 loadStatus();

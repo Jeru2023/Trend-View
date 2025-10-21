@@ -112,7 +112,39 @@ const marketLabels = {
   },
 };
 
-let currentLang = "en";
+const LANG_STORAGE_KEY = "trend-view-lang";
+
+function getInitialLanguage() {
+  const attr = document.documentElement.getAttribute("data-pref-lang");
+  if (attr && translations[attr]) {
+    return attr;
+  }
+  const htmlLang = document.documentElement.lang;
+  if (htmlLang && translations[htmlLang]) {
+    return htmlLang;
+  }
+  try {
+    const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (stored && translations[stored]) {
+      return stored;
+    }
+  } catch (error) {
+    /* no-op */
+  }
+  const browserLang = (navigator.language || "").toLowerCase();
+  return browserLang.startsWith("zh") ? "zh" : "en";
+}
+
+function persistLanguage(lang) {
+  try {
+    window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch (error) {
+    /* no-op */
+  }
+  document.documentElement.setAttribute("data-pref-lang", lang);
+}
+
+let currentLang = getInitialLanguage();
 const state = {
   page: 1,
   total: 0,
@@ -165,13 +197,21 @@ function applyTranslations() {
 
   document
     .querySelectorAll("[data-i18n]")
-    .forEach((el) => (el.textContent = dict[el.dataset.i18n]));
+    .forEach((el) => {
+      const key = el.dataset.i18n;
+      const value = dict[key];
+      if (typeof value === "string") {
+        el.textContent = value;
+      }
+    });
 
   document
     .querySelectorAll("[data-placeholder-en]")
     .forEach((el) => {
       const placeholder = el.dataset[`placeholder${currentLang.toUpperCase()}`];
-      if (placeholder) el.placeholder = placeholder;
+      if (typeof placeholder === "string") {
+        el.placeholder = placeholder;
+      }
     });
 }
 
@@ -260,6 +300,7 @@ function setActiveTab(tabName) {
 }
 
 function updateLanguage(lang) {
+  persistLanguage(lang);
   currentLang = lang;
   elements.langButtons.forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.lang === lang)
@@ -365,9 +406,8 @@ elements.searchBox.addEventListener("keydown", (event) => {
 });
 
 // Initial render
-applyTranslations();
 setActiveTab("fundamentals");
-updateLanguage("en");
+updateLanguage(currentLang);
 loadStocks(1);
 
 
