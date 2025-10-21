@@ -6,3 +6,9 @@ __pycache__/
 *.py[cod]
 
 private.MD
+
+# Control panel runtime state
+backend/config/control_state.json
+
+# Runtime logs
+backend_uvicorn*.log
