@@ -80,21 +80,25 @@ class SyncMonitor:
         total_rows: Optional[int] = None,
         message: Optional[str] = None,
         error: Optional[str] = None,
+        finished_at: Optional[datetime] = None,
+        last_duration: Optional[float] = None,
     ) -> None:
         with self._lock:
             state = self._get(job)
             state.status = "success" if success else "failed"
-            finished_at = datetime.utcnow()
-            state.finished_at = finished_at
+            completed_at = finished_at or datetime.utcnow()
+            state.finished_at = completed_at
             if state.started_at is None:
-                state.started_at = finished_at
+                state.started_at = completed_at
             state.progress = 1.0 if success else state.progress
             if total_rows is not None:
                 state.total_rows = total_rows
             if message is not None:
                 state.message = message
             state.error = error
-            if state.started_at and state.finished_at:
+            if last_duration is not None:
+                state.last_duration = last_duration
+            elif state.started_at and state.finished_at:
                 state.last_duration = (state.finished_at - state.started_at).total_seconds()
 
     def snapshot(self) -> Dict[str, Dict[str, Optional[str]]]:

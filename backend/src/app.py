@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import date
 from typing import Dict, List, Optional
 
@@ -94,6 +95,7 @@ class JobStatusPayload(BaseModel):
     error: Optional[str]
 
     class Config:
+        allow_population_by_field_name = True
         fields = {
             "started_at": "startedAt",
             "finished_at": "finishedAt",
@@ -131,22 +133,37 @@ async def _run_stock_basic_job(list_statuses: Optional[List[str]], market: Optio
     loop = asyncio.get_running_loop()
 
     def job() -> None:
+        started = time.perf_counter()
         try:
             rows = sync_stock_basic(
                 list_statuses=tuple(list_statuses or ["L", "D", "P"]),
                 market=market,
             )
+            stats: Dict[str, object] = {}
+            try:
+                stats = StockBasicDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh stock_basic stats: %s", stats_exc)
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = rows
+            finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
             monitor.finish(
                 "stock_basic",
                 success=True,
-                total_rows=rows,
+                total_rows=total_rows,
                 message="Stock basic sync completed",
+                finished_at=finished_at,
+                last_duration=elapsed,
             )
         except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
             monitor.finish(
                 "stock_basic",
                 success=False,
                 error=str(exc),
+                last_duration=elapsed,
             )
             raise
 
@@ -168,6 +185,7 @@ async def _run_daily_trade_job(request: SyncDailyTradeRequest) -> None:
         )
 
     def job() -> None:
+        started = time.perf_counter()
         try:
             result = sync_daily_trade(
                 batch_size=request.batch_size or 20,
@@ -178,17 +196,31 @@ async def _run_daily_trade_job(request: SyncDailyTradeRequest) -> None:
                 batch_pause_seconds=request.batch_pause_seconds or 0.6,
                 progress_callback=progress_callback,
             )
+            stats: Dict[str, object] = {}
+            try:
+                stats = DailyTradeDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh daily_trade stats: %s", stats_exc)
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result["rows"]
+            finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
             monitor.finish(
                 "daily_trade",
                 success=True,
-                total_rows=result["rows"],
+                total_rows=total_rows,
                 message="Daily trade sync completed",
+                finished_at=finished_at,
+                last_duration=elapsed,
             )
         except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
             monitor.finish(
                 "daily_trade",
                 success=False,
                 error=str(exc),
+                last_duration=elapsed,
             )
             raise
 
@@ -324,6 +356,19 @@ def get_control_status() -> ControlStatusResponse:
         total_rows = info.get("totalRows")
         if total_rows is None:
             total_rows = stats.get("count")
+        if total_rows is not None:
+            try:
+                total_rows = int(total_rows)
+            except (TypeError, ValueError):
+                pass
+        logger.debug(
+            "control status job=%s snapshot=%s stats=%s -> finished=%s total=%s",
+            name,
+            info,
+            stats,
+            finished_at,
+            total_rows,
+        )
         jobs[name] = JobStatusPayload(
             status=info.get("status"),
             started_at=info.get("startedAt"),
@@ -360,6 +405,18 @@ async def control_sync_stock_basic(payload: SyncStockBasicRequest) -> dict[str, 
 async def control_sync_daily_trade(payload: SyncDailyTradeRequest) -> dict[str, str]:
     await start_daily_trade_job(payload)
     return {"status": "started"}
+
+
+@app.get("/control/debug/stats", include_in_schema=False)
+def control_debug_stats() -> dict[str, object]:
+    settings = load_settings()
+    return {
+        "stats": {
+            "stock_basic": StockBasicDAO(settings.postgres).stats(),
+            "daily_trade": DailyTradeDAO(settings.postgres).stats(),
+        },
+        "monitor": monitor.snapshot(),
+    }
 
 
 # Backwards compatible endpoints
