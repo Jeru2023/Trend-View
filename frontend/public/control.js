@@ -18,7 +18,7 @@
     dailyTradeSubtitle: "Scheduled daily at 17:00; follow batch progress when running.",
     runNow: "Run Now",
     lastStatus: "Status",
-    lastUpdated: "Last Updated",
+    dataUpdated: "Data Updated",
     lastDuration: "Last Duration",
     records: "Records",
     configSectionTitle: "Configuration",
@@ -57,7 +57,7 @@
     dailyTradeSubtitle: "每日17:00自动更新，可查看批次进度。",
     runNow: "立即执行",
     lastStatus: "当前状态",
-    lastUpdated: "上次更新时间",
+    dataUpdated: "数据更新时间",
     lastDuration: "上次耗时",
     records: "记录数",
     configSectionTitle: "配置项",
@@ -160,8 +160,10 @@ function formatDateTime(value) {
 
 function formatNumber(value) {
   if (value === null || value === undefined) return "—";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "—";
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
-  return new Intl.NumberFormat(locale).format(value);
+  return new Intl.NumberFormat(locale).format(num);
 }
 
 function setLang(lang) {
@@ -208,9 +210,11 @@ function jobStatusLabel(status) {
 
 function formatDuration(seconds) {
   if (seconds === null || seconds === undefined) return "—";
-  if (seconds < 1) return `${(seconds * 1000).toFixed(0)} ms`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return "—";
+  if (value < 1) return `${(value * 1000).toFixed(0)} ms`;
+  const mins = Math.floor(value / 60);
+  const secs = value % 60;
   if (mins === 0) return `${secs.toFixed(1)} s`;
   return `${mins}m ${secs.toFixed(0)}s`;
 }
@@ -221,9 +225,7 @@ function updateJobCard(cardElements, snapshot) {
     snapshot.finishedAt || snapshot.startedAt
   );
   if (cardElements.duration) {
-    const durationValue =
-      snapshot.lastDuration ?? snapshot.lastMarket ?? null;
-    cardElements.duration.textContent = formatDuration(durationValue);
+    cardElements.duration.textContent = formatDuration(snapshot.lastDuration);
   }
   cardElements.rows.textContent = formatNumber(snapshot.totalRows);
   cardElements.message.textContent =

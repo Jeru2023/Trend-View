@@ -4,3 +4,5 @@ backend/config/settings.local.json
 # Python cache files
 __pycache__/
 *.py[cod]
+
+private.MD

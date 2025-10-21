@@ -1,1 +1,5 @@
-{"include_st": false, "include_delisted": false, "daily_trade_window_days": 420}
+{
+  "include_st": false,
+  "include_delisted": false,
+  "daily_trade_window_days": 365
+}

@@ -114,3 +114,4 @@ __all__ = [
 
 
 
+sync_stock_basic()

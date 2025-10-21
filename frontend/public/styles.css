@@ -416,10 +416,16 @@ body {
 }
 
 .job-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.job-meta__row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
-  font-size: 0.85rem;
 }
 
 .job-meta span {
