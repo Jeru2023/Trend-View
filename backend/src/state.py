@@ -40,6 +40,7 @@ class SyncMonitor:
             "daily_trade": JobProgress(),
             "daily_indicator": JobProgress(),
             "income_statement": JobProgress(),
+            "financial_indicator": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():

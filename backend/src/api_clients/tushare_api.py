@@ -86,6 +86,41 @@ INCOME_STATEMENT_FIELDS: Sequence[str] = (
     "ebitda",
 )
 
+FINANCIAL_INDICATOR_FIELDS: Sequence[str] = (
+    "ts_code",
+    "ann_date",
+    "end_date",
+    "eps",
+    "gross_margin",
+    "current_ratio",
+    "quick_ratio",
+    "invturn_days",
+    "arturn_days",
+    "inv_turn",
+    "ar_turn",
+    "netprofit_margin",
+    "grossprofit_margin",
+    "profit_to_gr",
+    "saleexp_to_gr",
+    "adminexp_of_gr",
+    "finaexp_of_gr",
+    "roe",
+    "q_eps",
+    "q_netprofit_margin",
+    "q_gsprofit_margin",
+    "q_roe",
+    "basic_eps_yoy",
+    "op_yoy",
+    "ebt_yoy",
+    "netprofit_yoy",
+    "q_sales_yoy",
+    "q_sales_qoq",
+    "q_op_yoy",
+    "q_op_qoq",
+    "q_profit_yoy",
+    "q_profit_qoq",
+)
+
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
     list_statuses: Sequence[str],
@@ -231,14 +266,54 @@ def get_income_statements(
     return df.loc[:, list(INCOME_STATEMENT_FIELDS)]
 
 
+def get_financial_indicators(
+    pro: ts.pro_api,
+    *,
+    ts_code: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> pd.DataFrame:
+    """
+    Fetch financial indicators for the provided security using ``pro.fina_indicator``.
+    """
+    if not ts_code:
+        raise ValueError("ts_code is required to fetch financial indicators.")
+
+    fields = ",".join(FINANCIAL_INDICATOR_FIELDS)
+    params: dict[str, object] = {
+        "fields": fields,
+        "ts_code": ts_code,
+    }
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
+    if limit is not None:
+        params["limit"] = limit
+
+    df = pro.fina_indicator(**params)
+    if df is None or df.empty:
+        logger.warning("No financial indicator data returned for ts_code=%s", ts_code)
+        return pd.DataFrame(columns=FINANCIAL_INDICATOR_FIELDS)
+
+    missing_columns = [col for col in FINANCIAL_INDICATOR_FIELDS if col not in df.columns]
+    for column in missing_columns:
+        df[column] = None
+
+    return df.loc[:, list(FINANCIAL_INDICATOR_FIELDS)]
+
+
 __all__ = [
     "DATE_COLUMNS",
     "DAILY_TRADE_FIELDS",
     "DAILY_INDICATOR_FIELDS",
     "INCOME_STATEMENT_FIELDS",
+    "FINANCIAL_INDICATOR_FIELDS",
     "STOCK_BASIC_FIELDS",
     "fetch_stock_basic",
     "get_daily_trade",
     "get_daily_indicator",
     "get_income_statements",
+    "get_financial_indicators",
 ]

@@ -228,6 +228,46 @@
             </div>
             <p class="job-message" id="income-statement-message"></p>
           </div>
+
+          <div class="card" id="financial-indicator-card">
+            <div class="card__header">
+              <div>
+                <h3 data-i18n="financialIndicatorTitle">Financial Indicators</h3>
+                <p class="card__subtitle" data-i18n="financialIndicatorSubtitle">
+                  Collect per-stock profitability and efficiency ratios via the Tushare fina_indicator API.
+                </p>
+              </div>
+              <button class="primary-btn" id="run-financial-indicator" data-i18n="runNow">
+                Run Now
+              </button>
+            </div>
+            <div class="progress" aria-hidden="true">
+              <div class="progress__bar" id="financial-indicator-progress"></div>
+            </div>
+            <div class="job-meta">
+              <div class="job-meta__row">
+                <div class="job-meta__item">
+                  <span data-i18n="lastStatus">Status</span>
+                  <strong id="financial-indicator-status">—</strong>
+                </div>
+                <div class="job-meta__item">
+                  <span data-i18n="records">Records</span>
+                  <strong id="financial-indicator-rows">—</strong>
+                </div>
+              </div>
+              <div class="job-meta__row">
+                <div class="job-meta__item">
+                  <span data-i18n="dataUpdated">Data Updated</span>
+                  <strong id="financial-indicator-updated">—</strong>
+                </div>
+                <div class="job-meta__item">
+                  <span data-i18n="lastDuration">Last Duration</span>
+                  <strong id="financial-indicator-duration">—</strong>
+                </div>
+              </div>
+            </div>
+            <p class="job-message" id="financial-indicator-message"></p>
+          </div>
         </div>
 
         <header class="page__header control-header">

@@ -1,4 +1,4 @@
-﻿{
+{
   "tushare": {
     "token": "REPLACE_WITH_YOUR_TUSHARE_TOKEN"
   },
@@ -11,7 +11,8 @@
     "schema": "public",
     "stock_table": "stock_basic",
     "daily_indicator_table": "daily_indicator",
-    "income_statement_table": "income_statements"
+    "income_statement_table": "income_statements",
+    "financial_indicator_table": "financial_indicators"
   }
 }
 

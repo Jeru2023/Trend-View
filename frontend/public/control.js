@@ -20,6 +20,9 @@
     dailyIndicatorSubtitle: "Fetch daily basic metrics and valuation ratios after the market closes (auto 17:05).",
     incomeStatementTitle: "Income Statements",
     incomeStatementSubtitle: "Fetch the latest statements per stock sequentially via the Tushare income API.",
+    financialIndicatorTitle: "Financial Indicators",
+    financialIndicatorSubtitle:
+      "Collect per-stock profitability and efficiency ratios via the Tushare fina_indicator API.",
     runNow: "Run Now",
     lastStatus: "Status",
     dataUpdated: "Data Updated",
@@ -63,6 +66,8 @@
     dailyIndicatorSubtitle: "结合每日基础指标与估值信息，17:05 自动同步。",
     incomeStatementTitle: "利润表数据",
     incomeStatementSubtitle: "逐个股票调用 income 接口获取最新利润表数据。",
+    financialIndicatorTitle: "财务指标数据",
+    financialIndicatorSubtitle: "逐个股票调用 fina_indicator 接口同步盈利能力与运营效率指标。",
     runNow: "立即执行",
     lastStatus: "当前状态",
     dataUpdated: "数据更新时间",
@@ -157,15 +162,24 @@ const elements = {
     progress: document.getElementById("daily-indicator-progress"),
     button: document.getElementById("run-daily-indicator"),
   },
-  incomeStatement: {
-    status: document.getElementById("income-statement-status"),
-    updated: document.getElementById("income-statement-updated"),
-    duration: document.getElementById("income-statement-duration"),
-    rows: document.getElementById("income-statement-rows"),
-    message: document.getElementById("income-statement-message"),
-    progress: document.getElementById("income-statement-progress"),
-    button: document.getElementById("run-income-statement"),
-  },
+    incomeStatement: {
+      status: document.getElementById("income-statement-status"),
+      updated: document.getElementById("income-statement-updated"),
+      duration: document.getElementById("income-statement-duration"),
+      rows: document.getElementById("income-statement-rows"),
+      message: document.getElementById("income-statement-message"),
+      progress: document.getElementById("income-statement-progress"),
+      button: document.getElementById("run-income-statement"),
+    },
+    financialIndicator: {
+      status: document.getElementById("financial-indicator-status"),
+      updated: document.getElementById("financial-indicator-updated"),
+      duration: document.getElementById("financial-indicator-duration"),
+      rows: document.getElementById("financial-indicator-rows"),
+      message: document.getElementById("financial-indicator-message"),
+      progress: document.getElementById("financial-indicator-progress"),
+      button: document.getElementById("run-financial-indicator"),
+    },
   config: {
     includeSt: document.getElementById("config-include-st"),
     includeDelisted: document.getElementById("config-include-delisted"),
@@ -305,11 +319,16 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const financialSnapshot = jobs.financial_indicator || {
+      status: "idle",
+      progress: 0,
+    };
 
     updateJobCard(elements.stockBasic, stockSnapshot);
     updateJobCard(elements.dailyTrade, dailySnapshot);
     updateJobCard(elements.dailyIndicator, indicatorSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
+    updateJobCard(elements.financialIndicator, financialSnapshot);
 
     if (data.config) {
       elements.config.includeSt.checked = !!data.config.includeST;
@@ -322,6 +341,7 @@ async function loadStatus() {
       dailySnapshot,
       indicatorSnapshot,
       incomeSnapshot,
+      financialSnapshot,
     ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
@@ -389,6 +409,9 @@ function initActions() {
   );
   elements.incomeStatement.button.addEventListener("click", () =>
     triggerJob("/control/sync/income-statements", {})
+  );
+  elements.financialIndicator.button.addEventListener("click", () =>
+    triggerJob("/control/sync/financial-indicators", {})
   );
   elements.config.save.addEventListener("click", saveConfig);
 }
