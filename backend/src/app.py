@@ -18,9 +18,10 @@ from pydantic import BaseModel, Field
 
 from .config.runtime_config import RuntimeConfig, load_runtime_config, save_runtime_config
 from .config.settings import load_settings
-from .dao import DailyTradeDAO, StockBasicDAO
+from .dao import DailyIndicatorDAO, DailyTradeDAO, StockBasicDAO
 from .services import (
     get_stock_overview,
+    sync_daily_indicator,
     sync_daily_trade,
     sync_stock_basic,
 )
@@ -41,6 +42,9 @@ class StockItem(BaseModel):
     pct_change: Optional[float] = Field(None, alias="pctChange")
     volume: Optional[float] = None
     trade_date: Optional[date] = Field(None, alias="tradeDate")
+    market_cap: Optional[float] = Field(None, alias="marketCap")
+    pe_ratio: Optional[float] = Field(None, alias="peRatio")
+    turnover_rate: Optional[float] = Field(None, alias="turnoverRate")
 
     class Config:
         allow_population_by_field_name = True
@@ -72,6 +76,16 @@ class SyncStockBasicRequest(BaseModel):
 
 class SyncStockBasicResponse(BaseModel):
     rows: int
+
+
+class SyncDailyIndicatorRequest(BaseModel):
+    trade_date: Optional[str] = Field(None, regex=r"^\d{8}$")
+
+
+class SyncDailyIndicatorResponse(BaseModel):
+    rows: int
+    trade_date: str = Field(..., alias="tradeDate")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
 
 class RuntimeConfigPayload(BaseModel):
@@ -228,6 +242,55 @@ async def _run_daily_trade_job(request: SyncDailyTradeRequest) -> None:
     await loop.run_in_executor(None, job)
 
 
+async def _run_daily_indicator_job(request: SyncDailyIndicatorRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "daily_indicator",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        try:
+            result = sync_daily_indicator(
+                trade_date=request.trade_date,
+                progress_callback=progress_callback,
+            )
+            stats: Dict[str, object] = {}
+            try:
+                stats = DailyIndicatorDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh daily_indicator stats: %s", stats_exc)
+            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
+            monitor.finish(
+                "daily_indicator",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message="Daily indicator sync completed",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "daily_indicator",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 def _job_running(job: str) -> bool:
     return monitor.snapshot()[job]["status"] == "running"
 
@@ -248,6 +311,14 @@ async def start_daily_trade_job(payload: SyncDailyTradeRequest) -> None:
     asyncio.create_task(_run_daily_trade_job(payload))
 
 
+async def start_daily_indicator_job(payload: SyncDailyIndicatorRequest) -> None:
+    if _job_running("daily_indicator"):
+        raise HTTPException(status_code=409, detail="Daily indicator sync already running")
+    monitor.start("daily_indicator", message="Syncing daily indicator data")
+    monitor.update("daily_indicator", progress=0.0)
+    asyncio.create_task(_run_daily_indicator_job(payload))
+
+
 async def safe_start_stock_basic_job(payload: SyncStockBasicRequest) -> None:
     try:
         await start_stock_basic_job(payload)
@@ -260,6 +331,13 @@ async def safe_start_daily_trade_job(payload: SyncDailyTradeRequest) -> None:
         await start_daily_trade_job(payload)
     except HTTPException as exc:
         logger.info("Daily trade sync skipped: %s", exc.detail)
+
+
+async def safe_start_daily_indicator_job(payload: SyncDailyIndicatorRequest) -> None:
+    try:
+        await start_daily_indicator_job(payload)
+    except HTTPException as exc:
+        logger.info("Daily indicator sync skipped: %s", exc.detail)
 
 
 @app.on_event("startup")
@@ -280,6 +358,14 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=17, minute=0),
             id="daily_trade_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_daily_indicator_job(SyncDailyIndicatorRequest())
+            ),
+            CronTrigger(hour=17, minute=5),
+            id="daily_indicator_daily",
             replace_existing=True,
         )
 
@@ -324,6 +410,9 @@ def list_stocks(
             pctChange=item.get("pct_change"),
             volume=item.get("volume"),
             tradeDate=item.get("trade_date"),
+            marketCap=item.get("market_cap"),
+            peRatio=item.get("pe_ratio"),
+            turnoverRate=item.get("turnover_rate"),
         )
         for item in result["items"]
     ]
@@ -346,6 +435,11 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect daily_trade stats: %s", exc)
         stats_map["daily_trade"] = {}
+    try:
+        stats_map["daily_indicator"] = DailyIndicatorDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect daily_indicator stats: %s", exc)
+        stats_map["daily_indicator"] = {}
 
     jobs: Dict[str, JobStatusPayload] = {}
     for name, info in monitor.snapshot().items():
@@ -407,6 +501,12 @@ async def control_sync_daily_trade(payload: SyncDailyTradeRequest) -> dict[str, 
     return {"status": "started"}
 
 
+@app.post("/control/sync/daily-indicators")
+async def control_sync_daily_indicators(payload: SyncDailyIndicatorRequest) -> dict[str, str]:
+    await start_daily_indicator_job(payload)
+    return {"status": "started"}
+
+
 @app.get("/control/debug/stats", include_in_schema=False)
 def control_debug_stats() -> dict[str, object]:
     settings = load_settings()
@@ -414,6 +514,7 @@ def control_debug_stats() -> dict[str, object]:
         "stats": {
             "stock_basic": StockBasicDAO(settings.postgres).stats(),
             "daily_trade": DailyTradeDAO(settings.postgres).stats(),
+            "daily_indicator": DailyIndicatorDAO(settings.postgres).stats(),
         },
         "monitor": monitor.snapshot(),
     }
@@ -446,7 +547,23 @@ def trigger_daily_trade_sync(payload: SyncDailyTradeRequest) -> SyncDailyTradeRe
     )
 
 
+@app.post("/sync/daily-indicators", response_model=SyncDailyIndicatorResponse)
+def trigger_daily_indicator_sync(payload: SyncDailyIndicatorRequest) -> SyncDailyIndicatorResponse:
+    result = sync_daily_indicator(
+        trade_date=payload.trade_date,
+    )
+    return SyncDailyIndicatorResponse(
+        rows=int(result["rows"]),
+        tradeDate=str(result["trade_date"]),
+        elapsedSeconds=float(result["elapsed_seconds"]),
+    )
+
+
 __all__ = ["app"]
+
+
+
+
 
 
 

@@ -1,16 +1,17 @@
-﻿"""
+"""
 Service layer for synchronising Tushare stock basic data into PostgreSQL.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Dict, Sequence
+import math
+from typing import Dict, Optional, Sequence
 
 from ..api_clients import fetch_stock_basic
 from ..config.runtime_config import load_runtime_config
 from ..config.settings import AppSettings, load_settings
-from ..dao import DailyTradeDAO, StockBasicDAO
+from ..dao import DailyIndicatorDAO, DailyTradeDAO, StockBasicDAO
 
 logger = logging.getLogger(__name__)
 
@@ -96,13 +97,30 @@ def get_stock_overview(
     codes = [item["code"] for item in result["items"]]
     daily_dao = DailyTradeDAO(settings.postgres)
     metrics: Dict[str, dict] = daily_dao.fetch_latest_metrics(codes)
+    indicator_dao = DailyIndicatorDAO(settings.postgres)
+    indicators: Dict[str, dict] = indicator_dao.fetch_latest_indicators(codes)
+
+    def _safe_float(value: object) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(numeric):
+            return None
+        return numeric
 
     for item in result["items"]:
         metric = metrics.get(item["code"], {})
-        item["last_price"] = metric.get("last_price")
-        item["pct_change"] = metric.get("pct_change")
-        item["volume"] = metric.get("volume")
+        item["last_price"] = _safe_float(metric.get("last_price"))
+        item["pct_change"] = _safe_float(metric.get("pct_change"))
+        item["volume"] = _safe_float(metric.get("volume"))
         item["trade_date"] = metric.get("trade_date")
+        indicator = indicators.get(item["code"], {})
+        item["market_cap"] = _safe_float(indicator.get("market_cap"))
+        item["pe_ratio"] = _safe_float(indicator.get("pe"))
+        item["turnover_rate"] = _safe_float(indicator.get("turnover_rate"))
 
     return result
 
@@ -115,3 +133,7 @@ __all__ = [
 
 
 sync_stock_basic()
+
+
+
+

@@ -14,7 +14,7 @@ Install backend dependencies:
 python -m pip install -r requirements.txt
 ```
 
-## Backend 鈥?FastAPI
+## Backend - FastAPI
 
 1. Ensure the database credentials in `backend/config/settings.local.json` are correct and that the database is reachable.
 2. Populate base data (optional but recommended):
@@ -34,8 +34,10 @@ python -m pip install -r requirements.txt
    - `GET http://localhost:8000/stocks?keyword=bank&limit=20`
    - `POST http://localhost:8000/sync/stock-basic`
    - `POST http://localhost:8000/sync/daily-trade`
+   - `POST http://localhost:8000/sync/daily-indicators`
+   - `POST http://localhost:8000/control/sync/daily-indicators`
 
-## Frontend 鈥?Static Assets
+## Frontend - Static Assets
 
 The UI is a static stock list page located under `frontend/public`.
 
@@ -48,15 +50,18 @@ Open `http://localhost:3000/index.html` to interact with the page. The frontend 
 
 ## Folder Structure
 
-- `backend/src/` 鈥?FastAPI app, services, DAOs, and API clients.
-- `backend/config/` 鈥?Config templates and schema definitions.
-- `frontend/public/` 鈥?Static HTML/CSS/JS for the stock list page.
+- `backend/src/` - FastAPI app, services, DAOs, and API clients.
+- `backend/config/` - Config templates and schema definitions.
+- `frontend/public/` - Static HTML/CSS/JS for the stock list page.
 
 ## Control Panel
 
-Use the control panel at rontend/public/control.html to trigger manual data updates and adjust runtime settings.
-- The page calls /control/sync/* endpoints for on-demand jobs.
-- /control/status exposes progress information for both stock_basic and daily_trade jobs.
-- Configuration changes (ST/delisted filters, daily trade window) persist to ackend/config/control_config.json.
+Use the control panel at `frontend/public/control.html` to trigger manual data updates and adjust runtime settings.
+- The page calls `/control/sync/*` endpoints for on-demand jobs.
+- `/control/status` exposes progress information for stock_basic, daily_trade, and daily_indicator jobs.
+- Configuration changes (ST/delisted filters, daily trade window) persist to `backend/config/control_config.json`.
+- Daily indicator sync fetches valuation metrics (daily_basic) each trading day at 17:05 by default; you can trigger it manually when needed.
+
+
 
 

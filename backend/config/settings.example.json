@@ -1,4 +1,4 @@
-{
+﻿{
   "tushare": {
     "token": "REPLACE_WITH_YOUR_TUSHARE_TOKEN"
   },
@@ -9,6 +9,8 @@
     "user": "trend_view",
     "password": "REPLACE_WITH_DB_PASSWORD",
     "schema": "public",
-    "stock_table": "stock_basic"
+    "stock_table": "stock_basic",
+    "daily_indicator_table": "daily_indicator"
   }
 }
+

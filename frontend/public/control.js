@@ -16,6 +16,8 @@
     stockBasicSubtitle: "Monthly refresh (1st of each month) or run manually as needed.",
     dailyTradeTitle: "Daily Trade Data",
     dailyTradeSubtitle: "Scheduled daily at 17:00; follow batch progress when running.",
+    dailyIndicatorTitle: "Daily Indicators",
+    dailyIndicatorSubtitle: "Fetch daily basic metrics and valuation ratios after the market closes (auto 17:05).",
     runNow: "Run Now",
     lastStatus: "Status",
     dataUpdated: "Data Updated",
@@ -41,41 +43,43 @@
   zh: {
     title: "趋势视图 - 控制面板",
     brandName: "趋势视图",
-    brandTagline: "智能投研中心",
+    brandTagline: "智能投资中枢",
     navBasics: "基础洞察",
-    navBasicInfo: "基础信息",
+    navBasicInfo: "基本信息",
     navNews: "市场资讯",
     navSignals: "技术信号",
     navPortfolio: "组合监控",
     navControl: "控制面板",
     pageTitle: "控制面板",
     syncSectionTitle: "数据同步",
-    syncSectionSubtitle: "手动触发更新，并实时查看自动任务的执行状态。",
+    syncSectionSubtitle: "手动触发更新，并实时监控自动任务状态。",
     stockBasicTitle: "股票基础数据",
-    stockBasicSubtitle: "每月1日自动刷新，可手动执行。",
-    dailyTradeTitle: "日交易数据",
-    dailyTradeSubtitle: "每日17:00自动更新，可查看批次进度。",
+    stockBasicSubtitle: "每月1日自动刷新，必要时可手动执行。",
+    dailyTradeTitle: "日度交易数据",
+    dailyTradeSubtitle: "每日17:00自动刷新，可查看批次进度。",
+    dailyIndicatorTitle: "每日指标",
+    dailyIndicatorSubtitle: "结合每日基础指标与估值信息，17:05 自动同步。",
     runNow: "立即执行",
     lastStatus: "当前状态",
     dataUpdated: "数据更新时间",
     lastDuration: "上次耗时",
     records: "记录数",
-    configSectionTitle: "配置项",
-    configSectionSubtitle: "调整筛选开关以及自动任务的历史窗口。",
+    configSectionTitle: "配置",
+    configSectionSubtitle: "调整筛选条件与自动任务的默认窗口。",
     includeStLabel: "查询结果包含 ST 股票",
-    includeStHint: "开启后，ST/*ST 股票将显示在列表中。",
+    includeStHint: "启用后，ST/*ST 证券会显示在列表中。",
     includeDelistedLabel: "查询结果包含退市股票",
-    includeDelistedHint: "关闭后，将隐藏退市/停牌股票。",
-    windowLabel: "日交易更新历史天数",
-    windowHint: "影响自动任务与手动任务的抓取周期。",
-    saveSettings: "保存设置",
+    includeDelistedHint: "关闭后，退市或停牌证券将被隐藏。",
+    windowLabel: "日度交易历史窗口（天）",
+    windowHint: "影响自动与手动日度交易抓取的时间范围。",
+    saveSettings: "保存配置",
     statusIdle: "空闲",
-    statusRunning: "执行中",
+    statusRunning: "运行中",
     statusSuccess: "已完成",
     statusFailed: "失败",
     statusUnknown: "未知",
-    messageNone: "等待执行。",
-    toastConfigSaved: "配置已保存",
+    messageNone: "等待下一次运行。",
+    toastConfigSaved: "配置已更新",
   },
 };
 
@@ -140,6 +144,15 @@ const elements = {
     progress: document.getElementById("daily-trade-progress"),
     button: document.getElementById("run-daily-trade"),
   },
+  dailyIndicator: {
+    status: document.getElementById("daily-indicator-status"),
+    updated: document.getElementById("daily-indicator-updated"),
+    duration: document.getElementById("daily-indicator-duration"),
+    rows: document.getElementById("daily-indicator-rows"),
+    message: document.getElementById("daily-indicator-message"),
+    progress: document.getElementById("daily-indicator-progress"),
+    button: document.getElementById("run-daily-indicator"),
+  },
   config: {
     includeSt: document.getElementById("config-include-st"),
     includeDelisted: document.getElementById("config-include-delisted"),
@@ -158,6 +171,15 @@ function formatDateTime(value) {
   }
 }
 
+function formatTradeDate(value) {
+  if (!value) return "—";
+  const str = String(value).trim();
+  if (/^\d{8}$/.test(str)) {
+    return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
+  }
+  return str;
+}
+
 function formatNumber(value) {
   if (value === null || value === undefined) return "—";
   const num = Number(value);
@@ -166,6 +188,16 @@ function formatNumber(value) {
   return new Intl.NumberFormat(locale).format(num);
 }
 
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return "—";
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return "—";
+  if (value < 1) return `${(value * 1000).toFixed(0)} ms`;
+  const mins = Math.floor(value / 60);
+  const secs = value % 60;
+  if (mins === 0) return `${secs.toFixed(1)} s`;
+  return `${mins}m ${secs.toFixed(0)}s`;
+}
 function setLang(lang) {
   persistLanguage(lang);
   currentLang = lang;
@@ -207,18 +239,6 @@ function jobStatusLabel(status) {
       return dict.statusUnknown;
   }
 }
-
-function formatDuration(seconds) {
-  if (seconds === null || seconds === undefined) return "—";
-  const value = Number(seconds);
-  if (!Number.isFinite(value)) return "—";
-  if (value < 1) return `${(value * 1000).toFixed(0)} ms`;
-  const mins = Math.floor(value / 60);
-  const secs = value % 60;
-  if (mins === 0) return `${secs.toFixed(1)} s`;
-  return `${mins}m ${secs.toFixed(0)}s`;
-}
-
 function updateJobCard(cardElements, snapshot) {
   cardElements.status.textContent = jobStatusLabel(snapshot.status);
   cardElements.updated.textContent = formatDateTime(
@@ -226,6 +246,9 @@ function updateJobCard(cardElements, snapshot) {
   );
   if (cardElements.duration) {
     cardElements.duration.textContent = formatDuration(snapshot.lastDuration);
+  }
+  if (cardElements.tradeDate) {
+    cardElements.tradeDate.textContent = formatTradeDate(snapshot.lastMarket);
   }
   cardElements.rows.textContent = formatNumber(snapshot.totalRows);
   cardElements.message.textContent =
@@ -261,9 +284,14 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const indicatorSnapshot = jobs.daily_indicator || {
+      status: "idle",
+      progress: 0,
+    };
 
     updateJobCard(elements.stockBasic, stockSnapshot);
     updateJobCard(elements.dailyTrade, dailySnapshot);
+    updateJobCard(elements.dailyIndicator, indicatorSnapshot);
 
     if (data.config) {
       elements.config.includeSt.checked = !!data.config.includeST;
@@ -271,8 +299,9 @@ async function loadStatus() {
       elements.config.window.value = data.config.dailyTradeWindowDays ?? 420;
     }
 
-    const shouldPoll =
-      stockSnapshot.status === "running" || dailySnapshot.status === "running";
+    const shouldPoll = [stockSnapshot, dailySnapshot, indicatorSnapshot].some(
+      (snapshot) => snapshot.status === "running"
+    );
     if (shouldPoll && !pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
     } else if (!shouldPoll && pollTimer) {
@@ -334,6 +363,9 @@ function initActions() {
       window_days: Number(elements.config.window.value) || undefined,
     })
   );
+  elements.dailyIndicator.button.addEventListener("click", () =>
+    triggerJob("/control/sync/daily-indicators", {})
+  );
   elements.config.save.addEventListener("click", saveConfig);
 }
 
@@ -342,3 +374,10 @@ initLanguageSwitch();
 initActions();
 setLang(currentLang);
 loadStatus();
+
+
+
+
+
+
+

@@ -49,6 +49,26 @@ DAILY_TRADE_FIELDS: Sequence[str] = (
 )
 
 
+DAILY_INDICATOR_FIELDS: Sequence[str] = (
+    "ts_code",
+    "trade_date",
+    "close",
+    "turnover_rate",
+    "turnover_rate_f",
+    "volume_ratio",
+    "pe",
+    "pe_ttm",
+    "pb",
+    "ps",
+    "ps_ttm",
+    "total_share",
+    "float_share",
+    "free_share",
+    "total_mv",
+    "circ_mv",
+)
+
+
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
     list_statuses: Sequence[str],
@@ -140,10 +160,34 @@ def get_daily_trade(
     return df.loc[:, list(DAILY_TRADE_FIELDS)]
 
 
+def get_daily_indicator(
+    pro: ts.pro_api,
+    trade_date: str,
+) -> pd.DataFrame:
+    """
+    Fetch daily indicator (daily_basic) data for the given trade date.
+    """
+    if not trade_date:
+        raise ValueError("trade_date is required to fetch daily indicator data.")
+
+    df = pro.daily_basic(trade_date=trade_date)
+    if df is None or df.empty:
+        logger.warning("No daily indicator data returned for trade_date=%s", trade_date)
+        return pd.DataFrame(columns=DAILY_INDICATOR_FIELDS)
+
+    missing_columns = [col for col in DAILY_INDICATOR_FIELDS if col not in df.columns]
+    for column in missing_columns:
+        df[column] = None
+
+    return df.loc[:, list(DAILY_INDICATOR_FIELDS)]
+
+
 __all__ = [
     "DATE_COLUMNS",
     "DAILY_TRADE_FIELDS",
+    "DAILY_INDICATOR_FIELDS",
     "STOCK_BASIC_FIELDS",
     "fetch_stock_basic",
     "get_daily_trade",
+    "get_daily_indicator",
 ]

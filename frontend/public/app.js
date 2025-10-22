@@ -30,6 +30,9 @@
     colPrice: "Last Price",
     colChange: "Change (%)",
     colVolume: "Volume",
+    colMarketCap: "Market Cap",
+    colPe: "PE Ratio",
+    colTurnover: "Turnover Rate",
     statsPlaceholder: "Statistical metrics are coming soon.",
     paginationPrev: "Previous",
     paginationNext: "Next",
@@ -70,6 +73,10 @@
     colPrice: "最新价",
     colChange: "涨跌幅",
     colVolume: "成交量",
+    colMarketCap: "市值",
+    colPe: "市盈率",
+    colTurnover: "换手率",
+    colMarketCap: "市值",
     statsPlaceholder: "统计指标即将上线。",
     paginationPrev: "上一页",
     paginationNext: "下一页",
@@ -228,7 +235,7 @@ function renderTable(data = state.items) {
   if (!data.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 8;
+    cell.colSpan = 11;
     cell.textContent = translations[currentLang].noData;
     cell.style.textAlign = "center";
     cell.style.color = "#6b7280";
@@ -257,6 +264,21 @@ function renderTable(data = state.items) {
       item.volume == null
         ? "—"
         : formatOptionalNumber(item.volume, { maximumFractionDigits: 0 });
+    const marketCapDisplay =
+      item.market_cap == null
+        ? "—"
+        : formatOptionalNumber(item.market_cap, { maximumFractionDigits: 0 });
+    const peDisplay = formatOptionalNumber(item.pe_ratio, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const turnoverDisplay =
+      item.turnover_rate == null
+        ? "—"
+        : `${formatOptionalNumber(item.turnover_rate, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}%`;
 
     const row = document.createElement("tr");
     row.innerHTML = `
@@ -270,6 +292,9 @@ function renderTable(data = state.items) {
         ${changeDisplay}
       </td>
       <td>${volumeDisplay}</td>
+      <td>${marketCapDisplay}</td>
+      <td>${peDisplay}</td>
+      <td>${turnoverDisplay}</td>
     `;
     elements.fundamentalsBody.appendChild(row);
   });
@@ -354,6 +379,9 @@ async function loadStocks(page = 1) {
       pct_change: item.pctChange,
       volume: item.volume,
       trade_date: item.tradeDate,
+      market_cap: item.marketCap,
+      pe_ratio: item.peRatio,
+      turnover_rate: item.turnoverRate,
     }));
   } catch (error) {
     console.error("Failed to fetch stock data:", error);
@@ -409,6 +437,14 @@ elements.searchBox.addEventListener("keydown", (event) => {
 setActiveTab("fundamentals");
 updateLanguage(currentLang);
 loadStocks(1);
+
+
+
+
+
+
+
+
 
 
 

@@ -93,6 +93,20 @@ class DailyTradeDAO(PostgresDAOBase):
                 count, last_updated = cur.fetchone()
         return {"count": count or 0, "updated_at": last_updated}
 
+    def latest_trade_date(self) -> Optional[datetime]:
+        """Return the most recent trade_date available in the table."""
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL("SELECT MAX(trade_date) FROM {schema}.{table}").format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self._table_name),
+                    )
+                )
+                row = cur.fetchone()
+        return row[0] if row else None
+
     def upsert(self, dataframe: pd.DataFrame) -> int:
         """Synchronise the provided DataFrame into the daily trade table."""
         if dataframe.empty:

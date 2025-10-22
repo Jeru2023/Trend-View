@@ -145,12 +145,52 @@
                     <strong id="daily-trade-duration">—</strong>
                   </div>
                 </div>
-              </div>
-              <p class="job-message" id="daily-trade-message"></p>
             </div>
+            <p class="job-message" id="daily-trade-message"></p>
           </div>
 
-          <header class="page__header control-header">
+          <div class="card" id="daily-indicator-card">
+            <div class="card__header">
+              <div>
+                <h3 data-i18n="dailyIndicatorTitle">Daily Indicators</h3>
+                <p class="card__subtitle" data-i18n="dailyIndicatorSubtitle">
+                  Fetch daily valuation metrics and turnover ratios after the trading session.
+                </p>
+              </div>
+              <button class="primary-btn" id="run-daily-indicator" data-i18n="runNow">
+                Run Now
+              </button>
+            </div>
+            <div class="progress" aria-hidden="true">
+              <div class="progress__bar" id="daily-indicator-progress"></div>
+            </div>
+            <div class="job-meta">
+              <div class="job-meta__row">
+                <div class="job-meta__item">
+                  <span data-i18n="lastStatus">Status</span>
+                  <strong id="daily-indicator-status">—</strong>
+                </div>
+                <div class="job-meta__item">
+                  <span data-i18n="records">Records</span>
+                  <strong id="daily-indicator-rows">—</strong>
+                </div>
+              </div>
+              <div class="job-meta__row">
+                <div class="job-meta__item">
+                  <span data-i18n="dataUpdated">Data Updated</span>
+                  <strong id="daily-indicator-updated">—</strong>
+                </div>
+                <div class="job-meta__item">
+                  <span data-i18n="lastDuration">Last Duration</span>
+                  <strong id="daily-indicator-duration">—</strong>
+                </div>
+              </div>
+            </div>
+            <p class="job-message" id="daily-indicator-message"></p>
+          </div>
+        </div>
+
+        <header class="page__header control-header">
             <div class="page__title">
               <h2 data-i18n="configSectionTitle">Configuration</h2>
               <p data-i18n="configSectionSubtitle">
@@ -190,7 +230,8 @@
       </main>
     </div>
 
-    <script src="control.js?v=20251021"></script>
+    <script src="control.js?v=20251022"></script>
   </body>
 </html>
+
 

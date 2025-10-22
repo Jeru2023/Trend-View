@@ -38,6 +38,7 @@ class SyncMonitor:
         self._jobs: Dict[str, JobProgress] = {
             "stock_basic": JobProgress(),
             "daily_trade": JobProgress(),
+            "daily_indicator": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():
@@ -68,7 +69,8 @@ class SyncMonitor:
             return
 
         for name, payload in data.items():
-            state = self._jobs.get(name)
+            key = "daily_indicator" if name == "market_cap" else name
+            state = self._jobs.get(key)
             if not state or not isinstance(payload, dict):
                 continue
             duration = payload.get("last_duration")
@@ -184,6 +186,7 @@ class SyncMonitor:
 monitor = SyncMonitor()
 
 __all__ = ["monitor", "SyncMonitor"]
+
 
 
 

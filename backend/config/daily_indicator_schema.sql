@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS {schema}.{table} (
+    ts_code TEXT NOT NULL,
+    trade_date DATE NOT NULL,
+    close DOUBLE PRECISION,
+    turnover_rate DOUBLE PRECISION,
+    turnover_rate_f DOUBLE PRECISION,
+    volume_ratio DOUBLE PRECISION,
+    pe DOUBLE PRECISION,
+    pe_ttm DOUBLE PRECISION,
+    pb DOUBLE PRECISION,
+    ps DOUBLE PRECISION,
+    ps_ttm DOUBLE PRECISION,
+    total_share NUMERIC,
+    float_share NUMERIC,
+    free_share NUMERIC,
+    total_mv NUMERIC,
+    circ_mv NUMERIC,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (ts_code, trade_date)
+);

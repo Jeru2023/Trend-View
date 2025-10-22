@@ -1,4 +1,4 @@
-"""
+﻿"""
 Configuration loader for the Trend View backend.
 
 Reads secrets and connection information from a JSON configuration file so the
@@ -32,6 +32,7 @@ class PostgresSettings:
     password: str
     schema: str
     stock_table: str
+    daily_indicator_table: str
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,12 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             password=str(postgres_config["password"]),
             schema=str(postgres_config.get("schema", "public")),
             stock_table=str(postgres_config.get("stock_table", "stock_basic")),
+            daily_indicator_table=str(
+                postgres_config.get(
+                    "daily_indicator_table",
+                    postgres_config.get("market_cap_table", "daily_indicator"),
+                )
+            ),
         )
     except KeyError as exc:
         raise KeyError(f"Missing postgres configuration value: {exc}") from exc
@@ -118,3 +125,4 @@ __all__ = [
     "TushareSettings",
     "load_settings",
 ]
+
