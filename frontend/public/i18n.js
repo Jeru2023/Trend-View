@@ -1,11 +1,3 @@
-/**
- * Centralised translation registry for Trend View frontend pages.
- *
- * Usage:
- *   const translations = getTranslations("basicInfo");
- *   translations.en.title -> "..."
- */
-
 (function (global) {
   const registry = {
     shared: {
@@ -36,7 +28,7 @@
     },
     basicInfo: {
       en: {
-        title: "Trend View – Basic Info",
+        title: "Trend View - Basic Info",
         pageTitle: "Basic Information",
         pageSubtitle: "Review fundamentals and recent market performance with ease.",
         filterKeyword: "Keyword",
@@ -108,7 +100,7 @@
     },
     controlPanel: {
       en: {
-        title: "Trend View – Control Panel",
+        title: "Trend View - Control Panel",
         pageTitle: "Control Panel",
         syncSectionTitle: "Data Synchronization",
         syncSectionSubtitle: "Trigger updates manually and monitor automated job status in real time.",
@@ -189,7 +181,7 @@
     },
     financeBreakfast: {
       en: {
-        title: "Trend View – Daily Finance",
+        title: "Trend View - Daily Finance",
         pageTitle: "Daily Finance",
         sectionTitle: "Morning Briefing",
         sectionSubtitle: "Start the trading day with curated highlights from Eastmoney.",
