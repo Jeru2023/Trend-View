@@ -1,10 +1,10 @@
-﻿const translations = getTranslations("financeBreakfast");
+const translations = getTranslations("financeBreakfast");
 
 const API_BASE =
   window.API_BASE_URL ||
   (window.location.hostname === "localhost"
     ? "http://localhost:8000"
-    : ${window.location.origin.replace(/:\d+$/, "")}:8000);
+    : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 
 const LANG_STORAGE_KEY = "trend-view-lang";
 
