@@ -13,6 +13,7 @@ from .tushare_api import (
     get_income_statements,
     get_financial_indicators,
 )
+from .akshare_api import FINANCE_BREAKFAST_COLUMNS, fetch_finance_breakfast
 
 __all__ = [
     "DAILY_INDICATOR_FIELDS",
@@ -26,4 +27,6 @@ __all__ = [
     "get_daily_trade",
     "get_income_statements",
     "get_financial_indicators",
+    "FINANCE_BREAKFAST_COLUMNS",
+    "fetch_finance_breakfast",
 ]

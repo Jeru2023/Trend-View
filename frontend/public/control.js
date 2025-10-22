@@ -9,6 +9,8 @@
     navSignals: "Technical Signals",
     navPortfolio: "Portfolio Monitor",
     navControl: "Control Panel",
+    navNewsGroup: "News",
+    navDailyFinance: "Daily Finance",
     pageTitle: "Control Panel",
     syncSectionTitle: "Data Synchronization",
     syncSectionSubtitle: "Trigger updates manually and monitor automated job status in real time.",
@@ -23,6 +25,8 @@
     financialIndicatorTitle: "Financial Indicators",
     financialIndicatorSubtitle:
       "Collect per-stock profitability and efficiency ratios via the Tushare fina_indicator API.",
+    financeBreakfastTitle: "Finance Breakfast",
+    financeBreakfastSubtitle: "Daily morning digest sourced from Eastmoney (AkShare stock_info_cjzc_em).",
     runNow: "Run Now",
     lastStatus: "Status",
     dataUpdated: "Data Updated",
@@ -55,6 +59,8 @@
     navSignals: "技术信号",
     navPortfolio: "组合监控",
     navControl: "控制面板",
+    navNewsGroup: "资讯",
+    navDailyFinance: "每日财经",
     pageTitle: "控制面板",
     syncSectionTitle: "数据同步",
     syncSectionSubtitle: "手动触发更新，并实时监控自动任务状态。",
@@ -68,6 +74,8 @@
     incomeStatementSubtitle: "逐个股票调用 income 接口获取最新利润表数据。",
     financialIndicatorTitle: "财务指标数据",
     financialIndicatorSubtitle: "逐个股票调用 fina_indicator 接口同步盈利能力与运营效率指标。",
+    financeBreakfastTitle: "财经早餐",
+    financeBreakfastSubtitle: "每日早间资讯，来源东方财富财经早餐（AkShare stock_info_cjzc_em）。",
     runNow: "立即执行",
     lastStatus: "当前状态",
     dataUpdated: "数据更新时间",
@@ -179,6 +187,15 @@ const elements = {
       message: document.getElementById("financial-indicator-message"),
       progress: document.getElementById("financial-indicator-progress"),
       button: document.getElementById("run-financial-indicator"),
+    },
+    financeBreakfast: {
+      status: document.getElementById("finance-breakfast-status"),
+      updated: document.getElementById("finance-breakfast-updated"),
+      duration: document.getElementById("finance-breakfast-duration"),
+      rows: document.getElementById("finance-breakfast-rows"),
+      message: document.getElementById("finance-breakfast-message"),
+      progress: document.getElementById("finance-breakfast-progress"),
+      button: document.getElementById("run-finance-breakfast"),
     },
   config: {
     includeSt: document.getElementById("config-include-st"),
@@ -323,12 +340,17 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const breakfastSnapshot = jobs.finance_breakfast || {
+      status: "idle",
+      progress: 0,
+    };
 
     updateJobCard(elements.stockBasic, stockSnapshot);
     updateJobCard(elements.dailyTrade, dailySnapshot);
     updateJobCard(elements.dailyIndicator, indicatorSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
+    updateJobCard(elements.financeBreakfast, breakfastSnapshot);
 
     if (data.config) {
       elements.config.includeSt.checked = !!data.config.includeST;
@@ -342,6 +364,7 @@ async function loadStatus() {
       indicatorSnapshot,
       incomeSnapshot,
       financialSnapshot,
+      breakfastSnapshot,
     ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
@@ -413,6 +436,9 @@ function initActions() {
   elements.financialIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/financial-indicators", {})
   );
+  elements.financeBreakfast.button.addEventListener("click", () =>
+    triggerJob("/control/sync/finance-breakfast", {})
+  );
   elements.config.save.addEventListener("click", saveConfig);
 }
 
@@ -421,6 +447,8 @@ initLanguageSwitch();
 initActions();
 setLang(currentLang);
 loadStatus();
+
+
 
 
 

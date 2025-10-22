@@ -35,6 +35,7 @@ class PostgresSettings:
     daily_indicator_table: str
     income_statement_table: str
     financial_indicator_table: str
+    finance_breakfast_table: str
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             financial_indicator_table=str(
                 postgres_config.get("financial_indicator_table", "financial_indicators")
+            ),
+            finance_breakfast_table=str(
+                postgres_config.get("finance_breakfast_table", "finance_breakfast")
             ),
         )
     except KeyError as exc:

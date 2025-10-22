@@ -7,8 +7,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import date
-from typing import Dict, List, Optional
+from datetime import date, datetime
+from typing import Dict, List, Optional, Tuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -22,13 +22,16 @@ from .dao import (
     DailyIndicatorDAO,
     DailyTradeDAO,
     FinancialIndicatorDAO,
+    FinanceBreakfastDAO,
     IncomeStatementDAO,
     StockBasicDAO,
 )
 from .services import (
     get_stock_overview,
+    list_finance_breakfast,
     sync_daily_indicator,
     sync_financial_indicators,
+    sync_finance_breakfast,
     sync_income_statements,
     sync_daily_trade,
     sync_stock_basic,
@@ -144,6 +147,27 @@ class SyncFinancialIndicatorResponse(BaseModel):
     code_count: int = Field(..., alias="codeCount")
     total_codes: int = Field(..., alias="totalCodes")
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncFinanceBreakfastRequest(BaseModel):
+    """Placeholder request model for finance breakfast sync."""
+
+    class Config:
+        extra = "forbid"
+
+
+class SyncFinanceBreakfastResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+class FinanceBreakfastItem(BaseModel):
+    title: str
+    summary: Optional[str] = None
+    published_at: Optional[datetime] = Field(None, alias="publishedAt")
+    url: Optional[str] = None
 
     class Config:
         allow_population_by_field_name = True
@@ -387,7 +411,7 @@ async def _run_income_statement_job(request: SyncIncomeStatementRequest) -> None
             base_message = f"{code_count}/{total_codes} codes"
             if codes:
                 preview = ", ".join(codes[:3])
-                suffix = "" if code_count <= 3 else " …"
+                suffix = "" if code_count <= 3 else " ??"
                 monitor.update(
                     "income_statement",
                     last_market=f"{base_message} ({preview}{suffix})",
@@ -455,7 +479,7 @@ async def _run_financial_indicator_job(request: SyncFinancialIndicatorRequest) -
             base_message = f"{code_count}/{total_codes} codes"
             if codes:
                 preview = ", ".join(codes[:3])
-                suffix = "" if code_count <= 3 else " …"
+                suffix = "" if code_count <= 3 else " ??"
                 monitor.update(
                     "financial_indicator",
                     last_market=f"{base_message} ({preview}{suffix})",
@@ -484,6 +508,56 @@ async def _run_financial_indicator_job(request: SyncFinancialIndicatorRequest) -
                 last_duration=elapsed,
             )
             logger.error("Financial indicator sync failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_finance_breakfast_job(request: SyncFinanceBreakfastRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "finance_breakfast",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        try:
+            result = sync_finance_breakfast(
+                progress_callback=progress_callback,
+            )
+            stats: Dict[str, object] = {}
+            try:
+                stats = FinanceBreakfastDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh finance_breakfast stats: %s", stats_exc)
+            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
+            monitor.finish(
+                "finance_breakfast",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message="Finance breakfast sync completed",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            error_message = str(exc)
+            monitor.finish(
+                "finance_breakfast",
+                success=False,
+                message=error_message,
+                error=error_message,
+                last_duration=elapsed,
+            )
+            logger.error("Finance breakfast sync failed: %s", error_message)
 
     await loop.run_in_executor(None, job)
 
@@ -532,6 +606,14 @@ async def start_financial_indicator_job(payload: SyncFinancialIndicatorRequest) 
     asyncio.create_task(_run_financial_indicator_job(payload))
 
 
+async def start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> None:
+    if _job_running("finance_breakfast"):
+        raise HTTPException(status_code=409, detail="Finance breakfast sync already running")
+    monitor.start("finance_breakfast", message="Syncing finance breakfast summaries")
+    monitor.update("finance_breakfast", progress=0.0)
+    asyncio.create_task(_run_finance_breakfast_job(payload))
+
+
 async def safe_start_stock_basic_job(payload: SyncStockBasicRequest) -> None:
     try:
         await start_stock_basic_job(payload)
@@ -565,6 +647,13 @@ async def safe_start_financial_indicator_job(payload: SyncFinancialIndicatorRequ
         await start_financial_indicator_job(payload)
     except HTTPException as exc:
         logger.info("Financial indicator sync skipped: %s", exc.detail)
+
+
+async def safe_start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> None:
+    try:
+        await start_finance_breakfast_job(payload)
+    except HTTPException as exc:
+        logger.info("Finance breakfast sync skipped: %s", exc.detail)
 
 
 @app.on_event("startup")
@@ -609,6 +698,14 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=18, minute=30),
             id="financial_indicator_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_finance_breakfast_job(SyncFinanceBreakfastRequest())
+            ),
+            CronTrigger(hour=7, minute=0),
+            id="finance_breakfast_daily",
             replace_existing=True,
         )
 
@@ -662,6 +759,22 @@ def list_stocks(
     return StockListResponse(total=result["total"], items=items)
 
 
+@app.get("/finance-breakfast", response_model=List[FinanceBreakfastItem])
+def list_finance_breakfast_entries(
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of entries to return."),
+) -> List[FinanceBreakfastItem]:
+    entries = list_finance_breakfast(limit=limit)
+    return [
+        FinanceBreakfastItem(
+            title=entry.get("title", ""),
+            summary=entry.get("summary"),
+            published_at=entry.get("published_at"),
+            url=entry.get("url"),
+        )
+        for entry in entries
+    ]
+
+
 @app.get("/control/status", response_model=ControlStatusResponse)
 def get_control_status() -> ControlStatusResponse:
     config = load_runtime_config()
@@ -693,6 +806,11 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect financial_indicator stats: %s", exc)
         stats_map["financial_indicator"] = {}
+    try:
+        stats_map["finance_breakfast"] = FinanceBreakfastDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect finance_breakfast stats: %s", exc)
+        stats_map["finance_breakfast"] = {}
 
     jobs: Dict[str, JobStatusPayload] = {}
     for name, info in monitor.snapshot().items():
@@ -772,6 +890,12 @@ async def control_sync_financial_indicators(payload: SyncFinancialIndicatorReque
     return {"status": "started"}
 
 
+@app.post("/control/sync/finance-breakfast")
+async def control_sync_finance_breakfast(payload: SyncFinanceBreakfastRequest) -> dict[str, str]:
+    await start_finance_breakfast_job(payload)
+    return {"status": "started"}
+
+
 @app.get("/control/debug/stats", include_in_schema=False)
 def control_debug_stats() -> dict[str, object]:
     settings = load_settings()
@@ -782,6 +906,7 @@ def control_debug_stats() -> dict[str, object]:
             "daily_indicator": DailyIndicatorDAO(settings.postgres).stats(),
             "income_statement": IncomeStatementDAO(settings.postgres).stats(),
             "financial_indicator": FinancialIndicatorDAO(settings.postgres).stats(),
+            "finance_breakfast": FinanceBreakfastDAO(settings.postgres).stats(),
         },
         "monitor": monitor.snapshot(),
     }
@@ -856,7 +981,23 @@ def trigger_financial_indicator_sync(payload: SyncFinancialIndicatorRequest) -> 
     )
 
 
+@app.post("/sync/finance-breakfast", response_model=SyncFinanceBreakfastResponse)
+def trigger_finance_breakfast_sync(payload: SyncFinanceBreakfastRequest) -> SyncFinanceBreakfastResponse:
+    del payload
+    result = sync_finance_breakfast()
+    return SyncFinanceBreakfastResponse(
+        rows=int(result["rows"]),
+        elapsedSeconds=float(result.get("elapsed_seconds", 0.0)),
+    )
+
+
 __all__ = ["app"]
+
+
+
+
+
+
 
 
 

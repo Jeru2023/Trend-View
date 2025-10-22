@@ -9,6 +9,8 @@
     navSignals: "Technical Signals",
     navPortfolio: "Portfolio Monitor",
     navControl: "Control Panel",
+    navNewsGroup: "News",
+    navDailyFinance: "Daily Finance",
     pageTitle: "Basic Information",
     pageSubtitle: "Review fundamentals and recent market performance with ease.",
     filterKeyword: "Keyword",
@@ -52,6 +54,8 @@
     navSignals: "技术信号",
     navPortfolio: "组合监控",
     navControl: "控制面板",
+    navNewsGroup: "资讯",
+    navDailyFinance: "每日财经",
     pageTitle: "基础信息",
     pageSubtitle: "快速掌握核心基本面与最新行情。",
     filterKeyword: "关键词",
@@ -437,6 +441,8 @@ elements.searchBox.addEventListener("keydown", (event) => {
 setActiveTab("fundamentals");
 updateLanguage(currentLang);
 loadStocks(1);
+
+
 
 
 

@@ -1,0 +1,77 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View – Daily Finance</title>
+    <link rel="stylesheet" href="styles.css?v=20251024" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand__logo">TV</div>
+          <div class="brand__text">
+            <div class="brand__name" data-i18n="brandName">Trend View</div>
+            <div class="brand__tagline" data-i18n="brandTagline">Investment Intelligence Hub</div>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <div class="nav__section-title" data-i18n="navBasics">Basic Insights</div>
+          <a class="nav__item" data-i18n="navBasicInfo" href="index.html">Basic Info</a>
+          <button class="nav__item" data-i18n="navNews">Market News</button>
+          <button class="nav__item" data-i18n="navSignals">Technical Signals</button>
+          <button class="nav__item" data-i18n="navPortfolio">Portfolio Monitor</button>
+          <div class="nav__section-title" data-i18n="navNewsGroup">News</div>
+          <a class="nav__item nav__item--active" data-i18n="navDailyFinance" href="finance-breakfast.html">Daily Finance</a>
+          <a class="nav__item" data-i18n="navControl" href="control.html">Control Panel</a>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="content__header">
+          <h1 class="page-heading" data-i18n="pageTitle">Daily Finance</h1>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <header class="page__header">
+            <div class="page__title">
+              <h2 data-i18n="sectionTitle">Morning Briefing</h2>
+              <p data-i18n="sectionSubtitle">Start the trading day with curated highlights from Eastmoney.</p>
+            </div>
+          </header>
+
+          <div class="news-grid" id="finance-list" data-empty-en="No finance news available." data-empty-zh="暂无财经早餐内容。">
+            <!-- Entries injected by finance-breakfast.js -->
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="finance-breakfast.js?v=20251024"></script>
+  </body>
+</html>
+

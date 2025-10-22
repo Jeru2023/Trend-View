@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS {schema}.{table} (
+    title TEXT NOT NULL,
+    summary TEXT,
+    published_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    url TEXT,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (title, published_at)
+);

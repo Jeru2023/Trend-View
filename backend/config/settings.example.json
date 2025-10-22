@@ -12,7 +12,8 @@
     "stock_table": "stock_basic",
     "daily_indicator_table": "daily_indicator",
     "income_statement_table": "income_statements",
-    "financial_indicator_table": "financial_indicators"
+    "financial_indicator_table": "financial_indicators",
+    "finance_breakfast_table": "finance_breakfast"
   }
 }
 

@@ -43,6 +43,8 @@
           <button class="nav__item" data-i18n="navNews">Market News</button>
           <button class="nav__item" data-i18n="navSignals">Technical Signals</button>
           <button class="nav__item" data-i18n="navPortfolio">Portfolio Monitor</button>
+          <div class="nav__section-title" data-i18n="navNewsGroup">News</div>
+          <a class="nav__item" data-i18n="navDailyFinance" href="finance-breakfast.html">Daily Finance</a>
           <a class="nav__item nav__item--active" data-i18n="navControl" href="control.html">Control Panel</a>
         </nav>
       </aside>
@@ -268,6 +270,46 @@
             </div>
             <p class="job-message" id="financial-indicator-message"></p>
           </div>
+
+          <div class="card" id="finance-breakfast-card">
+            <div class="card__header">
+              <div>
+                <h3 data-i18n="financeBreakfastTitle">Finance Breakfast</h3>
+                <p class="card__subtitle" data-i18n="financeBreakfastSubtitle">
+                  Daily morning digest sourced from Eastmoney (AkShare stock_info_cjzc_em).
+                </p>
+              </div>
+              <button class="primary-btn" id="run-finance-breakfast" data-i18n="runNow">
+                Run Now
+              </button>
+            </div>
+            <div class="progress" aria-hidden="true">
+              <div class="progress__bar" id="finance-breakfast-progress"></div>
+            </div>
+            <div class="job-meta">
+              <div class="job-meta__row">
+                <div class="job-meta__item">
+                  <span data-i18n="lastStatus">Status</span>
+                  <strong id="finance-breakfast-status">—</strong>
+                </div>
+                <div class="job-meta__item">
+                  <span data-i18n="records">Records</span>
+                  <strong id="finance-breakfast-rows">—</strong>
+                </div>
+              </div>
+              <div class="job-meta__row">
+                <div class="job-meta__item">
+                  <span data-i18n="dataUpdated">Data Updated</span>
+                  <strong id="finance-breakfast-updated">—</strong>
+                </div>
+                <div class="job-meta__item">
+                  <span data-i18n="lastDuration">Last Duration</span>
+                  <strong id="finance-breakfast-duration">—</strong>
+                </div>
+              </div>
+            </div>
+            <p class="job-message" id="finance-breakfast-message"></p>
+          </div>
         </div>
 
         <header class="page__header control-header">
@@ -313,5 +355,6 @@
     <script src="control.js?v=20251023"></script>
   </body>
 </html>
+
 
 
