@@ -188,6 +188,46 @@
             </div>
             <p class="job-message" id="daily-indicator-message"></p>
           </div>
+
+          <div class="card" id="income-statement-card">
+            <div class="card__header">
+              <div>
+                <h3 data-i18n="incomeStatementTitle">Income Statements</h3>
+                <p class="card__subtitle" data-i18n="incomeStatementSubtitle">
+                  Fetch the latest statements per stock sequentially via the Tushare income API.
+                </p>
+              </div>
+              <button class="primary-btn" id="run-income-statement" data-i18n="runNow">
+                Run Now
+              </button>
+            </div>
+            <div class="progress" aria-hidden="true">
+              <div class="progress__bar" id="income-statement-progress"></div>
+            </div>
+            <div class="job-meta">
+              <div class="job-meta__row">
+                <div class="job-meta__item">
+                  <span data-i18n="lastStatus">Status</span>
+                  <strong id="income-statement-status">—</strong>
+                </div>
+                <div class="job-meta__item">
+                  <span data-i18n="records">Records</span>
+                  <strong id="income-statement-rows">—</strong>
+                </div>
+              </div>
+              <div class="job-meta__row">
+                <div class="job-meta__item">
+                  <span data-i18n="dataUpdated">Data Updated</span>
+                  <strong id="income-statement-updated">—</strong>
+                </div>
+                <div class="job-meta__item">
+                  <span data-i18n="lastDuration">Last Duration</span>
+                  <strong id="income-statement-duration">—</strong>
+                </div>
+              </div>
+            </div>
+            <p class="job-message" id="income-statement-message"></p>
+          </div>
         </div>
 
         <header class="page__header control-header">
@@ -230,7 +270,7 @@
       </main>
     </div>
 
-    <script src="control.js?v=20251022"></script>
+    <script src="control.js?v=20251023"></script>
   </body>
 </html>
 

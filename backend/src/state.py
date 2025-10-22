@@ -39,6 +39,7 @@ class SyncMonitor:
             "stock_basic": JobProgress(),
             "daily_trade": JobProgress(),
             "daily_indicator": JobProgress(),
+            "income_statement": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():
@@ -69,7 +70,12 @@ class SyncMonitor:
             return
 
         for name, payload in data.items():
-            key = "daily_indicator" if name == "market_cap" else name
+            if name == "market_cap":
+                key = "daily_indicator"
+            elif name == "financial_report":
+                key = "income_statement"
+            else:
+                key = name
             state = self._jobs.get(key)
             if not state or not isinstance(payload, dict):
                 continue

@@ -33,6 +33,7 @@ class PostgresSettings:
     schema: str
     stock_table: str
     daily_indicator_table: str
+    income_statement_table: str
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
                     "daily_indicator_table",
                     postgres_config.get("market_cap_table", "daily_indicator"),
                 )
+            ),
+            income_statement_table=str(
+                postgres_config.get("income_statement_table", "income_statements")
             ),
         )
     except KeyError as exc:

@@ -36,6 +36,8 @@ python -m pip install -r requirements.txt
    - `POST http://localhost:8000/sync/daily-trade`
    - `POST http://localhost:8000/sync/daily-indicators`
    - `POST http://localhost:8000/control/sync/daily-indicators`
+   - `POST http://localhost:8000/sync/income-statements`
+   - `POST http://localhost:8000/control/sync/income-statements`
 
 ## Frontend - Static Assets
 
@@ -58,9 +60,10 @@ Open `http://localhost:3000/index.html` to interact with the page. The frontend 
 
 Use the control panel at `frontend/public/control.html` to trigger manual data updates and adjust runtime settings.
 - The page calls `/control/sync/*` endpoints for on-demand jobs.
-- `/control/status` exposes progress information for stock_basic, daily_trade, and daily_indicator jobs.
+- `/control/status` exposes progress information for stock_basic, daily_trade, daily_indicator, and income_statement jobs.
 - Configuration changes (ST/delisted filters, daily trade window) persist to `backend/config/control_config.json`.
 - Daily indicator sync fetches valuation metrics (daily_basic) each trading day at 17:05 by default; you can trigger it manually when needed.
+- Income statement sync pulls the latest eight statements per stock via `pro.income`, iterating code-by-code each day at 18:00 or on demand. When the local stock list is empty the job auto-fetches stock basics to obtain codes before continuing.
 
 
 

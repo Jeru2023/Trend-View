@@ -68,6 +68,23 @@ DAILY_INDICATOR_FIELDS: Sequence[str] = (
     "circ_mv",
 )
 
+INCOME_STATEMENT_FIELDS: Sequence[str] = (
+    "ts_code",
+    "ann_date",
+    "f_ann_date",
+    "end_date",
+    "report_type",
+    "comp_type",
+    "basic_eps",
+    "diluted_eps",
+    "oper_exp",
+    "total_revenue",
+    "revenue",
+    "operate_profit",
+    "total_profit",
+    "n_income",
+    "ebitda",
+)
 
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
@@ -182,12 +199,46 @@ def get_daily_indicator(
     return df.loc[:, list(DAILY_INDICATOR_FIELDS)]
 
 
+def get_income_statements(
+    pro: ts.pro_api,
+    *,
+    ts_code: str,
+    limit: Optional[int] = None,
+) -> pd.DataFrame:
+    """
+    Fetch income statements for the provided security using ``pro.income``.
+    """
+    if not ts_code:
+        raise ValueError("ts_code is required to fetch income statements.")
+
+    fields = ",".join(INCOME_STATEMENT_FIELDS)
+    params: dict[str, object] = {
+        "fields": fields,
+        "ts_code": ts_code,
+    }
+    if limit is not None:
+        params["limit"] = limit
+
+    df = pro.income(**params)
+    if df is None or df.empty:
+        logger.warning("No income statement data returned for ts_code=%s", ts_code)
+        return pd.DataFrame(columns=INCOME_STATEMENT_FIELDS)
+
+    missing_columns = [col for col in INCOME_STATEMENT_FIELDS if col not in df.columns]
+    for column in missing_columns:
+        df[column] = None
+
+    return df.loc[:, list(INCOME_STATEMENT_FIELDS)]
+
+
 __all__ = [
     "DATE_COLUMNS",
     "DAILY_TRADE_FIELDS",
     "DAILY_INDICATOR_FIELDS",
+    "INCOME_STATEMENT_FIELDS",
     "STOCK_BASIC_FIELDS",
     "fetch_stock_basic",
     "get_daily_trade",
     "get_daily_indicator",
+    "get_income_statements",
 ]

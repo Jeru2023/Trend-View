@@ -10,7 +10,8 @@
     "password": "REPLACE_WITH_DB_PASSWORD",
     "schema": "public",
     "stock_table": "stock_basic",
-    "daily_indicator_table": "daily_indicator"
+    "daily_indicator_table": "daily_indicator",
+    "income_statement_table": "income_statements"
   }
 }
 

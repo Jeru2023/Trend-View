@@ -18,10 +18,11 @@ from pydantic import BaseModel, Field
 
 from .config.runtime_config import RuntimeConfig, load_runtime_config, save_runtime_config
 from .config.settings import load_settings
-from .dao import DailyIndicatorDAO, DailyTradeDAO, StockBasicDAO
+from .dao import DailyIndicatorDAO, DailyTradeDAO, IncomeStatementDAO, StockBasicDAO
 from .services import (
     get_stock_overview,
     sync_daily_indicator,
+    sync_income_statements,
     sync_daily_trade,
     sync_stock_basic,
 )
@@ -86,6 +87,33 @@ class SyncDailyIndicatorResponse(BaseModel):
     rows: int
     trade_date: str = Field(..., alias="tradeDate")
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+
+class SyncIncomeStatementRequest(BaseModel):
+    codes: Optional[List[str]] = Field(
+        None, description="Optional list of ts_code identifiers to refresh."
+    )
+    initial_periods: int = Field(
+        8,
+        ge=1,
+        le=16,
+        alias="initialPeriods",
+        description="Number of recent income statement rows to fetch per security.",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncIncomeStatementResponse(BaseModel):
+    rows: int
+    codes: List[str]
+    code_count: int = Field(..., alias="codeCount")
+    total_codes: int = Field(..., alias="totalCodes")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class RuntimeConfigPayload(BaseModel):
@@ -291,6 +319,74 @@ async def _run_daily_indicator_job(request: SyncDailyIndicatorRequest) -> None:
     await loop.run_in_executor(None, job)
 
 
+async def _run_income_statement_job(request: SyncIncomeStatementRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "income_statement",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        try:
+            result = sync_income_statements(
+                codes=request.codes,
+                initial_periods=request.initial_periods,
+                progress_callback=progress_callback,
+            )
+            stats: Dict[str, object] = {}
+            try:
+                stats = IncomeStatementDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh income_statement stats: %s", stats_exc)
+            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
+            codes = result.get("codes") or []
+            code_count = int(result.get("code_count", len(codes)))
+            total_codes = int(result.get("total_codes", code_count))
+            base_message = f"{code_count}/{total_codes} codes"
+            if codes:
+                preview = ", ".join(codes[:3])
+                suffix = "" if code_count <= 3 else " …"
+                monitor.update(
+                    "income_statement",
+                    last_market=f"{base_message} ({preview}{suffix})",
+                )
+            else:
+                monitor.update(
+                    "income_statement",
+                    last_market=base_message,
+                )
+            monitor.finish(
+                "income_statement",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message="Income statement sync completed",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            error_message = str(exc)
+            monitor.finish(
+                "income_statement",
+                success=False,
+                message=error_message,
+                error=error_message,
+                last_duration=elapsed,
+            )
+            logger.error("Income statement sync failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
+
+
 def _job_running(job: str) -> bool:
     return monitor.snapshot()[job]["status"] == "running"
 
@@ -319,6 +415,14 @@ async def start_daily_indicator_job(payload: SyncDailyIndicatorRequest) -> None:
     asyncio.create_task(_run_daily_indicator_job(payload))
 
 
+async def start_income_statement_job(payload: SyncIncomeStatementRequest) -> None:
+    if _job_running("income_statement"):
+        raise HTTPException(status_code=409, detail="Income statement sync already running")
+    monitor.start("income_statement", message="Syncing income statements")
+    monitor.update("income_statement", progress=0.0)
+    asyncio.create_task(_run_income_statement_job(payload))
+
+
 async def safe_start_stock_basic_job(payload: SyncStockBasicRequest) -> None:
     try:
         await start_stock_basic_job(payload)
@@ -338,6 +442,13 @@ async def safe_start_daily_indicator_job(payload: SyncDailyIndicatorRequest) -> 
         await start_daily_indicator_job(payload)
     except HTTPException as exc:
         logger.info("Daily indicator sync skipped: %s", exc.detail)
+
+
+async def safe_start_income_statement_job(payload: SyncIncomeStatementRequest) -> None:
+    try:
+        await start_income_statement_job(payload)
+    except HTTPException as exc:
+        logger.info("Income statement sync skipped: %s", exc.detail)
 
 
 @app.on_event("startup")
@@ -366,6 +477,14 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=17, minute=5),
             id="daily_indicator_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_income_statement_job(SyncIncomeStatementRequest())
+            ),
+            CronTrigger(hour=18, minute=0),
+            id="income_statement_daily",
             replace_existing=True,
         )
 
@@ -440,6 +559,11 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect daily_indicator stats: %s", exc)
         stats_map["daily_indicator"] = {}
+    try:
+        stats_map["income_statement"] = IncomeStatementDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect income_statement stats: %s", exc)
+        stats_map["income_statement"] = {}
 
     jobs: Dict[str, JobStatusPayload] = {}
     for name, info in monitor.snapshot().items():
@@ -507,6 +631,12 @@ async def control_sync_daily_indicators(payload: SyncDailyIndicatorRequest) -> d
     return {"status": "started"}
 
 
+@app.post("/control/sync/income-statements")
+async def control_sync_income_statements(payload: SyncIncomeStatementRequest) -> dict[str, str]:
+    await start_income_statement_job(payload)
+    return {"status": "started"}
+
+
 @app.get("/control/debug/stats", include_in_schema=False)
 def control_debug_stats() -> dict[str, object]:
     settings = load_settings()
@@ -515,6 +645,7 @@ def control_debug_stats() -> dict[str, object]:
             "stock_basic": StockBasicDAO(settings.postgres).stats(),
             "daily_trade": DailyTradeDAO(settings.postgres).stats(),
             "daily_indicator": DailyIndicatorDAO(settings.postgres).stats(),
+            "income_statement": IncomeStatementDAO(settings.postgres).stats(),
         },
         "monitor": monitor.snapshot(),
     }
@@ -556,6 +687,21 @@ def trigger_daily_indicator_sync(payload: SyncDailyIndicatorRequest) -> SyncDail
         rows=int(result["rows"]),
         tradeDate=str(result["trade_date"]),
         elapsedSeconds=float(result["elapsed_seconds"]),
+    )
+
+
+@app.post("/sync/income-statements", response_model=SyncIncomeStatementResponse)
+def trigger_income_statement_sync(payload: SyncIncomeStatementRequest) -> SyncIncomeStatementResponse:
+    result = sync_income_statements(
+        codes=payload.codes,
+        initial_periods=payload.initial_periods,
+    )
+    return SyncIncomeStatementResponse(
+        rows=int(result["rows"]),
+        codes=[str(code) for code in result.get("codes", [])],
+        code_count=int(result.get("code_count", len(result.get("codes", [])))),
+        total_codes=int(result.get("total_codes", result.get("code_count", 0))),
+        elapsed_seconds=float(result.get("elapsed_seconds", 0.0)),
     )
 
 

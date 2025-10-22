@@ -18,6 +18,8 @@
     dailyTradeSubtitle: "Scheduled daily at 17:00; follow batch progress when running.",
     dailyIndicatorTitle: "Daily Indicators",
     dailyIndicatorSubtitle: "Fetch daily basic metrics and valuation ratios after the market closes (auto 17:05).",
+    incomeStatementTitle: "Income Statements",
+    incomeStatementSubtitle: "Fetch the latest statements per stock sequentially via the Tushare income API.",
     runNow: "Run Now",
     lastStatus: "Status",
     dataUpdated: "Data Updated",
@@ -59,6 +61,8 @@
     dailyTradeSubtitle: "每日17:00自动刷新，可查看批次进度。",
     dailyIndicatorTitle: "每日指标",
     dailyIndicatorSubtitle: "结合每日基础指标与估值信息，17:05 自动同步。",
+    incomeStatementTitle: "利润表数据",
+    incomeStatementSubtitle: "逐个股票调用 income 接口获取最新利润表数据。",
     runNow: "立即执行",
     lastStatus: "当前状态",
     dataUpdated: "数据更新时间",
@@ -152,6 +156,15 @@ const elements = {
     message: document.getElementById("daily-indicator-message"),
     progress: document.getElementById("daily-indicator-progress"),
     button: document.getElementById("run-daily-indicator"),
+  },
+  incomeStatement: {
+    status: document.getElementById("income-statement-status"),
+    updated: document.getElementById("income-statement-updated"),
+    duration: document.getElementById("income-statement-duration"),
+    rows: document.getElementById("income-statement-rows"),
+    message: document.getElementById("income-statement-message"),
+    progress: document.getElementById("income-statement-progress"),
+    button: document.getElementById("run-income-statement"),
   },
   config: {
     includeSt: document.getElementById("config-include-st"),
@@ -288,10 +301,15 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const incomeSnapshot = jobs.income_statement || {
+      status: "idle",
+      progress: 0,
+    };
 
     updateJobCard(elements.stockBasic, stockSnapshot);
     updateJobCard(elements.dailyTrade, dailySnapshot);
     updateJobCard(elements.dailyIndicator, indicatorSnapshot);
+    updateJobCard(elements.incomeStatement, incomeSnapshot);
 
     if (data.config) {
       elements.config.includeSt.checked = !!data.config.includeST;
@@ -299,9 +317,12 @@ async function loadStatus() {
       elements.config.window.value = data.config.dailyTradeWindowDays ?? 420;
     }
 
-    const shouldPoll = [stockSnapshot, dailySnapshot, indicatorSnapshot].some(
-      (snapshot) => snapshot.status === "running"
-    );
+    const shouldPoll = [
+      stockSnapshot,
+      dailySnapshot,
+      indicatorSnapshot,
+      incomeSnapshot,
+    ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
     } else if (!shouldPoll && pollTimer) {
@@ -366,6 +387,9 @@ function initActions() {
   elements.dailyIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/daily-indicators", {})
   );
+  elements.incomeStatement.button.addEventListener("click", () =>
+    triggerJob("/control/sync/income-statements", {})
+  );
   elements.config.save.addEventListener("click", saveConfig);
 }
 
@@ -374,6 +398,8 @@ initLanguageSwitch();
 initActions();
 setLang(currentLang);
 loadStatus();
+
+
 
 
 
