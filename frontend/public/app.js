@@ -1,97 +1,4 @@
-﻿const translations = {
-  en: {
-    title: "Trend View – Basic Info",
-    brandName: "Trend View",
-    brandTagline: "Investment Intelligence Hub",
-    navBasics: "Basic Insights",
-    navBasicInfo: "Basic Info",
-    navNews: "Market News",
-    navSignals: "Technical Signals",
-    navPortfolio: "Portfolio Monitor",
-    navControl: "Control Panel",
-    navNewsGroup: "News",
-    navDailyFinance: "Daily Finance",
-    pageTitle: "Basic Information",
-    pageSubtitle: "Review fundamentals and recent market performance with ease.",
-    filterKeyword: "Keyword",
-    filterMarket: "Market",
-    filterExchange: "Exchange",
-    filterAll: "All",
-    filterMainboard: "Main Board",
-    filterChiNext: "ChiNext",
-    filterStar: "STAR Market",
-    reset: "Reset",
-    apply: "Apply",
-    tabBasic: "Basic",
-    tabStatistics: "Statistics",
-    colCode: "Code",
-    colName: "Name",
-    colIndustry: "Industry",
-    colMarket: "Market",
-    colExchange: "Exchange",
-    colPrice: "Last Price",
-    colChange: "Change (%)",
-    colVolume: "Volume",
-    colMarketCap: "Market Cap",
-    colPe: "PE Ratio",
-    colTurnover: "Turnover Rate",
-    statsPlaceholder: "Statistical metrics are coming soon.",
-    paginationPrev: "Previous",
-    paginationNext: "Next",
-    paginationInfo: "Page {current} of {totalPages} · {total} results",
-    noData: "No data available",
-    exchangeSSE: "SSE",
-    exchangeSZSE: "SZSE",
-    exchangeBSE: "BSE"
-  },
-  zh: {
-    title: "趋势视图 - 基础信息",
-    brandName: "趋势视图",
-    brandTagline: "智能投研中心",
-    navBasics: "基础洞察",
-    navBasicInfo: "基础信息",
-    navNews: "市场资讯",
-    navSignals: "技术信号",
-    navPortfolio: "组合监控",
-    navControl: "控制面板",
-    navNewsGroup: "资讯",
-    navDailyFinance: "每日财经",
-    pageTitle: "基础信息",
-    pageSubtitle: "快速掌握核心基本面与最新行情。",
-    filterKeyword: "关键词",
-    filterMarket: "市场",
-    filterExchange: "交易所",
-    filterAll: "全部",
-    filterMainboard: "主板",
-    filterChiNext: "创业板",
-    filterStar: "科创板",
-    reset: "重置",
-    apply: "应用",
-    tabBasic: "基础数据",
-    tabStatistics: "统计数据",
-    colCode: "代码",
-    colName: "名称",
-    colIndustry: "行业",
-    colMarket: "板块",
-    colExchange: "交易所",
-    colPrice: "最新价",
-    colChange: "涨跌幅",
-    colVolume: "成交量",
-    colMarketCap: "市值",
-    colPe: "市盈率",
-    colTurnover: "换手率",
-    colMarketCap: "市值",
-    statsPlaceholder: "统计指标即将上线。",
-    paginationPrev: "上一页",
-    paginationNext: "下一页",
-    paginationInfo: "第 {current} / {totalPages} 页 · 共 {total} 条",
-    noData: "暂无数据",
-    exchangeSSE: "上交所",
-    exchangeSZSE: "深交所",
-    exchangeBSE: "北交所"
-  }
-};
-
+const translations = getTranslations("basicInfo");
 const API_BASE =
   window.API_BASE_URL ||
   (window.location.hostname === "localhost"
@@ -101,25 +8,25 @@ const PAGE_SIZE = 20;
 
 const exchangeLabels = {
   en: { SSE: "SSE", SZSE: "SZSE", BSE: "BSE" },
-  zh: { SSE: "上交所", SZSE: "深交所", BSE: "北交所" },
+  zh: { SSE: "�Ͻ���", SZSE: "���", BSE: "������" },
 };
 
 const marketLabels = {
   en: {
-    "主板": "Main Board",
-    "创业板": "ChiNext",
-    "科创板": "STAR Market",
+    "����": "Main Board",
+    "��ҵ��": "ChiNext",
+    "�ƴ���": "STAR Market",
     "Main Board": "Main Board",
     "ChiNext": "ChiNext",
     "STAR Market": "STAR Market",
   },
   zh: {
-    "主板": "主板",
-    "创业板": "创业板",
-    "科创板": "科创板",
-    "Main Board": "主板",
-    "ChiNext": "创业板",
-    "STAR Market": "科创板",
+    "����": "����",
+    "��ҵ��": "��ҵ��",
+    "�ƴ���": "�ƴ���",
+    "Main Board": "����",
+    "ChiNext": "��ҵ��",
+    "STAR Market": "�ƴ���",
   },
 };
 
@@ -195,7 +102,7 @@ function formatNumber(value) {
 
 function formatOptionalNumber(value, options = {}) {
   if (value === null || value === undefined) {
-    return "—";
+    return "��";
   }
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale, options).format(value);
@@ -228,7 +135,7 @@ function applyTranslations() {
 
 function formatChange(value) {
   if (value === null || value === undefined) {
-    return "—";
+    return "��";
   }
   const formatted = value.toFixed(2);
   return `${value >= 0 ? "+" : ""}${formatted}%`;
@@ -251,8 +158,8 @@ function renderTable(data = state.items) {
   data.forEach((item) => {
     const marketMap = marketLabels[currentLang] || {};
     const exchangeMap = exchangeLabels[currentLang] || {};
-    const marketLabel = item.market ? marketMap[item.market] ?? item.market : "—";
-    const exchangeLabel = item.exchange ? exchangeMap[item.exchange] ?? item.exchange : "—";
+    const marketLabel = item.market ? marketMap[item.market] ?? item.market : "��";
+    const exchangeLabel = item.exchange ? exchangeMap[item.exchange] ?? item.exchange : "��";
     const changeClass =
       item.pct_change == null
         ? ""
@@ -266,11 +173,11 @@ function renderTable(data = state.items) {
     const changeDisplay = formatChange(item.pct_change);
     const volumeDisplay =
       item.volume == null
-        ? "—"
+        ? "��"
         : formatOptionalNumber(item.volume, { maximumFractionDigits: 0 });
     const marketCapDisplay =
       item.market_cap == null
-        ? "—"
+        ? "��"
         : formatOptionalNumber(item.market_cap, { maximumFractionDigits: 0 });
     const peDisplay = formatOptionalNumber(item.pe_ratio, {
       minimumFractionDigits: 2,
@@ -278,7 +185,7 @@ function renderTable(data = state.items) {
     });
     const turnoverDisplay =
       item.turnover_rate == null
-        ? "—"
+        ? "��"
         : `${formatOptionalNumber(item.turnover_rate, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
@@ -287,8 +194,8 @@ function renderTable(data = state.items) {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${item.code}</td>
-      <td>${item.name ?? "—"}</td>
-      <td>${item.industry ?? "—"}</td>
+      <td>${item.name ?? "��"}</td>
+      <td>${item.industry ?? "��"}</td>
       <td>${marketLabel}</td>
       <td>${exchangeLabel}</td>
       <td>${lastPrice}</td>
@@ -441,6 +348,7 @@ elements.searchBox.addEventListener("keydown", (event) => {
 setActiveTab("fundamentals");
 updateLanguage(currentLang);
 loadStocks(1);
+
 
 
 

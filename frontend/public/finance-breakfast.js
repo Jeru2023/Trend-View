@@ -1,49 +1,10 @@
-const translations = {
-  en: {
-    title: "Trend View – Daily Finance",
-    brandName: "Trend View",
-    brandTagline: "Investment Intelligence Hub",
-    navBasics: "Basic Insights",
-    navBasicInfo: "Basic Info",
-    navNews: "Market News",
-    navSignals: "Technical Signals",
-    navPortfolio: "Portfolio Monitor",
-    navControl: "Control Panel",
-    navNewsGroup: "News",
-    navDailyFinance: "Daily Finance",
-    pageTitle: "Daily Finance",
-    sectionTitle: "Morning Briefing",
-    sectionSubtitle: "Start the trading day with curated highlights from Eastmoney.",
-    emptyState: "No finance news available.",
-    publishedAt: "Published",
-    readMore: "Read more",
-  },
-  zh: {
-    title: "趋势视图 - 每日财经",
-    brandName: "趋势视图",
-    brandTagline: "智能投研中心",
-    navBasics: "基础洞察",
-    navBasicInfo: "基础信息",
-    navNews: "市场资讯",
-    navSignals: "技术信号",
-    navPortfolio: "组合监控",
-    navControl: "控制面板",
-    navNewsGroup: "资讯",
-    navDailyFinance: "每日财经",
-    pageTitle: "每日财经",
-    sectionTitle: "财经早餐",
-    sectionSubtitle: "东财财经早餐精选，开启你的一天。",
-    emptyState: "暂无财经早餐内容。",
-    publishedAt: "发布时间",
-    readMore: "查看详情",
-  },
-};
+﻿const translations = getTranslations("financeBreakfast");
 
 const API_BASE =
   window.API_BASE_URL ||
   (window.location.hostname === "localhost"
     ? "http://localhost:8000"
-    : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
+    : ${window.location.origin.replace(/:\d+$/, "")}:8000);
 
 const LANG_STORAGE_KEY = "trend-view-lang";
 
@@ -147,7 +108,7 @@ function renderEntries(entries) {
 
     const meta = document.createElement("div");
     meta.className = "news-card__meta";
-    meta.textContent = `${dict.publishedAt}: ${formatDate(entry.published_at)}`;
+    meta.textContent = ${dict.publishedAt}: ;
 
     const summary = document.createElement("p");
     summary.className = "news-card__summary";
@@ -173,9 +134,9 @@ function renderEntries(entries) {
 
 async function loadEntries() {
   try {
-    const response = await fetch(`${API_BASE}/finance-breakfast?limit=100`);
+    const response = await fetch(${API_BASE}/finance-breakfast?limit=100);
     if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
+      throw new Error(Request failed with status );
     }
     const data = await response.json();
     state.entries = Array.isArray(data)

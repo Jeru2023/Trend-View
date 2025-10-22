@@ -1,105 +1,4 @@
-﻿const translations = {
-  en: {
-    title: "Trend View – Control Panel",
-    brandName: "Trend View",
-    brandTagline: "Investment Intelligence Hub",
-    navBasics: "Basic Insights",
-    navBasicInfo: "Basic Info",
-    navNews: "Market News",
-    navSignals: "Technical Signals",
-    navPortfolio: "Portfolio Monitor",
-    navControl: "Control Panel",
-    navNewsGroup: "News",
-    navDailyFinance: "Daily Finance",
-    pageTitle: "Control Panel",
-    syncSectionTitle: "Data Synchronization",
-    syncSectionSubtitle: "Trigger updates manually and monitor automated job status in real time.",
-    stockBasicTitle: "Stock Basic Data",
-    stockBasicSubtitle: "Monthly refresh (1st of each month) or run manually as needed.",
-    dailyTradeTitle: "Daily Trade Data",
-    dailyTradeSubtitle: "Scheduled daily at 17:00; follow batch progress when running.",
-    dailyIndicatorTitle: "Daily Indicators",
-    dailyIndicatorSubtitle: "Fetch daily basic metrics and valuation ratios after the market closes (auto 17:05).",
-    incomeStatementTitle: "Income Statements",
-    incomeStatementSubtitle: "Fetch the latest statements per stock sequentially via the Tushare income API.",
-    financialIndicatorTitle: "Financial Indicators",
-    financialIndicatorSubtitle:
-      "Collect per-stock profitability and efficiency ratios via the Tushare fina_indicator API.",
-    financeBreakfastTitle: "Finance Breakfast",
-    financeBreakfastSubtitle: "Daily morning digest sourced from Eastmoney (AkShare stock_info_cjzc_em).",
-    runNow: "Run Now",
-    lastStatus: "Status",
-    dataUpdated: "Data Updated",
-    lastDuration: "Last Duration",
-    records: "Records",
-    configSectionTitle: "Configuration",
-    configSectionSubtitle: "Adjust query filters and default window sizes for automated jobs.",
-    includeStLabel: "Include ST stocks in queries",
-    includeStHint: "When enabled, ST/*ST securities appear in list results.",
-    includeDelistedLabel: "Include delisted stocks",
-    includeDelistedHint: "When disabled, delisted/paused securities are hidden.",
-    windowLabel: "Daily trade window (days)",
-    windowHint: "Used by scheduled and manual daily trade updates.",
-    saveSettings: "Save Settings",
-    statusIdle: "Idle",
-    statusRunning: "Running",
-    statusSuccess: "Completed",
-    statusFailed: "Failed",
-    statusUnknown: "Unknown",
-    messageNone: "Awaiting next run.",
-    toastConfigSaved: "Configuration updated",
-  },
-  zh: {
-    title: "趋势视图 - 控制面板",
-    brandName: "趋势视图",
-    brandTagline: "智能投资中枢",
-    navBasics: "基础洞察",
-    navBasicInfo: "基本信息",
-    navNews: "市场资讯",
-    navSignals: "技术信号",
-    navPortfolio: "组合监控",
-    navControl: "控制面板",
-    navNewsGroup: "资讯",
-    navDailyFinance: "每日财经",
-    pageTitle: "控制面板",
-    syncSectionTitle: "数据同步",
-    syncSectionSubtitle: "手动触发更新，并实时监控自动任务状态。",
-    stockBasicTitle: "股票基础数据",
-    stockBasicSubtitle: "每月1日自动刷新，必要时可手动执行。",
-    dailyTradeTitle: "日度交易数据",
-    dailyTradeSubtitle: "每日17:00自动刷新，可查看批次进度。",
-    dailyIndicatorTitle: "每日指标",
-    dailyIndicatorSubtitle: "结合每日基础指标与估值信息，17:05 自动同步。",
-    incomeStatementTitle: "利润表数据",
-    incomeStatementSubtitle: "逐个股票调用 income 接口获取最新利润表数据。",
-    financialIndicatorTitle: "财务指标数据",
-    financialIndicatorSubtitle: "逐个股票调用 fina_indicator 接口同步盈利能力与运营效率指标。",
-    financeBreakfastTitle: "财经早餐",
-    financeBreakfastSubtitle: "每日早间资讯，来源东方财富财经早餐（AkShare stock_info_cjzc_em）。",
-    runNow: "立即执行",
-    lastStatus: "当前状态",
-    dataUpdated: "数据更新时间",
-    lastDuration: "上次耗时",
-    records: "记录数",
-    configSectionTitle: "配置",
-    configSectionSubtitle: "调整筛选条件与自动任务的默认窗口。",
-    includeStLabel: "查询结果包含 ST 股票",
-    includeStHint: "启用后，ST/*ST 证券会显示在列表中。",
-    includeDelistedLabel: "查询结果包含退市股票",
-    includeDelistedHint: "关闭后，退市或停牌证券将被隐藏。",
-    windowLabel: "日度交易历史窗口（天）",
-    windowHint: "影响自动与手动日度交易抓取的时间范围。",
-    saveSettings: "保存配置",
-    statusIdle: "空闲",
-    statusRunning: "运行中",
-    statusSuccess: "已完成",
-    statusFailed: "失败",
-    statusUnknown: "未知",
-    messageNone: "等待下一次运行。",
-    toastConfigSaved: "配置已更新",
-  },
-};
-
+const translations = getTranslations("controlPanel");
 const API_BASE =
   window.API_BASE_URL ||
   (window.location.hostname === "localhost"
@@ -206,7 +105,7 @@ const elements = {
 };
 
 function formatDateTime(value) {
-  if (!value) return "—";
+  if (!value) return "��";
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   try {
     return new Date(value).toLocaleString(locale);
@@ -216,7 +115,7 @@ function formatDateTime(value) {
 }
 
 function formatTradeDate(value) {
-  if (!value) return "—";
+  if (!value) return "��";
   const str = String(value).trim();
   if (/^\d{8}$/.test(str)) {
     return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
@@ -225,17 +124,17 @@ function formatTradeDate(value) {
 }
 
 function formatNumber(value) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "��";
   const num = Number(value);
-  if (!Number.isFinite(num)) return "—";
+  if (!Number.isFinite(num)) return "��";
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale).format(num);
 }
 
 function formatDuration(seconds) {
-  if (seconds === null || seconds === undefined) return "—";
+  if (seconds === null || seconds === undefined) return "��";
   const value = Number(seconds);
-  if (!Number.isFinite(value)) return "—";
+  if (!Number.isFinite(value)) return "��";
   if (value < 1) return `${(value * 1000).toFixed(0)} ms`;
   const mins = Math.floor(value / 60);
   const secs = value % 60;
@@ -447,6 +346,7 @@ initLanguageSwitch();
 initActions();
 setLang(currentLang);
 loadStatus();
+
 
 
 
