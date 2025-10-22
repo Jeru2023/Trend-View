@@ -135,9 +135,9 @@ function renderEntries(entries) {
 
 async function loadEntries() {
   try {
-    const response = await fetch(${API_BASE}/finance-breakfast?limit=100);
+    const response = await fetch(`${API_BASE}/finance-breakfast?limit=100`);
     if (!response.ok) {
-      throw new Error(Request failed with status );
+      throw new Error(`Request failed with status ${response.status}`);
     }
     const data = await response.json();
     state.entries = Array.isArray(data)

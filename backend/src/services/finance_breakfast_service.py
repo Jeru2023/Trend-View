@@ -17,6 +17,18 @@ from ..dao import FinanceBreakfastDAO
 logger = logging.getLogger(__name__)
 
 
+def _normalize_text(value: object) -> Optional[str]:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return text.encode("latin1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
 def sync_finance_breakfast(
     *,
     settings_path: Optional[str] = None,
@@ -42,9 +54,9 @@ def sync_finance_breakfast(
             "elapsed_seconds": elapsed,
         }
 
-    dataframe["title"] = dataframe["title"].astype(str).str.strip()
-    dataframe["summary"] = dataframe["summary"].astype(str).where(dataframe["summary"].notna(), None)
-    dataframe["url"] = dataframe["url"].astype(str).where(dataframe["url"].notna(), None)
+    dataframe["title"] = dataframe["title"].apply(_normalize_text)
+    dataframe["summary"] = dataframe["summary"].apply(_normalize_text)
+    dataframe["url"] = dataframe["url"].apply(lambda val: str(val).strip() if val else None)
     dataframe["published_at"] = pd.to_datetime(dataframe["published_at"], errors="coerce")
     dataframe = dataframe.dropna(subset=["title", "published_at"]).drop_duplicates(subset=["title", "published_at"])
 
