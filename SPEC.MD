@@ -6,6 +6,7 @@ Workflow
 After user approval, commit changes using Git.
 Log every new requirement in this SPEC.MD file for future reference.
 Whenever a Python package is installed or upgraded, update requirements.txt to keep dependency pins in sync.
+Frontend assets (HTML/CSS/JS) must be saved as UTF-8 without BOM to avoid rendering garbled characters in Chinese UI text.
 
 Documentation Standards
 Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, even if requirements are delivered in another language.

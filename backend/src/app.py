@@ -764,6 +764,9 @@ def list_finance_breakfast_entries(
     limit: int = Query(50, ge=1, le=200, description="Maximum number of entries to return."),
 ) -> List[FinanceBreakfastItem]:
     entries = list_finance_breakfast(limit=limit)
+    if not entries:
+        sync_finance_breakfast()
+        entries = list_finance_breakfast(limit=limit)
     return [
         FinanceBreakfastItem(
             title=entry.get("title", ""),
