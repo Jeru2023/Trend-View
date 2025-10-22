@@ -1,4 +1,4 @@
-const translations = getTranslations("financeBreakfast");
+﻿const translations = getTranslations("financeBreakfast");
 
 const API_BASE =
   window.API_BASE_URL ||
@@ -24,7 +24,7 @@ function getInitialLanguage() {
       return stored;
     }
   } catch (error) {
-    /* no-op */
+    // ignore storage errors
   }
 
   const prefAttribute = document.documentElement.getAttribute("data-pref-lang");
@@ -45,13 +45,17 @@ function persistLanguage(lang) {
   try {
     window.localStorage.setItem(LANG_STORAGE_KEY, lang);
   } catch (error) {
-    /* no-op */
+    // ignore storage errors
   }
   document.documentElement.setAttribute("data-pref-lang", lang);
 }
 
 let currentLang = getInitialLanguage();
 persistLanguage(currentLang);
+
+function missingValue() {
+  return currentLang === "zh" ? "--" : "--";
+}
 
 function applyTranslations() {
   const dict = translations[currentLang];
@@ -69,10 +73,10 @@ function applyTranslations() {
 }
 
 function formatDate(value) {
-  if (!value) return "—";
+  if (!value) return missingValue();
   const dateValue = new Date(value);
   if (Number.isNaN(dateValue.getTime())) {
-    return "—";
+    return missingValue();
   }
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.DateTimeFormat(locale, {
@@ -100,7 +104,7 @@ function renderEntries(entries) {
 
     const titleLink = document.createElement("a");
     titleLink.className = "news-card__title";
-    titleLink.textContent = entry.title || "";
+    titleLink.textContent = entry.title || missingValue();
     if (entry.url) {
       titleLink.href = entry.url;
       titleLink.target = "_blank";
@@ -109,7 +113,7 @@ function renderEntries(entries) {
 
     const meta = document.createElement("div");
     meta.className = "news-card__meta";
-    meta.textContent = ${dict.publishedAt}: ;
+    meta.textContent = `${dict.publishedAt}: ${formatDate(entry.published_at)}`;
 
     const summary = document.createElement("p");
     summary.className = "news-card__summary";
