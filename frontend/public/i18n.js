@@ -11,7 +11,7 @@
         navPortfolio: "Portfolio Monitor",
         navControl: "Control Panel",
         navNewsGroup: "News",
-        navDailyFinance: "Daily Finance",
+        navDailyFinance: "Daily Finance"
       },
       zh: {
         brandName: "趋势视图",
@@ -23,8 +23,8 @@
         navPortfolio: "组合监控",
         navControl: "控制面板",
         navNewsGroup: "资讯",
-        navDailyFinance: "每日财经",
-      },
+        navDailyFinance: "每日财经"
+      }
     },
     basicInfo: {
       en: {
@@ -60,7 +60,7 @@
         noData: "No data available",
         exchangeSSE: "SSE",
         exchangeSZSE: "SZSE",
-        exchangeBSE: "BSE",
+        exchangeBSE: "BSE"
       },
       zh: {
         title: "趋势视图 - 基础信息",
@@ -95,8 +95,8 @@
         noData: "暂无数据",
         exchangeSSE: "上交所",
         exchangeSZSE: "深交所",
-        exchangeBSE: "北交所",
-      },
+        exchangeBSE: "北交所"
+      }
     },
     controlPanel: {
       en: {
@@ -137,7 +137,7 @@
         statusFailed: "Failed",
         statusUnknown: "Unknown",
         messageNone: "Awaiting next run.",
-        toastConfigSaved: "Configuration updated",
+        toastConfigSaved: "Configuration updated"
       },
       zh: {
         title: "趋势视图 - 控制面板",
@@ -176,8 +176,8 @@
         statusFailed: "失败",
         statusUnknown: "未知",
         messageNone: "等待下一次运行。",
-        toastConfigSaved: "配置已更新",
-      },
+        toastConfigSaved: "配置已更新"
+      }
     },
     financeBreakfast: {
       en: {
@@ -187,7 +187,7 @@
         sectionSubtitle: "Start the trading day with curated highlights from Eastmoney.",
         emptyState: "No finance news available.",
         publishedAt: "Published",
-        readMore: "Read more",
+        readMore: "Read more"
       },
       zh: {
         title: "趋势视图 - 每日财经",
@@ -196,9 +196,9 @@
         sectionSubtitle: "东财财经早餐精选，开启你的一天。",
         emptyState: "暂无财经早餐内容。",
         publishedAt: "发布时间",
-        readMore: "查看详情",
-      },
-    },
+        readMore: "查看详情"
+      }
+    }
   };
 
   function mergeSections(sections) {

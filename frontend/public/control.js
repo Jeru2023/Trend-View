@@ -8,14 +8,6 @@ const API_BASE =
 const LANG_STORAGE_KEY = "trend-view-lang";
 
 function getInitialLanguage() {
-  const attr = document.documentElement.getAttribute("data-pref-lang");
-  if (attr && translations[attr]) {
-    return attr;
-  }
-  const htmlLang = document.documentElement.lang;
-  if (htmlLang && translations[htmlLang]) {
-    return htmlLang;
-  }
   try {
     const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
     if (stored && translations[stored]) {
@@ -23,6 +15,14 @@ function getInitialLanguage() {
     }
   } catch (error) {
     /* no-op */
+  }
+  const attr = document.documentElement.getAttribute("data-pref-lang");
+  if (attr && translations[attr]) {
+    return attr;
+  }
+  const htmlLang = document.documentElement.lang;
+  if (htmlLang && translations[htmlLang]) {
+    return htmlLang;
   }
   const browserLang = (navigator.language || "").toLowerCase();
   return browserLang.startsWith("zh") ? "zh" : "en";
@@ -105,7 +105,7 @@ const elements = {
 };
 
 function formatDateTime(value) {
-  if (!value) return "¡ª";
+  if (!value) return "â€”";
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   try {
     return new Date(value).toLocaleString(locale);
@@ -115,7 +115,7 @@ function formatDateTime(value) {
 }
 
 function formatTradeDate(value) {
-  if (!value) return "¡ª";
+  if (!value) return "â€”";
   const str = String(value).trim();
   if (/^\d{8}$/.test(str)) {
     return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
@@ -124,17 +124,17 @@ function formatTradeDate(value) {
 }
 
 function formatNumber(value) {
-  if (value === null || value === undefined) return "¡ª";
+  if (value === null || value === undefined) return "â€”";
   const num = Number(value);
-  if (!Number.isFinite(num)) return "¡ª";
+  if (!Number.isFinite(num)) return "â€”";
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale).format(num);
 }
 
 function formatDuration(seconds) {
-  if (seconds === null || seconds === undefined) return "¡ª";
+  if (seconds === null || seconds === undefined) return "â€”";
   const value = Number(seconds);
-  if (!Number.isFinite(value)) return "¡ª";
+  if (!Number.isFinite(value)) return "â€”";
   if (value < 1) return `${(value * 1000).toFixed(0)} ms`;
   const mins = Math.floor(value / 60);
   const secs = value % 60;

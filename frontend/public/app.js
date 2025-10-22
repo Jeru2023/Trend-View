@@ -8,39 +8,31 @@ const PAGE_SIZE = 20;
 
 const exchangeLabels = {
   en: { SSE: "SSE", SZSE: "SZSE", BSE: "BSE" },
-  zh: { SSE: "ÉÏ½»Ëù", SZSE: "Éî½»Ëù", BSE: "±±½»Ëù" },
+  zh: { SSE: "ä¸Šäº¤æ‰€", SZSE: "æ·±äº¤æ‰€", BSE: "åŒ—äº¤æ‰€" },
 };
 
 const marketLabels = {
   en: {
-    "Ö÷°å": "Main Board",
-    "´´Òµ°å": "ChiNext",
-    "¿Æ´´°å": "STAR Market",
+    "ä¸»æ¿": "Main Board",
+    "åˆ›ä¸šæ¿": "ChiNext",
+    "ç§‘åˆ›æ¿": "STAR Market",
     "Main Board": "Main Board",
     "ChiNext": "ChiNext",
     "STAR Market": "STAR Market",
   },
   zh: {
-    "Ö÷°å": "Ö÷°å",
-    "´´Òµ°å": "´´Òµ°å",
-    "¿Æ´´°å": "¿Æ´´°å",
-    "Main Board": "Ö÷°å",
-    "ChiNext": "´´Òµ°å",
-    "STAR Market": "¿Æ´´°å",
+    "ä¸»æ¿": "ä¸»æ¿",
+    "åˆ›ä¸šæ¿": "åˆ›ä¸šæ¿",
+    "ç§‘åˆ›æ¿": "ç§‘åˆ›æ¿",
+    "Main Board": "ä¸»æ¿",
+    "ChiNext": "åˆ›ä¸šæ¿",
+    "STAR Market": "ç§‘åˆ›æ¿",
   },
 };
 
 const LANG_STORAGE_KEY = "trend-view-lang";
 
 function getInitialLanguage() {
-  const attr = document.documentElement.getAttribute("data-pref-lang");
-  if (attr && translations[attr]) {
-    return attr;
-  }
-  const htmlLang = document.documentElement.lang;
-  if (htmlLang && translations[htmlLang]) {
-    return htmlLang;
-  }
   try {
     const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
     if (stored && translations[stored]) {
@@ -48,6 +40,14 @@ function getInitialLanguage() {
     }
   } catch (error) {
     /* no-op */
+  }
+  const attr = document.documentElement.getAttribute("data-pref-lang");
+  if (attr && translations[attr]) {
+    return attr;
+  }
+  const htmlLang = document.documentElement.lang;
+  if (htmlLang && translations[htmlLang]) {
+    return htmlLang;
   }
   const browserLang = (navigator.language || "").toLowerCase();
   return browserLang.startsWith("zh") ? "zh" : "en";
@@ -102,7 +102,7 @@ function formatNumber(value) {
 
 function formatOptionalNumber(value, options = {}) {
   if (value === null || value === undefined) {
-    return "¡ª";
+    return "â€”";
   }
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale, options).format(value);
@@ -135,7 +135,7 @@ function applyTranslations() {
 
 function formatChange(value) {
   if (value === null || value === undefined) {
-    return "¡ª";
+    return "â€”";
   }
   const formatted = value.toFixed(2);
   return `${value >= 0 ? "+" : ""}${formatted}%`;
@@ -158,8 +158,8 @@ function renderTable(data = state.items) {
   data.forEach((item) => {
     const marketMap = marketLabels[currentLang] || {};
     const exchangeMap = exchangeLabels[currentLang] || {};
-    const marketLabel = item.market ? marketMap[item.market] ?? item.market : "¡ª";
-    const exchangeLabel = item.exchange ? exchangeMap[item.exchange] ?? item.exchange : "¡ª";
+    const marketLabel = item.market ? marketMap[item.market] ?? item.market : "â€”";
+    const exchangeLabel = item.exchange ? exchangeMap[item.exchange] ?? item.exchange : "â€”";
     const changeClass =
       item.pct_change == null
         ? ""
@@ -173,11 +173,11 @@ function renderTable(data = state.items) {
     const changeDisplay = formatChange(item.pct_change);
     const volumeDisplay =
       item.volume == null
-        ? "¡ª"
+        ? "â€”"
         : formatOptionalNumber(item.volume, { maximumFractionDigits: 0 });
     const marketCapDisplay =
       item.market_cap == null
-        ? "¡ª"
+        ? "â€”"
         : formatOptionalNumber(item.market_cap, { maximumFractionDigits: 0 });
     const peDisplay = formatOptionalNumber(item.pe_ratio, {
       minimumFractionDigits: 2,
@@ -185,7 +185,7 @@ function renderTable(data = state.items) {
     });
     const turnoverDisplay =
       item.turnover_rate == null
-        ? "¡ª"
+        ? "â€”"
         : `${formatOptionalNumber(item.turnover_rate, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
@@ -194,8 +194,8 @@ function renderTable(data = state.items) {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${item.code}</td>
-      <td>${item.name ?? "¡ª"}</td>
-      <td>${item.industry ?? "¡ª"}</td>
+      <td>${item.name ?? "â€”"}</td>
+      <td>${item.industry ?? "â€”"}</td>
       <td>${marketLabel}</td>
       <td>${exchangeLabel}</td>
       <td>${lastPrice}</td>

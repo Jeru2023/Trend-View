@@ -51,6 +51,7 @@ function persistLanguage(lang) {
 }
 
 let currentLang = getInitialLanguage();
+persistLanguage(currentLang);
 
 function applyTranslations() {
   const dict = translations[currentLang];
@@ -167,6 +168,5 @@ elements.langButtons.forEach((btn) => {
   });
 });
 
-persistLanguage(currentLang);
 applyTranslations();
 loadEntries();
