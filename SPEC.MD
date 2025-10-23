@@ -1,4 +1,4 @@
-﻿## Session Boot Rules
+## Session Boot Rules
 Always run chcp 65001 in PowerShell as the first command so the console uses UTF-8. Apply UTF-8 encoding for all file and console read/write/print operations.
 Immediately set [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 and export PYTHONIOENCODING=utf-8 (plus similar flags for other runtimes) so downstream tools avoid mojibake.
 
@@ -12,6 +12,10 @@ Frontend assets (HTML/CSS/JS) must be saved as UTF-8 without BOM to avoid render
 - Refresh cache aggressively when frontend scripts change (e.g., bump query string version) so browsers pick up the latest fixes immediately.
 - Normalize external data encodings before persistence; AkShare responses may need `latin1` → `utf-8` decoding to prevent downstream mojibake.
 - Always verify language preference persistence after any localization refactor by navigating across pages; regression in one page often hints at missing storage/attribute fallbacks.
+- Start database services explicitly (admin PowerShell `Start-Service postgresql-x64-18` or `pg_ctl`) before running sync jobs to avoid connection timeouts; lack of DeepSeek results from a down DB, not AI issues.
+- Shut down VS Code (or restart the Python language server) before stopping PostgreSQL so the editor releases connections and doesn’t leave orphaned `postgres.exe` backends attached to log files.
+- PostgreSQL connection counts climb when external tools leave sessions idle—inspect with `pg_stat_activity` and terminate stale `trend_view` backends before blaming DAO code.
+- DAO helpers now enforce managed connections with explicit close + transaction handling; keep statement/idle timeout values tuned in `settings.*.json` so stray sessions get reclaimed automatically.
 
 ## Documentation Standards
 Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, even if requirements are delivered in another language.

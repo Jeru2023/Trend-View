@@ -4,8 +4,10 @@ Shared PostgreSQL DAO utilities for the Trend View backend.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from datetime import datetime
+from typing import Iterable, Iterator, Sequence
 
 import pandas as pd
 import psycopg2
@@ -14,6 +16,9 @@ from psycopg2.extras import execute_values
 
 from ..config.settings import PostgresSettings
 
+DEFAULT_CONNECT_TIMEOUT = 3
+DEFAULT_APPLICATION_NAME = "trend_view_backend"
+
 
 @dataclass(frozen=True)
 class PostgresDAOBase:
@@ -21,15 +26,57 @@ class PostgresDAOBase:
 
     config: PostgresSettings
 
-    def connect(self) -> psycopg2.extensions.connection:
-        """Create a new database connection using the configured credentials."""
-        return psycopg2.connect(
-            host=self.config.host,
-            port=self.config.port,
-            dbname=self.config.database,
-            user=self.config.user,
-            password=self.config.password,
-        )
+    def _build_connection_kwargs(self) -> dict[str, object]:
+        """Compose connection keyword arguments based on settings."""
+        timeout = getattr(self.config, "connect_timeout", DEFAULT_CONNECT_TIMEOUT) or DEFAULT_CONNECT_TIMEOUT
+        application_name = getattr(self.config, "application_name", DEFAULT_APPLICATION_NAME) or DEFAULT_APPLICATION_NAME
+
+        options_parts: list[str] = []
+        statement_timeout = getattr(self.config, "statement_timeout_ms", None)
+        if statement_timeout is not None:
+            options_parts.append(f"-c statement_timeout={int(statement_timeout)}")
+
+        idle_timeout = getattr(self.config, "idle_in_transaction_session_timeout_ms", None)
+        if idle_timeout is not None:
+            options_parts.append(f"-c idle_in_transaction_session_timeout={int(idle_timeout)}")
+
+        kwargs: dict[str, object] = {
+            "host": self.config.host,
+            "port": self.config.port,
+            "dbname": self.config.database,
+            "user": self.config.user,
+            "password": self.config.password,
+            "connect_timeout": timeout,
+            "application_name": application_name,
+        }
+
+        if options_parts:
+            kwargs["options"] = " ".join(options_parts)
+
+        return kwargs
+
+    def _open_connection(self) -> psycopg2.extensions.connection:
+        """Open a new psycopg2 connection using the configured parameters."""
+        return psycopg2.connect(**self._build_connection_kwargs())
+
+    @contextmanager
+    def connect(self) -> Iterator[psycopg2.extensions.connection]:
+        """Provide a managed connection that commits/rolls back and always closes."""
+        conn = self._open_connection()
+        try:
+            yield conn
+            if not conn.closed and not conn.autocommit:
+                conn.commit()
+        except Exception:
+            if not conn.closed:
+                try:
+                    conn.rollback()
+                except psycopg2.Error:
+                    pass
+            raise
+        finally:
+            if not conn.closed:
+                conn.close()
 
     @staticmethod
     def _normalize_dataframe(
@@ -40,7 +87,10 @@ class PostgresDAOBase:
         frame = dataframe.copy()
         for column in date_columns:
             if column in frame.columns:
-                frame[column] = pd.to_datetime(frame[column], errors="coerce").dt.date
+                converted = pd.to_datetime(frame[column], errors="coerce")
+                frame[column] = converted.apply(
+                    lambda val: val.date() if isinstance(val, (pd.Timestamp, datetime)) and not pd.isna(val) else None
+                )
         return frame.where(pd.notnull(frame), None)
 
     @staticmethod

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Configuration loader for the Trend View backend.
 
 Reads secrets and connection information from a JSON configuration file so the
@@ -16,11 +16,21 @@ from typing import Any, Dict, Optional
 
 CONFIG_PATH_ENV_VAR = "TREND_VIEW_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.local.json"
+DEFAULT_APPLICATION_NAME = "trend_view_backend"
 
 
 @dataclass(frozen=True)
 class TushareSettings:
     token: str
+
+
+@dataclass(frozen=True)
+class DeepseekSettings:
+    token: str
+    base_url: str = "https://api.deepseek.com"
+    model: str = "deepseek-chat"
+    request_timeout_seconds: float = 90.0
+    max_retries: int = 2
 
 
 @dataclass(frozen=True)
@@ -36,11 +46,16 @@ class PostgresSettings:
     income_statement_table: str
     financial_indicator_table: str
     finance_breakfast_table: str
+    connect_timeout: int = 3
+    application_name: str = DEFAULT_APPLICATION_NAME
+    statement_timeout_ms: Optional[int] = None
+    idle_in_transaction_session_timeout_ms: Optional[int] = None
 
 
 @dataclass(frozen=True)
 class AppSettings:
     tushare: TushareSettings
+    deepseek: Optional[DeepseekSettings]
     postgres: PostgresSettings
 
 
@@ -56,7 +71,7 @@ def _resolve_config_path(explicit_path: Optional[str]) -> Path:
 def _load_raw_config(path: Path) -> Dict[str, Any]:
     """Load raw JSON content from the configuration file."""
     try:
-        with path.open("r", encoding="utf-8") as config_file:
+        with path.open("r", encoding="utf-8-sig") as config_file:
             return json.load(config_file)
     except FileNotFoundError as exc:
         raise FileNotFoundError(
@@ -65,6 +80,15 @@ def _load_raw_config(path: Path) -> Dict[str, Any]:
         ) from exc
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON content in configuration file: {path}") from exc
+
+
+def _optional_int(value: Any) -> Optional[int]:
+    """Convert optional JSON number fields to integers."""
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    return int(value)
 
 
 def load_settings(path: Optional[str] = None) -> AppSettings:
@@ -97,7 +121,25 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
     except KeyError as exc:
         raise KeyError("Missing 'tushare.token' in configuration file") from exc
 
+    deepseek_config: Optional[dict[str, Any]] = raw_config.get("deepseek")
+    deepseek_settings: Optional[DeepseekSettings] = None
+    if deepseek_config:
+        try:
+            deepseek_settings = DeepseekSettings(
+                token=str(deepseek_config["token"]),
+                base_url=str(deepseek_config.get("base_url", "https://api.deepseek.com")),
+                model=str(deepseek_config.get("model", "deepseek-chat")),
+                request_timeout_seconds=float(deepseek_config.get("request_timeout_seconds", 90.0)),
+                max_retries=int(deepseek_config.get("max_retries", 2)),
+            )
+        except KeyError as exc:
+            raise KeyError("Missing 'deepseek.token' in configuration file") from exc
+
     try:
+        application_name = postgres_config.get("application_name")
+        statement_timeout_value = postgres_config.get("statement_timeout_ms")
+        idle_timeout_value = postgres_config.get("idle_in_transaction_session_timeout_ms")
+
         postgres_settings = PostgresSettings(
             host=str(postgres_config.get("host", "localhost")),
             port=int(postgres_config.get("port", 5432)),
@@ -121,12 +163,17 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             finance_breakfast_table=str(
                 postgres_config.get("finance_breakfast_table", "finance_breakfast")
             ),
+            connect_timeout=int(postgres_config.get("connect_timeout", 3)),
+            application_name=str(application_name).strip() if isinstance(application_name, str) and application_name.strip() else DEFAULT_APPLICATION_NAME,
+            statement_timeout_ms=_optional_int(statement_timeout_value),
+            idle_in_transaction_session_timeout_ms=_optional_int(idle_timeout_value),
         )
     except KeyError as exc:
         raise KeyError(f"Missing postgres configuration value: {exc}") from exc
 
     return AppSettings(
         tushare=tushare_settings,
+        deepseek=deepseek_settings,
         postgres=postgres_settings,
     )
 
@@ -135,6 +182,6 @@ __all__ = [
     "AppSettings",
     "PostgresSettings",
     "TushareSettings",
+    "DeepseekSettings",
     "load_settings",
 ]
-

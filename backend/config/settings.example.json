@@ -1,19 +1,30 @@
 {
-  "tushare": {
-    "token": "REPLACE_WITH_YOUR_TUSHARE_TOKEN"
-  },
-  "postgres": {
-    "host": "localhost",
-    "port": 5432,
-    "database": "trend_view",
-    "user": "trend_view",
-    "password": "REPLACE_WITH_DB_PASSWORD",
-    "schema": "public",
-    "stock_table": "stock_basic",
-    "daily_indicator_table": "daily_indicator",
-    "income_statement_table": "income_statements",
-    "financial_indicator_table": "financial_indicators",
-    "finance_breakfast_table": "finance_breakfast"
-  }
+    "tushare": {
+        "token": "REPLACE_WITH_YOUR_TUSHARE_TOKEN"
+    },
+    "deepseek": {
+        "token": "REPLACE_WITH_YOUR_DEEPSEEK_TOKEN",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-chat",
+        "request_timeout_seconds": 90,
+        "max_retries": 2
+    },
+    "postgres": {
+        "host": "localhost",
+        "port": 5432,
+        "database": "trend_view",
+        "user": "trend_view",
+        "password": "REPLACE_WITH_DB_PASSWORD",
+        "schema": "public",
+        "stock_table": "stock_basic",
+        "daily_indicator_table": "daily_indicator",
+        "income_statement_table": "income_statements",
+        "financial_indicator_table": "financial_indicators",
+        "finance_breakfast_table": "finance_breakfast",
+        "connect_timeout": 3,
+        "application_name": "trend_view_backend",
+        "statement_timeout_ms": 300000,
+        "idle_in_transaction_session_timeout_ms": 300000
+    }
 }
 
