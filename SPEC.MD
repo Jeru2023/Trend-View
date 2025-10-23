@@ -1,14 +1,19 @@
-﻿Session Boot Rules
+﻿## Session Boot Rules
 Always run chcp 65001 in PowerShell as the first command so the console uses UTF-8. Apply UTF-8 encoding for all file and console read/write/print operations.
 Immediately set [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 and export PYTHONIOENCODING=utf-8 (plus similar flags for other runtimes) so downstream tools avoid mojibake.
 
-Workflow
+## Workflow
 After user approval, commit changes using Git.
 Log every new requirement in this SPEC.MD file for future reference.
 Whenever a Python package is installed or upgraded, update requirements.txt to keep dependency pins in sync.
 Frontend assets (HTML/CSS/JS) must be saved as UTF-8 without BOM to avoid rendering garbled characters in Chinese UI text.
 
-Documentation Standards
+## Lessons Learned
+- Refresh cache aggressively when frontend scripts change (e.g., bump query string version) so browsers pick up the latest fixes immediately.
+- Normalize external data encodings before persistence; AkShare responses may need `latin1` → `utf-8` decoding to prevent downstream mojibake.
+- Always verify language preference persistence after any localization refactor by navigating across pages; regression in one page often hints at missing storage/attribute fallbacks.
+
+## Documentation Standards
 Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, even if requirements are delivered in another language.
 
 ## Feature Log
@@ -23,6 +28,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-23 (FEATURE backend-006 update): Renamed the financial report pipeline to income statements, switched to code-by-code `pro.income` fetching (latest 8 rows per stock), aligned control panel/API naming, and added automatic stock-basic fallback seeding when no local codes exist.
 - 2025-10-24 (FEATURE backend-007): Added financial indicator sync (fina_indicator) with new DAO/service, code-by-code ingestion, scheduler, REST endpoints, and control panel card.
 - 2025-10-24 (FEATURE backend-008): Added finance breakfast ingestion via AkShare (Eastmoney morning digest), including schema/DAO/service, 07:00 scheduler, REST/control endpoints, and frontend controls.
+- 2025-10-24 (FEATURE frontend-003): Added "Daily Finance" section to sidebar, centralised i18n registry, rendered finance breakfast list with language persistence and AkShare-sourced data fixes.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.
