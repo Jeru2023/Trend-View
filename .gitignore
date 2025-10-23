@@ -11,4 +11,4 @@ private.MD
 backend/config/control_state.json
 
 # Runtime logs
-backend_uvicorn*.log
+*.log

@@ -8,7 +8,7 @@ import asyncio
 import logging
 import time
 from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -81,7 +81,7 @@ class SyncDailyTradeResponse(BaseModel):
 
 
 class SyncStockBasicRequest(BaseModel):
-    list_statuses: Optional[List[str]] = Field(default_factory=lambda: ["L", "D", "P"])
+    list_statuses: Optional[List[str]] = Field(default_factory=lambda: ["L", "D"])
     market: Optional[str] = None
 
 
@@ -166,6 +166,10 @@ class SyncFinanceBreakfastResponse(BaseModel):
 class FinanceBreakfastItem(BaseModel):
     title: str
     summary: Optional[str] = None
+    content: Optional[str] = None
+    ai_extract: Optional[Union[str, Dict[str, Any]]] = Field(None, alias="aiExtract")
+    ai_extract_summary: Optional[Union[str, Dict[str, Any]]] = Field(None, alias="aiExtractSummary")
+    ai_extract_detail: Optional[Union[str, List[Any], Dict[str, Any]]] = Field(None, alias="aiExtractDetail")
     published_at: Optional[datetime] = Field(None, alias="publishedAt")
     url: Optional[str] = None
 
@@ -662,7 +666,7 @@ async def startup_event() -> None:
         scheduler.start()
         scheduler.add_job(
             lambda: asyncio.get_running_loop().create_task(
-                safe_start_stock_basic_job(SyncStockBasicRequest(list_statuses=["L", "D", "P"], market=None))
+                safe_start_stock_basic_job(SyncStockBasicRequest(list_statuses=["L", "D"], market=None))
             ),
             CronTrigger(day=1, hour=0, minute=0),
             id="stock_basic_monthly",
@@ -760,17 +764,29 @@ def list_stocks(
 
 
 @app.get("/finance-breakfast", response_model=List[FinanceBreakfastItem])
-def list_finance_breakfast_entries(
+async def list_finance_breakfast_entries(
     limit: int = Query(50, ge=1, le=200, description="Maximum number of entries to return."),
 ) -> List[FinanceBreakfastItem]:
-    entries = list_finance_breakfast(limit=limit)
-    if not entries:
-        sync_finance_breakfast()
+    try:
         entries = list_finance_breakfast(limit=limit)
+    except Exception as exc:
+        logger.warning("Finance breakfast query failed: %s", exc)
+        entries = []
+    if not entries:
+        try:
+            asyncio.get_running_loop().create_task(
+                safe_start_finance_breakfast_job(SyncFinanceBreakfastRequest())
+            )
+        except RuntimeError:
+            logger.debug("Finance breakfast sync could not be scheduled (no running loop).")
     return [
         FinanceBreakfastItem(
             title=entry.get("title", ""),
             summary=entry.get("summary"),
+            content=entry.get("content"),
+            ai_extract=entry.get("ai_extract"),
+            ai_extract_summary=entry.get("ai_extract_summary"),
+            ai_extract_detail=entry.get("ai_extract_detail"),
             published_at=entry.get("published_at"),
             url=entry.get("url"),
         )

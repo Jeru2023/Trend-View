@@ -1,5 +1,4 @@
-from backend.src.services import sync_stock_basic, sync_daily_trade
+import akshare as ak
 
-sync_stock_basic()
-
-# sync_daily_trade(batch_size=50, window_days=30)
+stock_info_cjzc_em_df = ak.stock_info_cjzc_em()
+print(stock_info_cjzc_em_df)

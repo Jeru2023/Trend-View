@@ -14,6 +14,8 @@ from .tushare_api import (
     get_financial_indicators,
 )
 from .akshare_api import FINANCE_BREAKFAST_COLUMNS, fetch_finance_breakfast
+from .eastmoney_news import EastmoneyNewsDetail, fetch_eastmoney_detail
+from .deepseek_api import generate_finance_analysis
 
 __all__ = [
     "DAILY_INDICATOR_FIELDS",
@@ -29,4 +31,7 @@ __all__ = [
     "get_financial_indicators",
     "FINANCE_BREAKFAST_COLUMNS",
     "fetch_finance_breakfast",
+    "EastmoneyNewsDetail",
+    "fetch_eastmoney_detail",
+    "generate_finance_analysis",
 ]

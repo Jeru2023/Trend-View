@@ -27,7 +27,7 @@ def _resolve_token(token: str | None, settings: AppSettings) -> str:
 
 def sync_stock_basic(
     token: str | None = None,
-    list_statuses: Sequence[str] = ("L", "D", "P"),
+    list_statuses: Sequence[str] = ("L", "D"),
     market: str | None = None,
     settings_path: str | None = None,
 ) -> int:
@@ -129,10 +129,6 @@ __all__ = [
     "sync_stock_basic",
     "get_stock_overview",
 ]
-
-
-
-sync_stock_basic()
 
 
 

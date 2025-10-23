@@ -187,7 +187,18 @@
         sectionSubtitle: "Start the trading day with curated highlights from Eastmoney.",
         emptyState: "No finance news available.",
         publishedAt: "Published",
-        readMore: "Read more"
+        readMore: "Read more",
+        aiInsightsTitle: "AI Insights",
+        aiSummaryHeading: "Daily Summary",
+        aiEventsHeading: "Impact Analysis",
+        aiImpactDirection: "Direction",
+        aiImpactIntensity: "Impact Score",
+        aiImpactScope: "Scope",
+        aiImpactTargets: "Targets",
+        aiImpactDuration: "Duration",
+        aiImpactStrategy: "Strategy",
+        aiImpactDetails: "Impact Rationale",
+        aiImpactTags: "Tags"
       },
       zh: {
         title: "趋势视图 - 每日财经",
@@ -196,7 +207,18 @@
         sectionSubtitle: "东财财经早餐精选，开启你的一天。",
         emptyState: "暂无财经早餐内容。",
         publishedAt: "发布时间",
-        readMore: "查看详情"
+        readMore: "查看详情",
+        aiInsightsTitle: "AI 摘要",
+        aiSummaryHeading: "当日总结",
+        aiEventsHeading: "影响分析",
+        aiImpactDirection: "影响方向",
+        aiImpactIntensity: "影响强度",
+        aiImpactScope: "影响范围",
+        aiImpactTargets: "影响标的",
+        aiImpactDuration: "持续时间",
+        aiImpactStrategy: "投资策略",
+        aiImpactDetails: "影响理由",
+        aiImpactTags: "标签"
       }
     }
   };

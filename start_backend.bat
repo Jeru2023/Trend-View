@@ -1,0 +1,1 @@
+uvicorn backend.src.app:app --reload

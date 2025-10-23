@@ -27,6 +27,7 @@ python -m pip install -r requirements.txt
 
    ```sh
    uvicorn backend.src:app --host 0.0.0.0 --port 8000 --reload
+   uvicorn backend.src.app:app --reload
    ```
 
    The service exposes:

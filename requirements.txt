@@ -8,3 +8,5 @@ uvicorn==0.38.0
 apscheduler==3.11.0
 greenlet==3.2.4
 akshare==1.11.98
+requests==2.32.3
+beautifulsoup4==4.12.3
