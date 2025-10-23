@@ -157,6 +157,13 @@ function getFirstMatchingProperty(obj, keys) {
   return undefined;
 }
 
+function joinLocalizedList(items) {
+  if (!items || !items.length) {
+    return "";
+  }
+  return currentLang === "zh" ? items.join("、") : items.join(", ");
+}
+
 function hasAiMarkers(obj) {
   if (!obj || typeof obj !== "object") {
     return false;
@@ -630,6 +637,144 @@ function parseAiExtract(raw) {
   };
 }
 
+function formatSummarySegments(summaryRaw) {
+  if (summaryRaw === null || summaryRaw === undefined) {
+    return [];
+  }
+
+  let payload = summaryRaw;
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    if (!trimmed) {
+      return [];
+    }
+    const parsed = trySafeJSONParse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      payload = parsed;
+    } else {
+      return [trimmed];
+    }
+  }
+
+  if (typeof payload !== "object" || Array.isArray(payload)) {
+    const text = cleanText(payload);
+    return text ? [text] : [];
+  }
+
+  const isChinese = currentLang === "zh";
+  const labels = isChinese
+    ? {
+        overallImpact: "市场整体影响",
+        keySectors: "重点关注板块",
+        opportunities: "机会提示",
+        risks: "风险提示",
+        analysisSummary: "分析总结",
+        investment: "投资建议",
+      }
+    : {
+        overallImpact: "Overall Market Impact",
+        keySectors: "Key Sectors",
+        opportunities: "Opportunities",
+        risks: "Risks",
+        analysisSummary: "Analysis Summary",
+        investment: "Investment Recommendation",
+      };
+  const separator = isChinese ? "：" : ": ";
+
+  const segments = [];
+
+  const overallImpact = cleanText(
+    getFirstMatchingProperty(payload, [
+      "市场整体影响",
+      "OverallMarketImpact",
+      "OverallImpactAssessment",
+      "MarketImpact",
+    ])
+  );
+  const impactScoreValue = getFirstMatchingProperty(payload, [
+    "市场影响程度",
+    "MarketImpactMagnitude",
+    "MarketImpactScore",
+    "MarketImpactLevel",
+  ]);
+  const impactScore = parseIntensity(impactScoreValue);
+  if (overallImpact) {
+    const roundedScore =
+      impactScore !== null && Number.isFinite(impactScore)
+        ? Number.isInteger(impactScore)
+          ? impactScore
+          : Number(impactScore.toFixed(1))
+        : null;
+    let segment = `${labels.overallImpact}${separator}${overallImpact}`;
+    if (roundedScore !== null) {
+      segment += isChinese ? `（${roundedScore}分）` : ` (${roundedScore} pts)`;
+    }
+    segments.push(segment);
+  }
+
+  const sectorsList = toList(
+    getFirstMatchingProperty(payload, [
+      "重点关注板块",
+      "KeySectorsToWatch",
+      "FocusSectors",
+      "FocusIndustries",
+      "AffectedSectors",
+    ])
+  );
+  if (sectorsList.length) {
+    segments.push(`${labels.keySectors}${separator}${joinLocalizedList(sectorsList)}`);
+  }
+
+  const opportunitiesList = toList(
+    getFirstMatchingProperty(payload, [
+      "机会提示",
+      "OpportunityIndicators",
+      "Opportunities",
+      "OpportunitySignals",
+    ])
+  );
+  if (opportunitiesList.length) {
+    segments.push(`${labels.opportunities}${separator}${joinLocalizedList(opportunitiesList)}`);
+  }
+
+  const risksList = toList(
+    getFirstMatchingProperty(payload, [
+      "风险提示",
+      "RiskIndicators",
+      "Risks",
+      "RiskSignals",
+    ])
+  );
+  if (risksList.length) {
+    segments.push(`${labels.risks}${separator}${joinLocalizedList(risksList)}`);
+  }
+
+  const analysisSummary = cleanText(
+    getFirstMatchingProperty(payload, [
+      "分析总结",
+      "AnalysisSummary",
+      "Summary",
+      "OverallSummary",
+    ])
+  );
+  if (analysisSummary) {
+    segments.push(`${labels.analysisSummary}${separator}${analysisSummary}`);
+  }
+
+  const investment = cleanText(
+    getFirstMatchingProperty(payload, [
+      "投资建议",
+      "InvestmentRecommendation",
+      "InvestmentAdvice",
+    ])
+  );
+  if (investment) {
+    segments.push(`${labels.investment}${separator}${investment}`);
+  }
+
+  return segments;
+}
+
 function createAiEventItem(event, dict) {
   const item = document.createElement("li");
   item.className = "news-card__ai-item";
@@ -741,7 +886,25 @@ function buildAiSection(summaryRaw, detailRaw, legacyRaw, dict) {
   heading.textContent = dict.aiInsightsTitle;
   section.appendChild(heading);
 
+  const summarySegments = formatSummarySegments(summaryRaw);
+  const fallbackSummaryCandidates = [];
+  if (typeof summaryRaw === "string") {
+    const trimmed = summaryRaw.trim();
+    if (trimmed) {
+      fallbackSummaryCandidates.push(trimmed);
+    }
+  }
+  const extractedSummary = extractSummaryText(summaryRaw);
+  if (extractedSummary) {
+    fallbackSummaryCandidates.push(extractedSummary);
+  }
   if (analysis.summaryText) {
+    fallbackSummaryCandidates.push(analysis.summaryText);
+  }
+  const fallbackSummaryText =
+    fallbackSummaryCandidates.find((text) => typeof text === "string" && text.trim()) || "";
+
+  if (summarySegments.length || fallbackSummaryText) {
     const summaryHeading = document.createElement("h4");
     summaryHeading.className = "news-card__ai-subheading";
     summaryHeading.textContent = dict.aiSummaryHeading;
@@ -749,7 +912,17 @@ function buildAiSection(summaryRaw, detailRaw, legacyRaw, dict) {
 
     const summary = document.createElement("p");
     summary.className = "news-card__ai-summary";
-    summary.textContent = analysis.summaryText;
+    if (summarySegments.length) {
+      summarySegments.forEach((segment, index) => {
+        summary.appendChild(document.createTextNode(segment));
+        if (index < summarySegments.length - 1) {
+          summary.appendChild(document.createTextNode(currentLang === "zh" ? "；" : ";"));
+          summary.appendChild(document.createElement("br"));
+        }
+      });
+    } else {
+      summary.textContent = fallbackSummaryText;
+    }
     section.appendChild(summary);
   }
 
@@ -794,49 +967,30 @@ function renderEntries(entries) {
     const card = document.createElement("article");
     card.className = "card news-card";
 
-    const summaryText =
-      cleanText(entry.summary) ||
-      cleanText(entry.title) ||
-      cleanText(entry.content) ||
-      dict.emptyState;
-    const summary = document.createElement("p");
-    summary.className = "news-card__summary";
-    summary.textContent = summaryText;
-    card.appendChild(summary);
+    const titleLine = document.createElement("h2");
+    titleLine.className = "news-card__title";
+    if (entry.url) {
+      const anchor = document.createElement("a");
+      anchor.href = entry.url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.textContent = cleanText(entry.title) || dict.emptyState;
+      titleLine.appendChild(anchor);
+    } else {
+      titleLine.textContent = cleanText(entry.title) || dict.emptyState;
+    }
+    card.appendChild(titleLine);
 
     const meta = document.createElement("div");
     meta.className = "news-card__meta";
     meta.textContent = `${dict.publishedAt}: ${formatDate(entry.published_at)}`;
     card.appendChild(meta);
 
-    if (entry.url) {
-      const link = document.createElement("a");
-      link.className = "news-card__link";
-      link.href = entry.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = dict.readMore;
-      if (entry.title) {
-        link.setAttribute("aria-label", `${dict.readMore}: ${entry.title}`);
-      }
-      card.appendChild(link);
-    }
-
-    if (entry.title && entry.title.trim() && entry.title.trim() !== summaryText) {
-      const titleWrapper = document.createElement("div");
-      titleWrapper.className = "news-card__title";
-      if (entry.url) {
-        const anchor = document.createElement("a");
-        anchor.href = entry.url;
-        anchor.target = "_blank";
-        anchor.rel = "noopener noreferrer";
-        anchor.textContent = entry.title;
-        titleWrapper.appendChild(anchor);
-      } else {
-        titleWrapper.textContent = entry.title;
-      }
-      card.appendChild(titleWrapper);
-    }
+    const summaryText = cleanText(entry.summary) || dict.emptyState;
+    const summary = document.createElement("p");
+    summary.className = "news-card__summary";
+    summary.textContent = summaryText;
+    card.appendChild(summary);
 
     const aiSection = buildAiSection(
       entry.ai_extract_summary ?? entry.aiExtractSummary ?? null,

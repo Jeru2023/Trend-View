@@ -347,8 +347,6 @@ def _should_override_summary(existing: Optional[str], raw_ai: object) -> bool:
     text = str(existing).strip()
     if not text:
         return True
-    if isinstance(raw_ai, (dict, list)):
-        return True
     if isinstance(raw_ai, str) and text == raw_ai.strip():
         return True
     if text.startswith("{") and text.endswith("}"):
