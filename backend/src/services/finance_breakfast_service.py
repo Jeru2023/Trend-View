@@ -24,7 +24,7 @@ AI_ANALYSIS_PROMPT_TEMPLATE = dedent(
     """\
     Please conduct a professional analysis of the impact on the A-share market based on the following financial content:
 
-    【News Content】
+    [News Content]
     {news_content}
 
     Please output the analysis results in JSON format:
@@ -368,6 +368,24 @@ def _normalize_text(value: object) -> Optional[str]:
         return text
 
 
+def _coerce_datetime(value: object) -> Optional[datetime]:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, pd.Timestamp):
+        if pd.isna(value):
+            return None
+        return value.to_pydatetime()
+    try:
+        parsed = pd.to_datetime(value, errors="coerce")
+    except Exception:
+        return None
+    if isinstance(parsed, pd.Timestamp) and not pd.isna(parsed):
+        return parsed.to_pydatetime()
+    return None
+
+
 def sync_finance_breakfast(
     *,
     settings_path: Optional[str] = None,
@@ -429,25 +447,89 @@ def sync_finance_breakfast(
     else:
         logger.info("Finance breakfast feed returned no usable rows (fetched=%s)", fetched_rows)
 
-    if progress_callback:
-        progress_callback(0.65, "Updating detailed article content for finance breakfast entries", None)
+    new_entries_info: list[dict[str, object]] = []
+    if new_candidate_rows > 0:
+        for _, row in dataframe.iterrows():
+            title = row.get("title")
+            published_at = _coerce_datetime(row.get("published_at"))
+            if not title or published_at is None:
+                continue
+            new_entries_info.append(
+                {
+                    "title": title,
+                    "published_at": published_at,
+                    "url": row.get("url"),
+                }
+            )
 
-    content_updates = _refresh_missing_content(dao)
-    if content_updates:
-        logger.info("Updated %s finance breakfast articles with detailed content.", content_updates)
+    content_entries_map: dict[tuple[str, datetime], str] = {}
+    content_updates = 0
+    if new_entries_info:
+        if progress_callback:
+            progress_callback(
+                0.65,
+                f"Fetching detailed content for {len(new_entries_info)} finance breakfast entries",
+                len(new_entries_info),
+            )
+        content_entries_map, missing_for_content, content_updates = _refresh_content_for_entries(dao, new_entries_info)
+        if missing_for_content:
+            existing_contents = dao.fetch_contents(
+                [(entry["title"], entry["published_at"]) for entry in missing_for_content]
+            )
+            for key, value in existing_contents.items():
+                normalized = _normalize_text(value)
+                if normalized:
+                    content_entries_map[key] = normalized
+        if content_updates:
+            logger.info("Updated %s finance breakfast articles with detailed content.", content_updates)
+        remaining_without_content = [
+            entry
+            for entry in new_entries_info
+            if (entry["title"], entry["published_at"]) not in content_entries_map
+        ]
+        if remaining_without_content:
+            logger.warning(
+                "Content unavailable for %s finance breakfast entries: %s",
+                len(remaining_without_content),
+                [entry["title"] for entry in remaining_without_content],
+            )
+    else:
+        if progress_callback:
+            progress_callback(0.65, "No new finance breakfast entries requiring content update", 0)
 
     ai_updates = 0
-    if progress_callback:
-        progress_callback(0.8, "Generating AI analyses for finance breakfast entries", None)
+    ai_ready_entries = [
+        {"title": title, "published_at": published_at, "content": content}
+        for (title, published_at), content in content_entries_map.items()
+        if content
+    ]
     if settings.deepseek:
-        ai_updates = _refresh_missing_ai_extracts(
-            dao,
-            settings.deepseek,
-            prompt_template=AI_ANALYSIS_PROMPT_TEMPLATE,
-        )
-        if ai_updates:
-            logger.info("Generated AI extracts for %s finance breakfast articles.", ai_updates)
+        if progress_callback:
+            progress_callback(
+                0.8,
+                f"Generating AI analyses for {len(ai_ready_entries)} finance breakfast entries",
+                len(ai_ready_entries),
+            )
+        if ai_ready_entries:
+            ai_updates = _refresh_ai_for_entries(
+                dao,
+                settings.deepseek,
+                ai_ready_entries,
+                prompt_template=AI_ANALYSIS_PROMPT_TEMPLATE,
+            )
+            if ai_updates:
+                logger.info("Generated AI extracts for %s finance breakfast articles.", ai_updates)
+            if ai_updates < len(ai_ready_entries):
+                logger.info(
+                    "AI extracts generated for %s/%s finance breakfast entries; remaining entries will retry later.",
+                    ai_updates,
+                    len(ai_ready_entries),
+                )
+        else:
+            logger.info("Skipping AI extract generation: no new finance breakfast entries with content available.")
     else:
+        if progress_callback:
+            progress_callback(0.8, "DeepSeek configuration missing; skipping AI extract generation.", 0)
         logger.debug("DeepSeek configuration missing; skipping AI extract generation.")
 
     elapsed = time.perf_counter() - started
@@ -469,50 +551,54 @@ def sync_finance_breakfast(
     }
 
 
-def _refresh_missing_content(
+def _refresh_content_for_entries(
     dao: FinanceBreakfastDAO,
-    *,
-    batch_size: int = 10,
-    total_limit: int = 30,
-) -> int:
-    updated_total = 0
-    while True:
-        if updated_total >= total_limit:
-            break
-        remaining = total_limit - updated_total
-        current_limit = min(batch_size, remaining)
-        rows = dao.list_missing_content(limit=current_limit)
-        if not rows:
-            break
-        updates: list[tuple[str, datetime, str]] = []
-        for row in rows:
-            title = row.get("title")
-            published_at = row.get("published_at")
-            url = row.get("url")
-            if not title or not published_at or not url:
-                continue
-            try:
-                detail = fetch_eastmoney_detail(url)
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.warning("Failed to fetch Eastmoney detail for %s: %s", url, exc)
-                continue
-            content = _normalize_text(getattr(detail, "content", None))
-            if not content:
-                continue
-            updates.append((title, published_at, content))
+    entries: list[dict[str, object]],
+) -> tuple[dict[tuple[str, datetime], str], list[dict[str, object]], int]:
+    """
+    Fetch detailed article content for the provided entries and update the database.
 
-        if updates:
-            try:
-                dao.update_content(updates)
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.error("Failed to update finance breakfast content: %s", exc)
-            else:
-                updated_total += len(updates)
+    Returns:
+        content_map: Mapping of (title, published_at) to normalised article content.
+        missing_entries: Entries that still lack content after the fetch attempts.
+        updated_count: Number of database rows whose content field was updated.
+    """
+    if not entries:
+        return {}, [], 0
 
-        if len(rows) < current_limit or not updates:
-            break
+    content_map: dict[tuple[str, datetime], str] = {}
+    missing_entries: list[dict[str, object]] = []
+    updates: list[tuple[str, datetime, str]] = []
 
-    return updated_total
+    for entry in entries:
+        title = entry.get("title")
+        published_at = entry.get("published_at")
+        url = entry.get("url")
+        if not title or not published_at or not url:
+            missing_entries.append(entry)
+            continue
+        try:
+            detail = fetch_eastmoney_detail(str(url))
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to fetch Eastmoney detail for %s: %s", url, exc)
+            missing_entries.append(entry)
+            continue
+        content = _normalize_text(getattr(detail, "content", None))
+        if not content:
+            missing_entries.append(entry)
+            continue
+        updates.append((str(title), published_at, content))
+        content_map[(str(title), published_at)] = content
+
+    if updates:
+        try:
+            dao.update_content(updates)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Failed to update finance breakfast content: %s", exc)
+        else:
+            return content_map, missing_entries, len(updates)
+
+    return content_map, missing_entries, 0
 
 
 def _serialize_section(section: object, fallback: Optional[str]) -> Optional[str]:
@@ -579,57 +665,56 @@ def _extract_ai_sections(raw_ai: object) -> tuple[Optional[object], Optional[obj
     return summary_section, detail_section
 
 
-def _refresh_missing_ai_extracts(
+def _refresh_ai_for_entries(
     dao: FinanceBreakfastDAO,
     deepseek_settings,
+    entries: list[dict[str, object]],
     *,
-    batch_size: int = 5,
-    total_limit: int = 10,
     prompt_template: str,
 ) -> int:
-    updated_total = 0
-    while True:
-        if updated_total >= total_limit:
-            break
-        remaining = total_limit - updated_total
-        current_limit = min(batch_size, remaining)
-        rows = dao.list_missing_ai_extract(limit=current_limit)
-        if not rows:
-            break
-        updates: list[tuple[str, datetime, Optional[str], Optional[str], Optional[str]]] = []
-        for row in rows:
-            title = row.get("title")
-            published_at = row.get("published_at")
-            content = row.get("content")
-            if not title or not published_at or not content:
-                continue
+    if not entries:
+        return 0
+
+    updates: list[tuple[str, datetime, Optional[str], Optional[str], Optional[str]]] = []
+
+    for entry in entries:
+        title = entry.get("title")
+        published_at = entry.get("published_at")
+        content = entry.get("content")
+        if not title or not published_at or not content:
+            continue
+
+        try:
             analysis_text = generate_finance_analysis(
-                content,
+                str(content),
                 settings=deepseek_settings,
                 prompt_template=prompt_template,
             )
-            if not analysis_text:
-                continue
+        except Exception as exc:  # pragma: no cover - external call
+            logger.warning("DeepSeek analysis failed for %s: %s", title, exc)
+            continue
 
-            raw_payload = analysis_text if isinstance(analysis_text, str) else json.dumps(analysis_text, ensure_ascii=False)
-            summary_section, detail_section = _extract_ai_sections(analysis_text)
-            summary_payload = _serialize_section(summary_section, raw_payload)
-            detail_payload = _serialize_section(detail_section, raw_payload)
+        if not analysis_text:
+            logger.info("DeepSeek returned no analysis for finance breakfast entry %s", title)
+            continue
 
-            updates.append((title, published_at, raw_payload, summary_payload, detail_payload))
+        raw_payload = analysis_text if isinstance(analysis_text, str) else json.dumps(analysis_text, ensure_ascii=False)
+        summary_section, detail_section = _extract_ai_sections(analysis_text)
+        summary_payload = _serialize_section(summary_section, raw_payload)
+        detail_payload = _serialize_section(detail_section, raw_payload)
 
-        if updates:
-            try:
-                dao.update_ai_extract(updates)
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.error("Failed to update finance breakfast AI extracts: %s", exc)
-            else:
-                updated_total += len(updates)
+        updates.append((str(title), published_at, raw_payload, summary_payload, detail_payload))
 
-        if len(rows) < current_limit or not updates:
-            break
+    if not updates:
+        return 0
 
-    return updated_total
+    try:
+        dao.update_ai_extract(updates)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to update finance breakfast AI extracts: %s", exc)
+        return 0
+
+    return len(updates)
 
 def list_finance_breakfast(
     *,
@@ -667,5 +752,6 @@ def list_finance_breakfast(
 
 
 __all__ = ["AI_ANALYSIS_PROMPT_TEMPLATE", "list_finance_breakfast", "sync_finance_breakfast"]
+
 
 

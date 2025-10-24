@@ -234,6 +234,29 @@ class FinanceBreakfastDAO(PostgresDAOBase):
                 execute_values(cur, update_sql.as_string(conn), entries)
         return len(entries)
 
+    def fetch_contents(self, keys: Sequence[tuple[str, datetime]]) -> dict[tuple[str, datetime], Optional[str]]:
+        if not keys:
+            return {}
+
+        unique_keys = list(dict.fromkeys(keys))
+        if not unique_keys:
+            return {}
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                query = sql.SQL(
+                    "SELECT title, published_at, content FROM {schema}.{table} "
+                    "WHERE (title, published_at) IN (VALUES %s)"
+                ).format(
+                    schema=sql.Identifier(self.config.schema),
+                    table=sql.Identifier(self._table_name),
+                )
+                execute_values(cur, query.as_string(conn), unique_keys)
+                rows = cur.fetchall()
+
+        return {(title, published_at): content for title, published_at, content in rows}
+
     def list_missing_ai_extract(self, *, limit: int | None = 30) -> list[dict[str, object]]:
         with self.connect() as conn:
             self.ensure_table(conn)
