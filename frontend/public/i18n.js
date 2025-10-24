@@ -9,6 +9,7 @@
         navNews: "Market News",
         navSignals: "Technical Signals",
         navPortfolio: "Portfolio Monitor",
+        navSettings: "Settings",
         navControl: "Control Panel",
         navNewsGroup: "News",
         navDailyFinance: "Daily Finance"
@@ -21,6 +22,7 @@
         navNews: "市场资讯",
         navSignals: "技术信号",
         navPortfolio: "组合监控",
+        navSettings: "设置",
         navControl: "控制面板",
         navNewsGroup: "资讯",
         navDailyFinance: "每日财经"

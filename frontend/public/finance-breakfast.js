@@ -787,10 +787,17 @@ function createAiEventItem(event, dict) {
   title.textContent = event.title || event.summary || dict.aiImpactDetails;
   header.appendChild(title);
 
-  if (event.direction) {
+  const directionText = cleanText(event.direction);
+  if (directionText) {
     const directionChip = document.createElement("span");
     directionChip.className = "news-card__ai-chip";
-    directionChip.textContent = `${dict.aiImpactDirection}: ${event.direction}`;
+    const normalizedDirection = directionText.toLowerCase();
+    if (normalizedDirection === "positive" || directionText === "正面") {
+      directionChip.classList.add("news-card__ai-chip--positive");
+    } else if (normalizedDirection === "negative" || directionText === "负面") {
+      directionChip.classList.add("news-card__ai-chip--negative");
+    }
+    directionChip.textContent = `${dict.aiImpactDirection}: ${directionText}`;
     header.appendChild(directionChip);
   }
 
@@ -820,7 +827,7 @@ function createAiEventItem(event, dict) {
   const metaEntries = [
     event.scope ? { label: dict.aiImpactScope, value: event.scope } : null,
     event.targets.length
-      ? { label: dict.aiImpactTargets, value: event.targets.join("、") }
+      ? { label: dict.aiImpactTargets, value: joinLocalizedList(event.targets) }
       : null,
     event.duration ? { label: dict.aiImpactDuration, value: event.duration } : null,
     event.details ? { label: dict.aiImpactDetails, value: event.details } : null,
@@ -881,7 +888,7 @@ function buildAiSection(summaryRaw, detailRaw, legacyRaw, dict) {
   const section = document.createElement("section");
   section.className = "news-card__ai";
 
-  const heading = document.createElement("h3");
+  const heading = document.createElement("h2");
   heading.className = "news-card__ai-heading";
   heading.textContent = dict.aiInsightsTitle;
   section.appendChild(heading);
@@ -905,7 +912,7 @@ function buildAiSection(summaryRaw, detailRaw, legacyRaw, dict) {
     fallbackSummaryCandidates.find((text) => typeof text === "string" && text.trim()) || "";
 
   if (summarySegments.length || fallbackSummaryText) {
-    const summaryHeading = document.createElement("h4");
+    const summaryHeading = document.createElement("h3");
     summaryHeading.className = "news-card__ai-subheading";
     summaryHeading.textContent = dict.aiSummaryHeading;
     section.appendChild(summaryHeading);
@@ -927,7 +934,7 @@ function buildAiSection(summaryRaw, detailRaw, legacyRaw, dict) {
   }
 
   if (analysis.events.length) {
-    const eventsHeading = document.createElement("h4");
+    const eventsHeading = document.createElement("h3");
     eventsHeading.className = "news-card__ai-subheading";
     eventsHeading.textContent = dict.aiEventsHeading;
     section.appendChild(eventsHeading);
@@ -967,7 +974,7 @@ function renderEntries(entries) {
     const card = document.createElement("article");
     card.className = "card news-card";
 
-    const titleLine = document.createElement("h2");
+    const titleLine = document.createElement("h1");
     titleLine.className = "news-card__title";
     if (entry.url) {
       const anchor = document.createElement("a");
