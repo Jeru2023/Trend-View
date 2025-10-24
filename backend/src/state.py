@@ -38,6 +38,7 @@ class SyncMonitor:
         self._jobs: Dict[str, JobProgress] = {
             "stock_basic": JobProgress(),
             "daily_trade": JobProgress(),
+            "daily_trade_metrics": JobProgress(),
             "daily_indicator": JobProgress(),
             "income_statement": JobProgress(),
             "financial_indicator": JobProgress(),

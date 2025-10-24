@@ -1,4 +1,4 @@
-## Session Boot Rules
+﻿## Session Boot Rules
 Always run chcp 65001 in PowerShell as the first command so the console uses UTF-8. Apply UTF-8 encoding for all file and console read/write/print operations.
 Immediately set [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 and export PYTHONIOENCODING=utf-8 (plus similar flags for other runtimes) so downstream tools avoid mojibake.
 
@@ -37,6 +37,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-26 (FEATURE backend-009): Split finance breakfast AI extracts into dedicated summary/detail columns and aligned service/DAO/frontend parsing with the new schema.
 - 2025-10-26 (FIX backend-009a): Prevent finance breakfast sync from overwriting existing article content when upstream data omits the field.
 - 2025-10-26 (FEATURE backend-010): Made finance breakfast sync incremental by publication date and chained post-sync jobs to backfill article content via Eastmoney crawler and DeepSeek AI summaries/details.
+- 2025-10-26 (FEATURE frontend-005): Centralised sidebar markup/script, introduced Configuration Center page, and ensured navigation stays consistent across app pages.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.
@@ -50,6 +51,11 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-21: Downgraded the trend Conda environment to Python 3.10.18 to match the pinned dependency wheel availability and reinstalled packages from `requirements.txt`.
 - 2025-10-21: Reinstalled `pydantic==1.10.15`, added `numpy==1.23.5` for compatibility with pinned pandas, and added `greenlet==3.2.4` to satisfy SQLAlchemy runtime requirements.
 - 2025-10-24: Installed `akshare==1.11.98` to ingest Eastmoney finance breakfast summaries.
+
+
+
+
+
 
 
 

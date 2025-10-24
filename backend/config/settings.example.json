@@ -18,6 +18,7 @@
         "schema": "public",
         "stock_table": "stock_basic",
         "daily_indicator_table": "daily_indicator",
+        "daily_trade_metrics_table": "daily_trade_metrics",
         "income_statement_table": "income_statements",
         "financial_indicator_table": "financial_indicators",
         "finance_breakfast_table": "finance_breakfast",

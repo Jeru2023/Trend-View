@@ -4,7 +4,7 @@ Data access object for daily trade prices.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, Optional, Sequence
 
@@ -165,6 +165,59 @@ class DailyTradeDAO(PostgresDAOBase):
                 "volume": float(vol) if vol is not None else None,
             }
         return metrics
+
+    def fetch_close_prices(
+        self,
+        *,
+        start_date: date | datetime | str | None = None,
+        end_date: date | datetime | str | None = None,
+    ) -> pd.DataFrame:
+        """
+        Load close price history within the given date range.
+        """
+        def _normalize(value: date | datetime | str | None) -> Optional[date]:
+            if value is None:
+                return None
+            if isinstance(value, datetime):
+                return value.date()
+            if isinstance(value, date):
+                return value
+            text = str(value).strip()
+            if not text:
+                return None
+            return datetime.strptime(text, DATE_FORMAT).date()
+
+        start = _normalize(start_date)
+        end = _normalize(end_date)
+
+        clauses: list[str] = []
+        params: list[object] = []
+        if start:
+            clauses.append("trade_date >= %s")
+            params.append(start)
+        if end:
+            clauses.append("trade_date <= %s")
+            params.append(end)
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            base_sql = sql.SQL(
+                "SELECT ts_code, trade_date, close "
+                "FROM {schema}.{table}"
+            ).format(
+                schema=sql.Identifier(self.config.schema),
+                table=sql.Identifier(self._table_name),
+            ).as_string(conn)
+
+            where_clause = ""
+            if clauses:
+                where_clause = " WHERE " + " AND ".join(clauses)
+
+            query = f"{base_sql}{where_clause} ORDER BY ts_code, trade_date"
+            frame = pd.read_sql_query(query, conn, params=params)
+
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce")
+        return frame
 
 
 __all__ = [

@@ -39,6 +39,11 @@ function persistLanguage(lang) {
 
 let currentLang = getInitialLanguage();
 let pollTimer = null;
+let configState = {
+  includeST: false,
+  includeDelisted: false,
+  dailyTradeWindowDays: 420,
+};
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
@@ -60,6 +65,15 @@ const elements = {
     progress: document.getElementById("daily-trade-progress"),
     button: document.getElementById("run-daily-trade"),
   },
+  dailyTradeMetrics: {
+    status: document.getElementById("daily-trade-metrics-status"),
+    updated: document.getElementById("daily-trade-metrics-updated"),
+    duration: document.getElementById("daily-trade-metrics-duration"),
+    rows: document.getElementById("daily-trade-metrics-rows"),
+    message: document.getElementById("daily-trade-metrics-message"),
+    progress: document.getElementById("daily-trade-metrics-progress"),
+    button: document.getElementById("run-daily-trade-metrics"),
+  },
   dailyIndicator: {
     status: document.getElementById("daily-indicator-status"),
     updated: document.getElementById("daily-indicator-updated"),
@@ -69,43 +83,37 @@ const elements = {
     progress: document.getElementById("daily-indicator-progress"),
     button: document.getElementById("run-daily-indicator"),
   },
-    incomeStatement: {
-      status: document.getElementById("income-statement-status"),
-      updated: document.getElementById("income-statement-updated"),
-      duration: document.getElementById("income-statement-duration"),
-      rows: document.getElementById("income-statement-rows"),
-      message: document.getElementById("income-statement-message"),
-      progress: document.getElementById("income-statement-progress"),
-      button: document.getElementById("run-income-statement"),
-    },
-    financialIndicator: {
-      status: document.getElementById("financial-indicator-status"),
-      updated: document.getElementById("financial-indicator-updated"),
-      duration: document.getElementById("financial-indicator-duration"),
-      rows: document.getElementById("financial-indicator-rows"),
-      message: document.getElementById("financial-indicator-message"),
-      progress: document.getElementById("financial-indicator-progress"),
-      button: document.getElementById("run-financial-indicator"),
-    },
-    financeBreakfast: {
-      status: document.getElementById("finance-breakfast-status"),
-      updated: document.getElementById("finance-breakfast-updated"),
-      duration: document.getElementById("finance-breakfast-duration"),
-      rows: document.getElementById("finance-breakfast-rows"),
-      message: document.getElementById("finance-breakfast-message"),
-      progress: document.getElementById("finance-breakfast-progress"),
-      button: document.getElementById("run-finance-breakfast"),
-    },
-  config: {
-    includeSt: document.getElementById("config-include-st"),
-    includeDelisted: document.getElementById("config-include-delisted"),
-    window: document.getElementById("config-window"),
-    save: document.getElementById("save-config"),
+  incomeStatement: {
+    status: document.getElementById("income-statement-status"),
+    updated: document.getElementById("income-statement-updated"),
+    duration: document.getElementById("income-statement-duration"),
+    rows: document.getElementById("income-statement-rows"),
+    message: document.getElementById("income-statement-message"),
+    progress: document.getElementById("income-statement-progress"),
+    button: document.getElementById("run-income-statement"),
+  },
+  financialIndicator: {
+    status: document.getElementById("financial-indicator-status"),
+    updated: document.getElementById("financial-indicator-updated"),
+    duration: document.getElementById("financial-indicator-duration"),
+    rows: document.getElementById("financial-indicator-rows"),
+    message: document.getElementById("financial-indicator-message"),
+    progress: document.getElementById("financial-indicator-progress"),
+    button: document.getElementById("run-financial-indicator"),
+  },
+  financeBreakfast: {
+    status: document.getElementById("finance-breakfast-status"),
+    updated: document.getElementById("finance-breakfast-updated"),
+    duration: document.getElementById("finance-breakfast-duration"),
+    rows: document.getElementById("finance-breakfast-rows"),
+    message: document.getElementById("finance-breakfast-message"),
+    progress: document.getElementById("finance-breakfast-progress"),
+    button: document.getElementById("run-finance-breakfast"),
   },
 };
 
 function formatDateTime(value) {
-  if (!value) return "—";
+  if (!value) return "--";
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   try {
     return new Date(value).toLocaleString(locale);
@@ -115,7 +123,7 @@ function formatDateTime(value) {
 }
 
 function formatTradeDate(value) {
-  if (!value) return "—";
+  if (!value) return "--";
   const str = String(value).trim();
   if (/^\d{8}$/.test(str)) {
     return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
@@ -124,17 +132,17 @@ function formatTradeDate(value) {
 }
 
 function formatNumber(value) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "--";
   const num = Number(value);
-  if (!Number.isFinite(num)) return "—";
+  if (!Number.isFinite(num)) return "--";
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale).format(num);
 }
 
 function formatDuration(seconds) {
-  if (seconds === null || seconds === undefined) return "—";
+  if (seconds === null || seconds === undefined) return "--";
   const value = Number(seconds);
-  if (!Number.isFinite(value)) return "—";
+  if (!Number.isFinite(value)) return "--";
   if (value < 1) return `${(value * 1000).toFixed(0)} ms`;
   const mins = Math.floor(value / 60);
   const secs = value % 60;
@@ -227,6 +235,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const metricsSnapshot = jobs.daily_trade_metrics || {
+      status: "idle",
+      progress: 0,
+    };
     const indicatorSnapshot = jobs.daily_indicator || {
       status: "idle",
       progress: 0,
@@ -246,20 +258,26 @@ async function loadStatus() {
 
     updateJobCard(elements.stockBasic, stockSnapshot);
     updateJobCard(elements.dailyTrade, dailySnapshot);
+    updateJobCard(elements.dailyTradeMetrics, metricsSnapshot);
     updateJobCard(elements.dailyIndicator, indicatorSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.financeBreakfast, breakfastSnapshot);
 
     if (data.config) {
-      elements.config.includeSt.checked = !!data.config.includeST;
-      elements.config.includeDelisted.checked = !!data.config.includeDelisted;
-      elements.config.window.value = data.config.dailyTradeWindowDays ?? 420;
+      configState.includeST = !!data.config.includeST;
+      configState.includeDelisted = !!data.config.includeDelisted;
+      const windowDays = Number(data.config.dailyTradeWindowDays);
+      if (Number.isFinite(windowDays) && windowDays > 0) {
+        configState.dailyTradeWindowDays = windowDays;
+      }
     }
+
 
     const shouldPoll = [
       stockSnapshot,
       dailySnapshot,
+      metricsSnapshot,
       indicatorSnapshot,
       incomeSnapshot,
       financialSnapshot,
@@ -292,24 +310,8 @@ async function triggerJob(endpoint, payload) {
   }
 }
 
-async function saveConfig() {
-  const payload = {
-    includeST: elements.config.includeSt.checked,
-    includeDelisted: elements.config.includeDelisted.checked,
-    dailyTradeWindowDays: Number(elements.config.window.value) || 420,
-  };
-  try {
-    await fetch(`${API_BASE}/control/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    alert(translations[currentLang].toastConfigSaved);
-    loadStatus();
-  } catch (error) {
-    console.error("Failed to save config", error);
-  }
-}
+
+window.applyTranslations = applyTranslations;
 
 function initLanguageSwitch() {
   elements.langButtons.forEach((btn) =>
@@ -323,8 +325,11 @@ function initActions() {
   );
   elements.dailyTrade.button.addEventListener("click", () =>
     triggerJob("/control/sync/daily-trade", {
-      window_days: Number(elements.config.window.value) || undefined,
+      window_days: configState.dailyTradeWindowDays || undefined,
     })
+  );
+  elements.dailyTradeMetrics.button.addEventListener("click", () =>
+    triggerJob("/control/sync/daily-trade-metrics", {})
   );
   elements.dailyIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/daily-indicators", {})
@@ -338,7 +343,6 @@ function initActions() {
   elements.financeBreakfast.button.addEventListener("click", () =>
     triggerJob("/control/sync/finance-breakfast", {})
   );
-  elements.config.save.addEventListener("click", saveConfig);
 }
 
 // Boot
@@ -346,6 +350,16 @@ initLanguageSwitch();
 initActions();
 setLang(currentLang);
 loadStatus();
+
+
+
+
+
+
+
+
+
+
 
 
 

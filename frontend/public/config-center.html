@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="configTitle">Trend View - Configuration Center</title>
+    <link rel="stylesheet" href="styles.css?v=20251027" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="config-center">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <h1 class="page-heading" data-i18n="configPageTitle">Configuration Center</h1>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <header class="page__header control-header">
+            <div class="page__title">
+              <h2 data-i18n="configSectionTitle">Configuration</h2>
+              <p data-i18n="configPageSubtitle">
+                Adjust platform-wide filters and automation defaults.
+              </p>
+            </div>
+          </header>
+
+          <div class="config-grid">
+            <label class="switch">
+              <input type="checkbox" id="config-include-st" />
+              <span>
+                <strong data-i18n="includeStLabel">Include ST stocks in queries</strong>
+                <small data-i18n="includeStHint">When enabled, ST/*ST securities appear in list results.</small>
+              </span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="config-include-delisted" />
+              <span>
+                <strong data-i18n="includeDelistedLabel">Include delisted stocks</strong>
+                <small data-i18n="includeDelistedHint">When disabled, delisted/paused securities are hidden.</small>
+              </span>
+            </label>
+            <div class="config-field">
+              <label for="config-window" data-i18n="windowLabel">Daily trade window (days)</label>
+              <input type="number" id="config-window" min="1" max="3650" value="420" />
+              <small data-i18n="windowHint">Used by scheduled and manual daily trade updates.</small>
+            </div>
+          </div>
+
+          <div class="config-actions">
+            <button class="primary-btn" id="save-config" data-i18n="saveSettings">
+              Save Settings
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20251024"></script>
+    <script src="sidebar.js?v=20251027"></script>
+    <script src="config-center.js?v=20251027"></script>
+  </body>
+</html>
+

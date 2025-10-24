@@ -15,12 +15,14 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from zoneinfo import ZoneInfo
 
 from .config.runtime_config import RuntimeConfig, load_runtime_config, save_runtime_config
 from .config.settings import load_settings
 from .dao import (
     DailyIndicatorDAO,
     DailyTradeDAO,
+    DailyTradeMetricsDAO,
     FinancialIndicatorDAO,
     FinanceBreakfastDAO,
     IncomeStatementDAO,
@@ -34,11 +36,12 @@ from .services import (
     sync_finance_breakfast,
     sync_income_statements,
     sync_daily_trade,
+    sync_daily_trade_metrics,
     sync_stock_basic,
 )
 from .state import monitor
 
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Shanghai"))
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +59,15 @@ class StockItem(BaseModel):
     market_cap: Optional[float] = Field(None, alias="marketCap")
     pe_ratio: Optional[float] = Field(None, alias="peRatio")
     turnover_rate: Optional[float] = Field(None, alias="turnoverRate")
+    pct_change_1y: Optional[float] = Field(None, alias="pctChange1Y")
+    pct_change_6m: Optional[float] = Field(None, alias="pctChange6M")
+    pct_change_3m: Optional[float] = Field(None, alias="pctChange3M")
+    pct_change_1m: Optional[float] = Field(None, alias="pctChange1M")
+    pct_change_2w: Optional[float] = Field(None, alias="pctChange2W")
+    pct_change_1w: Optional[float] = Field(None, alias="pctChange1W")
+    ma_20: Optional[float] = Field(None, alias="ma20")
+    ma_10: Optional[float] = Field(None, alias="ma10")
+    ma_5: Optional[float] = Field(None, alias="ma5")
 
     class Config:
         allow_population_by_field_name = True
@@ -78,6 +90,28 @@ class SyncDailyTradeRequest(BaseModel):
 class SyncDailyTradeResponse(BaseModel):
     rows: int
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+
+class SyncDailyTradeMetricsRequest(BaseModel):
+    history_window_days: Optional[int] = Field(
+        None,
+        alias="historyWindowDays",
+        ge=180,
+        le=3650,
+        description="How many calendar days of history to load for derived metrics.",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncDailyTradeMetricsResponse(BaseModel):
+    rows: int
+    trade_date: Optional[str] = Field(None, alias="tradeDate")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class SyncStockBasicRequest(BaseModel):
@@ -328,6 +362,80 @@ async def _run_daily_trade_job(request: SyncDailyTradeRequest) -> None:
             raise
 
     monitor.update("daily_trade", last_market=f"WINDOW:{window_days}")
+    await loop.run_in_executor(None, job)
+
+
+async def _run_daily_trade_metrics_job(request: SyncDailyTradeMetricsRequest) -> None:
+    loop = asyncio.get_running_loop()
+    history_window_days = request.history_window_days
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "daily_trade_metrics",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        try:
+            kwargs: Dict[str, object] = {"progress_callback": progress_callback}
+            if history_window_days is not None:
+                kwargs["history_window_days"] = history_window_days
+            result = sync_daily_trade_metrics(**kwargs)
+            stats: Dict[str, object] = {}
+            try:
+                stats = DailyTradeMetricsDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh daily_trade_metrics stats: %s", stats_exc)
+            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
+            trade_date_value = stats.get("latest_trade_date") if isinstance(stats, dict) else None
+            if not trade_date_value:
+                trade_date_value = result.get("trade_date")
+                if isinstance(trade_date_value, str):
+                    try:
+                        trade_date_value = datetime.strptime(trade_date_value, "%Y%m%d").date()
+                    except (ValueError, TypeError):
+                        pass
+            trade_date_str: Optional[str] = None
+            if trade_date_value:
+                if hasattr(trade_date_value, "strftime"):
+                    trade_date_str = trade_date_value.strftime("%Y-%m-%d")
+                else:
+                    trade_date_str = str(trade_date_value)
+            if trade_date_str:
+                monitor.update("daily_trade_metrics", last_market=trade_date_str)
+
+            message = "Daily trade metrics sync completed"
+            if trade_date_str:
+                message = f"Metrics ready for {trade_date_str}"
+            if history_window_days:
+                message = f"{message} (history {history_window_days}d)"
+            monitor.finish(
+                "daily_trade_metrics",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message,
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "daily_trade_metrics",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    label = history_window_days if history_window_days is not None else "AUTO"
+    monitor.update("daily_trade_metrics", last_market=f"HISTORY:{label}")
     await loop.run_in_executor(None, job)
 
 
@@ -586,6 +694,14 @@ async def start_daily_trade_job(payload: SyncDailyTradeRequest) -> None:
     asyncio.create_task(_run_daily_trade_job(payload))
 
 
+async def start_daily_trade_metrics_job(payload: SyncDailyTradeMetricsRequest) -> None:
+    if _job_running("daily_trade_metrics"):
+        raise HTTPException(status_code=409, detail="Daily trade metrics sync already running")
+    monitor.start("daily_trade_metrics", message="Generating daily trade derived metrics")
+    monitor.update("daily_trade_metrics", progress=0.0)
+    asyncio.create_task(_run_daily_trade_metrics_job(payload))
+
+
 async def start_daily_indicator_job(payload: SyncDailyIndicatorRequest) -> None:
     if _job_running("daily_indicator"):
         raise HTTPException(status_code=409, detail="Daily indicator sync already running")
@@ -630,6 +746,13 @@ async def safe_start_daily_trade_job(payload: SyncDailyTradeRequest) -> None:
         await start_daily_trade_job(payload)
     except HTTPException as exc:
         logger.info("Daily trade sync skipped: %s", exc.detail)
+
+
+async def safe_start_daily_trade_metrics_job(payload: SyncDailyTradeMetricsRequest) -> None:
+    try:
+        await start_daily_trade_metrics_job(payload)
+    except HTTPException as exc:
+        logger.info("Daily trade metrics sync skipped: %s", exc.detail)
 
 
 async def safe_start_daily_indicator_job(payload: SyncDailyIndicatorRequest) -> None:
@@ -706,6 +829,14 @@ async def startup_event() -> None:
         )
         scheduler.add_job(
             lambda: asyncio.get_running_loop().create_task(
+                safe_start_daily_trade_metrics_job(SyncDailyTradeMetricsRequest())
+            ),
+            CronTrigger(hour=19, minute=0),
+            id="daily_trade_metrics_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
                 safe_start_finance_breakfast_job(SyncFinanceBreakfastRequest())
             ),
             CronTrigger(hour=7, minute=0),
@@ -757,6 +888,15 @@ def list_stocks(
             marketCap=item.get("market_cap"),
             peRatio=item.get("pe_ratio"),
             turnoverRate=item.get("turnover_rate"),
+            pctChange1Y=item.get("pct_change_1y"),
+            pctChange6M=item.get("pct_change_6m"),
+            pctChange3M=item.get("pct_change_3m"),
+            pctChange1M=item.get("pct_change_1m"),
+            pctChange2W=item.get("pct_change_2w"),
+            pctChange1W=item.get("pct_change_1w"),
+            ma20=item.get("ma_20"),
+            ma10=item.get("ma_10"),
+            ma5=item.get("ma_5"),
         )
         for item in result["items"]
     ]
@@ -815,6 +955,11 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect daily_indicator stats: %s", exc)
         stats_map["daily_indicator"] = {}
+    try:
+        stats_map["daily_trade_metrics"] = DailyTradeMetricsDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect daily_trade_metrics stats: %s", exc)
+        stats_map["daily_trade_metrics"] = {}
     try:
         stats_map["income_statement"] = IncomeStatementDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -891,6 +1036,12 @@ async def control_sync_daily_trade(payload: SyncDailyTradeRequest) -> dict[str, 
     return {"status": "started"}
 
 
+@app.post("/control/sync/daily-trade-metrics")
+async def control_sync_daily_trade_metrics(payload: SyncDailyTradeMetricsRequest) -> dict[str, str]:
+    await start_daily_trade_metrics_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/daily-indicators")
 async def control_sync_daily_indicators(payload: SyncDailyIndicatorRequest) -> dict[str, str]:
     await start_daily_indicator_job(payload)
@@ -923,6 +1074,7 @@ def control_debug_stats() -> dict[str, object]:
             "stock_basic": StockBasicDAO(settings.postgres).stats(),
             "daily_trade": DailyTradeDAO(settings.postgres).stats(),
             "daily_indicator": DailyIndicatorDAO(settings.postgres).stats(),
+            "daily_trade_metrics": DailyTradeMetricsDAO(settings.postgres).stats(),
             "income_statement": IncomeStatementDAO(settings.postgres).stats(),
             "financial_indicator": FinancialIndicatorDAO(settings.postgres).stats(),
             "finance_breakfast": FinanceBreakfastDAO(settings.postgres).stats(),
@@ -954,6 +1106,19 @@ def trigger_daily_trade_sync(payload: SyncDailyTradeRequest) -> SyncDailyTradeRe
     )
     return SyncDailyTradeResponse(
         rows=result["rows"],
+        elapsedSeconds=result["elapsed_seconds"],
+    )
+
+
+@app.post("/sync/daily-trade-metrics", response_model=SyncDailyTradeMetricsResponse)
+def trigger_daily_trade_metrics_sync(payload: SyncDailyTradeMetricsRequest) -> SyncDailyTradeMetricsResponse:
+    kwargs: Dict[str, object] = {}
+    if payload.history_window_days is not None:
+        kwargs["history_window_days"] = payload.history_window_days
+    result = sync_daily_trade_metrics(**kwargs)
+    return SyncDailyTradeMetricsResponse(
+        rows=result["rows"],
+        tradeDate=result.get("trade_date"),
         elapsedSeconds=result["elapsed_seconds"],
     )
 

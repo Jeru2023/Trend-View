@@ -1,4 +1,4 @@
-const translations = getTranslations("basicInfo");
+﻿const translations = getTranslations("basicInfo");
 const API_BASE =
   window.API_BASE_URL ||
   (window.location.hostname === "localhost"
@@ -13,17 +13,17 @@ const exchangeLabels = {
 
 const marketLabels = {
   en: {
-    "主板": "Main Board",
-    "创业板": "ChiNext",
-    "科创板": "STAR Market",
+    主板: "Main Board",
+    创业板: "ChiNext",
+    科创板: "STAR Market",
     "Main Board": "Main Board",
     "ChiNext": "ChiNext",
     "STAR Market": "STAR Market",
   },
   zh: {
-    "主板": "主板",
-    "创业板": "创业板",
-    "科创板": "科创板",
+    主板: "主板",
+    创业板: "创业板",
+    科创板: "科创板",
     "Main Board": "主板",
     "ChiNext": "创业板",
     "STAR Market": "科创板",
@@ -76,10 +76,11 @@ const state = {
 
 const elements = {
   fundamentalsBody: document.getElementById("fundamentals-body"),
+  statisticsBody: document.getElementById("statistics-body"),
   tabs: document.querySelectorAll(".tab"),
   tables: {
     fundamentals: document.getElementById("fundamentals-table"),
-    statistics: document.getElementById("statistics-placeholder"),
+    statistics: document.getElementById("statistics-table"),
   },
   langButtons: document.querySelectorAll(".lang-btn"),
   searchBox: document.querySelector(".search-box"),
@@ -93,6 +94,8 @@ const elements = {
   pageInfo: document.getElementById("page-info"),
 };
 
+const EMPTY_VALUE = "--";
+
 function formatNumber(value) {
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(
@@ -102,7 +105,7 @@ function formatNumber(value) {
 
 function formatOptionalNumber(value, options = {}) {
   if (value === null || value === undefined) {
-    return "—";
+    return EMPTY_VALUE;
   }
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale, options).format(value);
@@ -133,59 +136,71 @@ function applyTranslations() {
     });
 }
 
-function formatChange(value) {
+function formatPercent(value, { fromRatio = false } = {}) {
   if (value === null || value === undefined) {
-    return "—";
+    return EMPTY_VALUE;
   }
-  const formatted = value.toFixed(2);
-  return `${value >= 0 ? "+" : ""}${formatted}%`;
+  const percentValue = fromRatio ? value * 100 : value;
+  const formatted = percentValue.toFixed(2);
+  return `${percentValue >= 0 ? "+" : ""}${formatted}%`;
+}
+
+function getTrendClass(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return value >= 0 ? "text-up" : "text-down";
+}
+
+function appendEmptyRow(body, colSpan) {
+  if (!body) {
+    return;
+  }
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = colSpan;
+  cell.textContent = translations[currentLang].noData;
+  cell.style.textAlign = "center";
+  cell.style.color = "#6b7280";
+  row.appendChild(cell);
+  body.appendChild(row);
 }
 
 function renderTable(data = state.items) {
   elements.fundamentalsBody.innerHTML = "";
+  if (elements.statisticsBody) {
+    elements.statisticsBody.innerHTML = "";
+  }
+
   if (!data.length) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = 11;
-    cell.textContent = translations[currentLang].noData;
-    cell.style.textAlign = "center";
-    cell.style.color = "#6b7280";
-    row.appendChild(cell);
-    elements.fundamentalsBody.appendChild(row);
+    appendEmptyRow(elements.fundamentalsBody, 11);
+    if (elements.statisticsBody) {
+      appendEmptyRow(elements.statisticsBody, 11);
+    }
     return;
   }
 
+  const marketMap = marketLabels[currentLang] || {};
+  const exchangeMap = exchangeLabels[currentLang] || {};
+
   data.forEach((item) => {
-    const marketMap = marketLabels[currentLang] || {};
-    const exchangeMap = exchangeLabels[currentLang] || {};
-    const marketLabel = item.market ? marketMap[item.market] ?? item.market : "—";
-    const exchangeLabel = item.exchange ? exchangeMap[item.exchange] ?? item.exchange : "—";
-    const changeClass =
-      item.pct_change == null
-        ? ""
-        : item.pct_change >= 0
-        ? "text-up"
-        : "text-down";
+    const marketLabel = item.market ? marketMap[item.market] ?? item.market : EMPTY_VALUE;
+    const exchangeLabel = item.exchange ? exchangeMap[item.exchange] ?? item.exchange : EMPTY_VALUE;
+    const changeClass = getTrendClass(item.pct_change);
     const lastPrice = formatOptionalNumber(item.last_price, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-    const changeDisplay = formatChange(item.pct_change);
-    const volumeDisplay =
-      item.volume == null
-        ? "—"
-        : formatOptionalNumber(item.volume, { maximumFractionDigits: 0 });
-    const marketCapDisplay =
-      item.market_cap == null
-        ? "—"
-        : formatOptionalNumber(item.market_cap, { maximumFractionDigits: 0 });
+    const changeDisplay = formatPercent(item.pct_change);
+    const volumeDisplay = formatOptionalNumber(item.volume, { maximumFractionDigits: 0 });
+    const marketCapDisplay = formatOptionalNumber(item.market_cap, { maximumFractionDigits: 0 });
     const peDisplay = formatOptionalNumber(item.pe_ratio, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
     const turnoverDisplay =
       item.turnover_rate == null
-        ? "—"
+        ? EMPTY_VALUE
         : `${formatOptionalNumber(item.turnover_rate, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
@@ -194,8 +209,8 @@ function renderTable(data = state.items) {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${item.code}</td>
-      <td>${item.name ?? "—"}</td>
-      <td>${item.industry ?? "—"}</td>
+      <td>${item.name ?? EMPTY_VALUE}</td>
+      <td>${item.industry ?? EMPTY_VALUE}</td>
       <td>${marketLabel}</td>
       <td>${exchangeLabel}</td>
       <td>${lastPrice}</td>
@@ -208,6 +223,40 @@ function renderTable(data = state.items) {
       <td>${turnoverDisplay}</td>
     `;
     elements.fundamentalsBody.appendChild(row);
+
+    if (elements.statisticsBody) {
+      const statsValues = [
+        { value: item.pct_change_1y },
+        { value: item.pct_change_6m },
+        { value: item.pct_change_3m },
+        { value: item.pct_change_1m },
+        { value: item.pct_change_2w },
+        { value: item.pct_change_1w },
+      ];
+      const maValues = [item.ma_20, item.ma_10, item.ma_5];
+
+      const statsRow = document.createElement("tr");
+      statsRow.innerHTML = `
+        <td>${item.code}</td>
+        <td>${item.name ?? EMPTY_VALUE}</td>
+        ${statsValues
+          .map((entry) => {
+            const display = formatPercent(entry.value, { fromRatio: true });
+            const trendClass = getTrendClass(entry.value);
+            return `<td class="${trendClass}">${display}</td>`;
+          })
+          .join("")}
+        ${maValues
+          .map((ma) =>
+            `<td>${formatOptionalNumber(ma, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}</td>`
+          )
+          .join("")}
+      `;
+      elements.statisticsBody.appendChild(statsRow);
+    }
   });
 }
 
@@ -225,14 +274,18 @@ function setActiveTab(tabName) {
     tab.classList.toggle("tab--active", isActive);
   });
 
-  elements.tables.fundamentals.classList.toggle(
-    "hidden",
-    tabName !== "fundamentals"
-  );
-  elements.tables.statistics.classList.toggle(
-    "hidden",
-    tabName !== "statistics"
-  );
+  const fundamentalsTable = elements.tables.fundamentals;
+  const statisticsTable = elements.tables.statistics;
+  if (fundamentalsTable) {
+    fundamentalsTable.classList.toggle("hidden", tabName !== "fundamentals");
+  }
+  if (statisticsTable) {
+    statisticsTable.classList.toggle("hidden", tabName !== "statistics");
+  }
+
+  if (tabName === "statistics" && !statisticsTable) {
+    console.warn("Statistics table is not available in the DOM.");
+  }
 }
 
 function updateLanguage(lang) {
@@ -293,6 +346,15 @@ async function loadStocks(page = 1) {
       market_cap: item.marketCap,
       pe_ratio: item.peRatio,
       turnover_rate: item.turnoverRate,
+      pct_change_1y: item.pctChange1Y,
+      pct_change_6m: item.pctChange6M,
+      pct_change_3m: item.pctChange3M,
+      pct_change_1m: item.pctChange1M,
+      pct_change_2w: item.pctChange2W,
+      pct_change_1w: item.pctChange1W,
+      ma_20: item.ma20,
+      ma_10: item.ma10,
+      ma_5: item.ma5,
     }));
   } catch (error) {
     console.error("Failed to fetch stock data:", error);

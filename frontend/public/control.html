@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="title">Trend View – Control Panel</title>
-    <link rel="stylesheet" href="styles.css?v=20251021" />
+    <link rel="stylesheet" href="styles.css?v=20251027" />
     <script>
       (function () {
         var key = "trend-view-lang";
@@ -22,32 +22,9 @@
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
   </head>
-  <body>
+  <body data-active-nav="control">
     <div class="layout">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand__logo">TV</div>
-          <div class="brand__text">
-            <div class="brand__name" data-i18n="brandName">Trend View</div>
-            <div class="brand__tagline" data-i18n="brandTagline">
-              Investment Intelligence Hub
-            </div>
-          </div>
-        </div>
-
-        <nav class="nav">
-          <div class="nav__section-title" data-i18n="navBasics">
-            Basic Insights
-          </div>
-          <a class="nav__item" data-i18n="navBasicInfo" href="index.html">Basic Info</a>
-          <button class="nav__item" data-i18n="navNews">Market News</button>
-          <button class="nav__item" data-i18n="navSignals">Technical Signals</button>
-          <button class="nav__item" data-i18n="navPortfolio">Portfolio Monitor</button>
-          <div class="nav__section-title" data-i18n="navNewsGroup">News</div>
-          <a class="nav__item" data-i18n="navDailyFinance" href="finance-breakfast.html">Daily Finance</a>
-          <a class="nav__item nav__item--active" data-i18n="navControl" href="control.html">Control Panel</a>
-        </nav>
-      </aside>
+      <div data-sidebar-container></div>
 
       <main class="content">
         <header class="content__header">
@@ -70,292 +47,321 @@
             </div>
           </header>
 
-          <div class="control-grid">
-            <div class="card" id="stock-basic-card">
-              <div class="card__header">
-                <div>
-                  <h3 data-i18n="stockBasicTitle">Stock Basic Data</h3>
-                  <p class="card__subtitle" data-i18n="stockBasicSubtitle">
-                    Monthly refresh (1st of each month) or run manually as needed.
-                  </p>
+          <div class="control-group">
+            <header class="control-group__header">
+              <h3 data-i18n="tradeGroupTitle">Trading Data</h3>
+            </header>
+            <div class="control-grid">
+              <div class="card" id="stock-basic-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="stockBasicTitle">Stock Basic Data</h3>
+                    <p class="card__subtitle" data-i18n="stockBasicSubtitle">
+                      Monthly refresh (1st of each month) or run manually as needed.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-stock-basic" data-i18n="runNow">
+                    Run Now
+                  </button>
                 </div>
-                <button class="primary-btn" id="run-stock-basic" data-i18n="runNow">
-                  Run Now
-                </button>
-              </div>
-              <div class="progress" aria-hidden="true">
-                <div class="progress__bar" id="stock-basic-progress"></div>
-              </div>
-              <div class="job-meta">
-                <div class="job-meta__row">
-                  <div class="job-meta__item">
-                    <span data-i18n="lastStatus">Status</span>
-                    <strong id="stock-basic-status">—</strong>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="stock-basic-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="stock-basic-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="stock-basic-rows">&mdash;</strong>
+                    </div>
                   </div>
-                  <div class="job-meta__item">
-                    <span data-i18n="records">Records</span>
-                    <strong id="stock-basic-rows">—</strong>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="stock-basic-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="stock-basic-duration">&mdash;</strong>
+                    </div>
                   </div>
                 </div>
-                <div class="job-meta__row">
-                  <div class="job-meta__item">
-                    <span data-i18n="dataUpdated">Data Updated</span>
-                    <strong id="stock-basic-updated">—</strong>
-                  </div>
-                  <div class="job-meta__item">
-                    <span data-i18n="lastDuration">Last Duration</span>
-                    <strong id="stock-basic-duration">—</strong>
-                  </div>
-                </div>
+                <p class="job-message" id="stock-basic-message"></p>
               </div>
-              <p class="job-message" id="stock-basic-message"></p>
-            </div>
 
-            <div class="card" id="daily-trade-card">
-              <div class="card__header">
-                <div>
-                  <h3 data-i18n="dailyTradeTitle">Daily Trade Data</h3>
-                  <p class="card__subtitle" data-i18n="dailyTradeSubtitle">
-                    Scheduled daily at 17:00; follow batch progress when running.
-                  </p>
-                </div>
-                <button class="primary-btn" id="run-daily-trade" data-i18n="runNow">
-                  Run Now
-                </button>
-              </div>
-              <div class="progress" aria-hidden="true">
-                <div class="progress__bar" id="daily-trade-progress"></div>
-              </div>
-              <div class="job-meta">
-                <div class="job-meta__row">
-                  <div class="job-meta__item">
-                    <span data-i18n="lastStatus">Status</span>
-                    <strong id="daily-trade-status">—</strong>
+              <div class="card" id="daily-trade-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="dailyTradeTitle">Daily Trade Data</h3>
+                    <p class="card__subtitle" data-i18n="dailyTradeSubtitle">
+                      Scheduled daily at 17:00; follow batch progress when running.
+                    </p>
                   </div>
-                  <div class="job-meta__item">
-                    <span data-i18n="records">Records</span>
-                    <strong id="daily-trade-rows">—</strong>
+                  <button class="primary-btn" id="run-daily-trade" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="daily-trade-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="daily-trade-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="daily-trade-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="daily-trade-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="daily-trade-duration">&mdash;</strong>
+                    </div>
                   </div>
                 </div>
-                <div class="job-meta__row">
-                  <div class="job-meta__item">
-                    <span data-i18n="dataUpdated">Data Updated</span>
-                    <strong id="daily-trade-updated">—</strong>
+                <p class="job-message" id="daily-trade-message"></p>
+              </div>
+
+              <div class="card" id="daily-trade-metrics-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="dailyTradeMetricsTitle">Daily Trade Metrics</h3>
+                    <p class="card__subtitle" data-i18n="dailyTradeMetricsSubtitle">
+                      Generate rolling returns and moving averages from the daily_trade table (auto 19:00).
+                    </p>
                   </div>
-                  <div class="job-meta__item">
-                    <span data-i18n="lastDuration">Last Duration</span>
-                    <strong id="daily-trade-duration">—</strong>
+                  <button class="primary-btn" id="run-daily-trade-metrics" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="daily-trade-metrics-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="daily-trade-metrics-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="daily-trade-metrics-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="daily-trade-metrics-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="daily-trade-metrics-duration">&mdash;</strong>
+                    </div>
                   </div>
                 </div>
-            </div>
-            <p class="job-message" id="daily-trade-message"></p>
-          </div>
+                <p class="job-message" id="daily-trade-metrics-message"></p>
+              </div>
 
-          <div class="card" id="daily-indicator-card">
-            <div class="card__header">
-              <div>
-                <h3 data-i18n="dailyIndicatorTitle">Daily Indicators</h3>
-                <p class="card__subtitle" data-i18n="dailyIndicatorSubtitle">
-                  Fetch daily valuation metrics and turnover ratios after the trading session.
-                </p>
+              <div class="card" id="daily-indicator-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="dailyIndicatorTitle">Daily Indicators</h3>
+                    <p class="card__subtitle" data-i18n="dailyIndicatorSubtitle">
+                      Fetch daily valuation metrics and turnover ratios after the trading session.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-daily-indicator" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="daily-indicator-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="daily-indicator-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="daily-indicator-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="daily-indicator-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="daily-indicator-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="daily-indicator-message"></p>
               </div>
-              <button class="primary-btn" id="run-daily-indicator" data-i18n="runNow">
-                Run Now
-              </button>
-            </div>
-            <div class="progress" aria-hidden="true">
-              <div class="progress__bar" id="daily-indicator-progress"></div>
-            </div>
-            <div class="job-meta">
-              <div class="job-meta__row">
-                <div class="job-meta__item">
-                  <span data-i18n="lastStatus">Status</span>
-                  <strong id="daily-indicator-status">—</strong>
-                </div>
-                <div class="job-meta__item">
-                  <span data-i18n="records">Records</span>
-                  <strong id="daily-indicator-rows">—</strong>
-                </div>
-              </div>
-              <div class="job-meta__row">
-                <div class="job-meta__item">
-                  <span data-i18n="dataUpdated">Data Updated</span>
-                  <strong id="daily-indicator-updated">—</strong>
-                </div>
-                <div class="job-meta__item">
-                  <span data-i18n="lastDuration">Last Duration</span>
-                  <strong id="daily-indicator-duration">—</strong>
-                </div>
-              </div>
-            </div>
-            <p class="job-message" id="daily-indicator-message"></p>
-          </div>
-
-          <div class="card" id="income-statement-card">
-            <div class="card__header">
-              <div>
-                <h3 data-i18n="incomeStatementTitle">Income Statements</h3>
-                <p class="card__subtitle" data-i18n="incomeStatementSubtitle">
-                  Fetch the latest statements per stock sequentially via the Tushare income API.
-                </p>
-              </div>
-              <button class="primary-btn" id="run-income-statement" data-i18n="runNow">
-                Run Now
-              </button>
-            </div>
-            <div class="progress" aria-hidden="true">
-              <div class="progress__bar" id="income-statement-progress"></div>
-            </div>
-            <div class="job-meta">
-              <div class="job-meta__row">
-                <div class="job-meta__item">
-                  <span data-i18n="lastStatus">Status</span>
-                  <strong id="income-statement-status">—</strong>
-                </div>
-                <div class="job-meta__item">
-                  <span data-i18n="records">Records</span>
-                  <strong id="income-statement-rows">—</strong>
-                </div>
-              </div>
-              <div class="job-meta__row">
-                <div class="job-meta__item">
-                  <span data-i18n="dataUpdated">Data Updated</span>
-                  <strong id="income-statement-updated">—</strong>
-                </div>
-                <div class="job-meta__item">
-                  <span data-i18n="lastDuration">Last Duration</span>
-                  <strong id="income-statement-duration">—</strong>
-                </div>
-              </div>
-            </div>
-            <p class="job-message" id="income-statement-message"></p>
-          </div>
-
-          <div class="card" id="financial-indicator-card">
-            <div class="card__header">
-              <div>
-                <h3 data-i18n="financialIndicatorTitle">Financial Indicators</h3>
-                <p class="card__subtitle" data-i18n="financialIndicatorSubtitle">
-                  Collect per-stock profitability and efficiency ratios via the Tushare fina_indicator API.
-                </p>
-              </div>
-              <button class="primary-btn" id="run-financial-indicator" data-i18n="runNow">
-                Run Now
-              </button>
-            </div>
-            <div class="progress" aria-hidden="true">
-              <div class="progress__bar" id="financial-indicator-progress"></div>
-            </div>
-            <div class="job-meta">
-              <div class="job-meta__row">
-                <div class="job-meta__item">
-                  <span data-i18n="lastStatus">Status</span>
-                  <strong id="financial-indicator-status">—</strong>
-                </div>
-                <div class="job-meta__item">
-                  <span data-i18n="records">Records</span>
-                  <strong id="financial-indicator-rows">—</strong>
-                </div>
-              </div>
-              <div class="job-meta__row">
-                <div class="job-meta__item">
-                  <span data-i18n="dataUpdated">Data Updated</span>
-                  <strong id="financial-indicator-updated">—</strong>
-                </div>
-                <div class="job-meta__item">
-                  <span data-i18n="lastDuration">Last Duration</span>
-                  <strong id="financial-indicator-duration">—</strong>
-                </div>
-              </div>
-            </div>
-            <p class="job-message" id="financial-indicator-message"></p>
-          </div>
-
-          <div class="card" id="finance-breakfast-card">
-            <div class="card__header">
-              <div>
-                <h3 data-i18n="financeBreakfastTitle">Finance Breakfast</h3>
-                <p class="card__subtitle" data-i18n="financeBreakfastSubtitle">
-                  Daily morning digest sourced from Eastmoney (AkShare stock_info_cjzc_em).
-                </p>
-              </div>
-              <button class="primary-btn" id="run-finance-breakfast" data-i18n="runNow">
-                Run Now
-              </button>
-            </div>
-            <div class="progress" aria-hidden="true">
-              <div class="progress__bar" id="finance-breakfast-progress"></div>
-            </div>
-            <div class="job-meta">
-              <div class="job-meta__row">
-                <div class="job-meta__item">
-                  <span data-i18n="lastStatus">Status</span>
-                  <strong id="finance-breakfast-status">—</strong>
-                </div>
-                <div class="job-meta__item">
-                  <span data-i18n="records">Records</span>
-                  <strong id="finance-breakfast-rows">—</strong>
-                </div>
-              </div>
-              <div class="job-meta__row">
-                <div class="job-meta__item">
-                  <span data-i18n="dataUpdated">Data Updated</span>
-                  <strong id="finance-breakfast-updated">—</strong>
-                </div>
-                <div class="job-meta__item">
-                  <span data-i18n="lastDuration">Last Duration</span>
-                  <strong id="finance-breakfast-duration">—</strong>
-                </div>
-              </div>
-            </div>
-            <p class="job-message" id="finance-breakfast-message"></p>
-          </div>
-        </div>
-
-        <header class="page__header control-header">
-            <div class="page__title">
-              <h2 data-i18n="configSectionTitle">Configuration</h2>
-              <p data-i18n="configSectionSubtitle">
-                Adjust query filters and default window sizes for automated jobs.
-              </p>
-            </div>
-          </header>
-
-          <div class="config-grid">
-            <label class="switch">
-              <input type="checkbox" id="config-include-st" />
-              <span>
-                <strong data-i18n="includeStLabel">Include ST stocks in queries</strong>
-                <small data-i18n="includeStHint">When enabled, ST/*ST securities appear in list results.</small>
-              </span>
-            </label>
-            <label class="switch">
-              <input type="checkbox" id="config-include-delisted" />
-              <span>
-                <strong data-i18n="includeDelistedLabel">Include delisted stocks</strong>
-                <small data-i18n="includeDelistedHint">When disabled, delisted/paused securities are hidden.</small>
-              </span>
-            </label>
-            <div class="config-field">
-              <label for="config-window" data-i18n="windowLabel">Daily trade window (days)</label>
-              <input type="number" id="config-window" min="1" max="3650" value="420" />
-              <small data-i18n="windowHint">Used by scheduled and manual daily trade updates.</small>
             </div>
           </div>
 
-          <div class="config-actions">
-            <button class="primary-btn" id="save-config" data-i18n="saveSettings">
-              Save Settings
-            </button>
+          <div class="control-group">
+            <header class="control-group__header">
+              <h3 data-i18n="fundamentalsGroupTitle">Fundamental Data</h3>
+            </header>
+            <div class="control-grid">
+              <div class="card" id="income-statement-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="incomeStatementTitle">Income Statements</h3>
+                    <p class="card__subtitle" data-i18n="incomeStatementSubtitle">
+                      Fetch the latest statements per stock sequentially via the Tushare income API.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-income-statement" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="income-statement-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="income-statement-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="income-statement-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="income-statement-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="income-statement-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="income-statement-message"></p>
+              </div>
+
+              <div class="card" id="financial-indicator-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="financialIndicatorTitle">Financial Indicators</h3>
+                    <p class="card__subtitle" data-i18n="financialIndicatorSubtitle">
+                      Collect per-stock profitability and efficiency ratios via the Tushare fina_indicator API.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-financial-indicator" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="financial-indicator-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="financial-indicator-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="financial-indicator-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="financial-indicator-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="financial-indicator-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="financial-indicator-message"></p>
+              </div>
+            </div>
           </div>
+
+          <div class="control-group">
+            <header class="control-group__header">
+              <h3 data-i18n="newsGroupTitle">News & Insights</h3>
+            </header>
+            <div class="control-grid">
+              <div class="card" id="finance-breakfast-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="financeBreakfastTitle">Finance Breakfast</h3>
+                    <p class="card__subtitle" data-i18n="financeBreakfastSubtitle">
+                      Daily morning digest sourced from Eastmoney (AkShare stock_info_cjzc_em).
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-finance-breakfast" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="finance-breakfast-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="finance-breakfast-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="finance-breakfast-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="finance-breakfast-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="finance-breakfast-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="finance-breakfast-message"></p>
+              </div>
+            </div>
+          </div>
+
         </section>
       </main>
     </div>
 
     <script src="i18n.js?v=20251024"></script>
-    <script src="control.js?v=20251023"></script>
+    <script src="sidebar.js?v=20251027"></script>
+    <script src="control.js?v=20251027"></script>
   </body>
 </html>
+
+
+
+
+
 
 
 

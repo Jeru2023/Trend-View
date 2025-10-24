@@ -1,4 +1,4 @@
-(function (global) {
+﻿(function (global) {
   const registry = {
     shared: {
       en: {
@@ -10,6 +10,7 @@
         navSignals: "Technical Signals",
         navPortfolio: "Portfolio Monitor",
         navSettings: "Settings",
+        navConfigCenter: "Configuration Center",
         navControl: "Control Panel",
         navNewsGroup: "News",
         navDailyFinance: "Daily Finance"
@@ -23,6 +24,7 @@
         navSignals: "技术信号",
         navPortfolio: "组合监控",
         navSettings: "设置",
+        navConfigCenter: "配置中心",
         navControl: "控制面板",
         navNewsGroup: "资讯",
         navDailyFinance: "每日财经"
@@ -43,7 +45,7 @@
         reset: "Reset",
         apply: "Apply",
         tabBasic: "Basic",
-        tabStatistics: "Statistics",
+        tabTechnical: "Technical Stats",
         colCode: "Code",
         colName: "Name",
         colIndustry: "Industry",
@@ -55,6 +57,15 @@
         colMarketCap: "Market Cap",
         colPe: "PE Ratio",
         colTurnover: "Turnover Rate",
+        colPct1Y: "1Y Change (%)",
+        colPct6M: "6M Change (%)",
+        colPct3M: "3M Change (%)",
+        colPct1M: "1M Change (%)",
+        colPct2W: "2W Change (%)",
+        colPct1W: "1W Change (%)",
+        colMa20: "MA20",
+        colMa10: "MA10",
+        colMa5: "MA5",
         statsPlaceholder: "Statistical metrics are coming soon.",
         paginationPrev: "Previous",
         paginationNext: "Next",
@@ -78,7 +89,7 @@
         reset: "重置",
         apply: "应用",
         tabBasic: "基础数据",
-        tabStatistics: "统计数据",
+        tabTechnical: "技术统计",
         colCode: "代码",
         colName: "名称",
         colIndustry: "行业",
@@ -90,6 +101,15 @@
         colMarketCap: "市值",
         colPe: "市盈率",
         colTurnover: "换手率",
+        colPct1Y: "一年涨跌幅",
+        colPct6M: "半年涨跌幅",
+        colPct3M: "三个月涨跌幅",
+        colPct1M: "一个月涨跌幅",
+        colPct2W: "两周涨跌幅",
+        colPct1W: "一周涨跌幅",
+        colMa20: "20日均线",
+        colMa10: "10日均线",
+        colMa5: "5日均线",
         statsPlaceholder: "统计指标即将上线。",
         paginationPrev: "上一页",
         paginationNext: "下一页",
@@ -106,10 +126,16 @@
         pageTitle: "Control Panel",
         syncSectionTitle: "Data Synchronization",
         syncSectionSubtitle: "Trigger updates manually and monitor automated job status in real time.",
+        tradeGroupTitle: "Trading Data Jobs",
+        fundamentalsGroupTitle: "Fundamental Data Jobs",
+        newsGroupTitle: "News & Insights",
         stockBasicTitle: "Stock Basic Data",
         stockBasicSubtitle: "Monthly refresh (1st of each month) or run manually as needed.",
         dailyTradeTitle: "Daily Trade Data",
         dailyTradeSubtitle: "Scheduled daily at 17:00; follow batch progress when running.",
+        dailyTradeMetricsTitle: "Daily Trade Metrics",
+        dailyTradeMetricsSubtitle:
+          "Generate rolling returns and moving averages from the daily_trade table (auto 19:00).",
         dailyIndicatorTitle: "Daily Indicators",
         dailyIndicatorSubtitle: "Fetch daily basic metrics and valuation ratios after the market closes (auto 17:05).",
         incomeStatementTitle: "Income Statements",
@@ -139,17 +165,25 @@
         statusFailed: "Failed",
         statusUnknown: "Unknown",
         messageNone: "Awaiting next run.",
-        toastConfigSaved: "Configuration updated"
+        toastConfigSaved: "Configuration updated",
+        configTitle: "Trend View - Configuration Center",
+        configPageTitle: "Configuration Center",
+        configPageSubtitle: "Adjust platform-wide filters and automation defaults."
       },
       zh: {
         title: "趋势视图 - 控制面板",
         pageTitle: "控制面板",
         syncSectionTitle: "数据同步",
         syncSectionSubtitle: "手动触发更新，并实时监控自动任务状态。",
+        tradeGroupTitle: "交易数据任务",
+        fundamentalsGroupTitle: "基本面任务",
+        newsGroupTitle: "资讯任务",
         stockBasicTitle: "股票基础数据",
         stockBasicSubtitle: "每月1日自动刷新，必要时可手动执行。",
         dailyTradeTitle: "日度交易数据",
         dailyTradeSubtitle: "每日17:00自动刷新，可查看批次进度。",
+        dailyTradeMetricsTitle: "交易衍生指标",
+        dailyTradeMetricsSubtitle: "基于 daily_trade 数据计算区间涨跌幅与均线，19:00 自动更新。",
         dailyIndicatorTitle: "每日指标",
         dailyIndicatorSubtitle: "结合每日基础指标与估值信息，17:05 自动同步。",
         incomeStatementTitle: "利润表数据",
@@ -178,7 +212,10 @@
         statusFailed: "失败",
         statusUnknown: "未知",
         messageNone: "等待下一次运行。",
-        toastConfigSaved: "配置已更新"
+        toastConfigSaved: "配置已更新",
+        configTitle: "趋势视图 - 配置中心",
+        configPageTitle: "配置中心",
+        configPageSubtitle: "调整平台级筛选条件与自动任务默认参数。"
       }
     },
     financeBreakfast: {
@@ -252,3 +289,6 @@
 
   global.availableLanguages = Object.keys(registry.shared);
 })(window);
+
+
+

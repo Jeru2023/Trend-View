@@ -43,6 +43,7 @@ class PostgresSettings:
     schema: str
     stock_table: str
     daily_indicator_table: str
+    daily_trade_metrics_table: str
     income_statement_table: str
     financial_indicator_table: str
     finance_breakfast_table: str
@@ -153,6 +154,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
                     "daily_indicator_table",
                     postgres_config.get("market_cap_table", "daily_indicator"),
                 )
+            ),
+            daily_trade_metrics_table=str(
+                postgres_config.get("daily_trade_metrics_table", "daily_trade_metrics")
             ),
             income_statement_table=str(
                 postgres_config.get("income_statement_table", "income_statements")

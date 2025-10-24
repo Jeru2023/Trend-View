@@ -11,7 +11,7 @@ from typing import Dict, Optional, Sequence
 from ..api_clients import fetch_stock_basic
 from ..config.runtime_config import load_runtime_config
 from ..config.settings import AppSettings, load_settings
-from ..dao import DailyIndicatorDAO, DailyTradeDAO, StockBasicDAO
+from ..dao import DailyIndicatorDAO, DailyTradeDAO, DailyTradeMetricsDAO, StockBasicDAO
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,7 @@ def get_stock_overview(
     metrics: Dict[str, dict] = daily_dao.fetch_latest_metrics(codes)
     indicator_dao = DailyIndicatorDAO(settings.postgres)
     indicators: Dict[str, dict] = indicator_dao.fetch_latest_indicators(codes)
+    derived_metrics = DailyTradeMetricsDAO(settings.postgres).fetch_metrics(codes)
 
     def _safe_float(value: object) -> Optional[float]:
         if value is None:
@@ -121,6 +122,16 @@ def get_stock_overview(
         item["market_cap"] = _safe_float(indicator.get("market_cap"))
         item["pe_ratio"] = _safe_float(indicator.get("pe"))
         item["turnover_rate"] = _safe_float(indicator.get("turnover_rate"))
+        derived = derived_metrics.get(item["code"], {})
+        item["pct_change_1y"] = _safe_float(derived.get("pct_change_1y"))
+        item["pct_change_6m"] = _safe_float(derived.get("pct_change_6m"))
+        item["pct_change_3m"] = _safe_float(derived.get("pct_change_3m"))
+        item["pct_change_1m"] = _safe_float(derived.get("pct_change_1m"))
+        item["pct_change_2w"] = _safe_float(derived.get("pct_change_2w"))
+        item["pct_change_1w"] = _safe_float(derived.get("pct_change_1w"))
+        item["ma_20"] = _safe_float(derived.get("ma_20"))
+        item["ma_10"] = _safe_float(derived.get("ma_10"))
+        item["ma_5"] = _safe_float(derived.get("ma_5"))
 
     return result
 
