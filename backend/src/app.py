@@ -68,6 +68,14 @@ class StockItem(BaseModel):
     ma_20: Optional[float] = Field(None, alias="ma20")
     ma_10: Optional[float] = Field(None, alias="ma10")
     ma_5: Optional[float] = Field(None, alias="ma5")
+    ann_date: Optional[str] = Field(None, alias="annDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+    basic_eps: Optional[float] = Field(None, alias="basicEps")
+    revenue: Optional[float] = None
+    operate_profit: Optional[float] = Field(None, alias="operateProfit")
+    net_income: Optional[float] = Field(None, alias="netIncome")
+    gross_margin: Optional[float] = Field(None, alias="grossMargin")
+    roe: Optional[float] = Field(None, alias="roe")
 
     class Config:
         allow_population_by_field_name = True
@@ -897,6 +905,14 @@ def list_stocks(
             ma20=item.get("ma_20"),
             ma10=item.get("ma_10"),
             ma5=item.get("ma_5"),
+            annDate=item.get("ann_date"),
+            endDate=item.get("end_date"),
+            basicEps=item.get("basic_eps"),
+            revenue=item.get("revenue"),
+            operateProfit=item.get("operate_profit"),
+            netIncome=item.get("n_income"),
+            grossMargin=item.get("gross_margin"),
+            roe=item.get("roe"),
         )
         for item in result["items"]
     ]

@@ -6,12 +6,20 @@ from __future__ import annotations
 
 import logging
 import math
+from datetime import date, datetime
 from typing import Dict, Optional, Sequence
 
 from ..api_clients import fetch_stock_basic
 from ..config.runtime_config import load_runtime_config
 from ..config.settings import AppSettings, load_settings
-from ..dao import DailyIndicatorDAO, DailyTradeDAO, DailyTradeMetricsDAO, StockBasicDAO
+from ..dao import (
+    DailyIndicatorDAO,
+    DailyTradeDAO,
+    DailyTradeMetricsDAO,
+    FinancialIndicatorDAO,
+    IncomeStatementDAO,
+    StockBasicDAO,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +108,10 @@ def get_stock_overview(
     indicator_dao = DailyIndicatorDAO(settings.postgres)
     indicators: Dict[str, dict] = indicator_dao.fetch_latest_indicators(codes)
     derived_metrics = DailyTradeMetricsDAO(settings.postgres).fetch_metrics(codes)
+    income_dao = IncomeStatementDAO(settings.postgres)
+    income_statements = income_dao.fetch_latest_statements(codes)
+    financial_dao = FinancialIndicatorDAO(settings.postgres)
+    financials = financial_dao.fetch_latest_indicators(codes)
 
     def _safe_float(value: object) -> Optional[float]:
         if value is None:
@@ -111,6 +123,16 @@ def get_stock_overview(
         if not math.isfinite(numeric):
             return None
         return numeric
+
+    def _format_date(value: object) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d")
+        if isinstance(value, date):
+            return value.isoformat()
+        text = str(value).strip()
+        return text or None
 
     for item in result["items"]:
         metric = metrics.get(item["code"], {})
@@ -132,6 +154,22 @@ def get_stock_overview(
         item["ma_20"] = _safe_float(derived.get("ma_20"))
         item["ma_10"] = _safe_float(derived.get("ma_10"))
         item["ma_5"] = _safe_float(derived.get("ma_5"))
+        income = income_statements.get(item["code"], {})
+        ann_date = income.get("ann_date")
+        end_date = income.get("end_date")
+        item["ann_date"] = _format_date(ann_date)
+        item["end_date"] = _format_date(end_date)
+        item["basic_eps"] = _safe_float(income.get("basic_eps"))
+        item["revenue"] = _safe_float(income.get("revenue"))
+        item["operate_profit"] = _safe_float(income.get("operate_profit"))
+        item["n_income"] = _safe_float(income.get("n_income"))
+        financial = financials.get(item["code"], {})
+        if item["ann_date"] is None:
+            item["ann_date"] = _format_date(financial.get("ann_date"))
+        if item["end_date"] is None:
+            item["end_date"] = _format_date(financial.get("end_date"))
+        item["gross_margin"] = _safe_float(financial.get("gross_margin"))
+        item["roe"] = _safe_float(financial.get("roe"))
 
     return result
 

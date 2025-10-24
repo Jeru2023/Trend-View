@@ -76,10 +76,12 @@ const state = {
 
 const elements = {
   fundamentalsBody: document.getElementById("fundamentals-body"),
+  fundamentalsReportsBody: document.getElementById("fundamentals-reports-body"),
   statisticsBody: document.getElementById("statistics-body"),
   tabs: document.querySelectorAll(".tab"),
   tables: {
     fundamentals: document.getElementById("fundamentals-table"),
+    fundamentalsReports: document.getElementById("fundamentals-reports-table"),
     statistics: document.getElementById("statistics-table"),
   },
   langButtons: document.querySelectorAll(".lang-btn"),
@@ -109,6 +111,17 @@ function formatOptionalNumber(value, options = {}) {
   }
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale, options).format(value);
+}
+
+function formatOptionalDate(value) {
+  if (!value) {
+    return EMPTY_VALUE;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toISOString().slice(0, 10);
 }
 
 function applyTranslations() {
@@ -145,6 +158,18 @@ function formatPercent(value, { fromRatio = false } = {}) {
   return `${percentValue >= 0 ? "+" : ""}${formatted}%`;
 }
 
+function formatFinancialPercent(value) {
+  if (value === null || value === undefined) {
+    return EMPTY_VALUE;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY_VALUE;
+  }
+  const treatAsRatio = Math.abs(numeric) <= 1;
+  return formatPercent(numeric, { fromRatio: treatAsRatio });
+}
+
 function getTrendClass(value) {
   if (value === null || value === undefined) {
     return "";
@@ -168,12 +193,18 @@ function appendEmptyRow(body, colSpan) {
 
 function renderTable(data = state.items) {
   elements.fundamentalsBody.innerHTML = "";
+  if (elements.fundamentalsReportsBody) {
+    elements.fundamentalsReportsBody.innerHTML = "";
+  }
   if (elements.statisticsBody) {
     elements.statisticsBody.innerHTML = "";
   }
 
   if (!data.length) {
     appendEmptyRow(elements.fundamentalsBody, 11);
+    if (elements.fundamentalsReportsBody) {
+      appendEmptyRow(elements.fundamentalsReportsBody, 10);
+    }
     if (elements.statisticsBody) {
       appendEmptyRow(elements.statisticsBody, 11);
     }
@@ -223,8 +254,49 @@ function renderTable(data = state.items) {
       <td>${turnoverDisplay}</td>
     `;
     elements.fundamentalsBody.appendChild(row);
-
-    if (elements.statisticsBody) {
+    
+    if (elements.fundamentalsReportsBody) {
+      const annDateDisplay = formatOptionalDate(item.ann_date);
+      const endDateDisplay = formatOptionalDate(item.end_date);
+      const basicEpsDisplay = formatOptionalNumber(item.basic_eps, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const revenueDisplay = formatOptionalNumber(
+        item.revenue === null || item.revenue === undefined ? null : item.revenue / 1_000_000,
+        { maximumFractionDigits: 2 }
+      );
+      const operateProfitDisplay = formatOptionalNumber(
+        item.operate_profit === null || item.operate_profit === undefined ? null : item.operate_profit / 1_000_000,
+        { maximumFractionDigits: 2 }
+      );
+      const netIncomeDisplay = formatOptionalNumber(
+        item.net_income === null || item.net_income === undefined ? null : item.net_income / 1_000_000,
+        { maximumFractionDigits: 2 }
+      );
+      const grossMarginDisplay = formatOptionalNumber(
+        item.gross_margin === null || item.gross_margin === undefined ? null : item.gross_margin / 1_000_000,
+        { maximumFractionDigits: 2 }
+      );
+      const roeDisplay = formatFinancialPercent(item.roe);
+      
+      const fundamentalsRow = document.createElement("tr");
+      fundamentalsRow.innerHTML = `
+        <td>${item.code}</td>
+        <td>${item.name ?? EMPTY_VALUE}</td>
+        <td>${annDateDisplay}</td>
+        <td>${endDateDisplay}</td>
+        <td>${basicEpsDisplay}</td>
+        <td>${revenueDisplay}</td>
+        <td>${operateProfitDisplay}</td>
+        <td>${netIncomeDisplay}</td>
+        <td>${grossMarginDisplay}</td>
+        <td>${roeDisplay}</td>
+      `;
+      elements.fundamentalsReportsBody.appendChild(fundamentalsRow);
+     }
+      
+      if (elements.statisticsBody) {
       const statsValues = [
         { value: item.pct_change_1y },
         { value: item.pct_change_6m },
@@ -274,16 +346,14 @@ function setActiveTab(tabName) {
     tab.classList.toggle("tab--active", isActive);
   });
 
-  const fundamentalsTable = elements.tables.fundamentals;
-  const statisticsTable = elements.tables.statistics;
-  if (fundamentalsTable) {
-    fundamentalsTable.classList.toggle("hidden", tabName !== "fundamentals");
-  }
-  if (statisticsTable) {
-    statisticsTable.classList.toggle("hidden", tabName !== "statistics");
-  }
+  Object.entries(elements.tables).forEach(([key, table]) => {
+    if (!table) {
+      return;
+    }
+    table.classList.toggle("hidden", key !== tabName);
+  });
 
-  if (tabName === "statistics" && !statisticsTable) {
+  if (tabName === "statistics" && !elements.tables.statistics) {
     console.warn("Statistics table is not available in the DOM.");
   }
 }
@@ -355,6 +425,14 @@ async function loadStocks(page = 1) {
       ma_20: item.ma20,
       ma_10: item.ma10,
       ma_5: item.ma5,
+      ann_date: item.annDate,
+      end_date: item.endDate,
+      basic_eps: item.basicEps,
+      revenue: item.revenue,
+      operate_profit: item.operateProfit,
+      net_income: item.netIncome,
+      gross_margin: item.grossMargin,
+      roe: item.roe,
     }));
   } catch (error) {
     console.error("Failed to fetch stock data:", error);
@@ -410,10 +488,6 @@ elements.searchBox.addEventListener("keydown", (event) => {
 setActiveTab("fundamentals");
 updateLanguage(currentLang);
 loadStocks(1);
-
-
-
-
 
 
 

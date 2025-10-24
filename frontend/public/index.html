@@ -94,6 +94,9 @@
             <button class="tab tab--active" data-tab="fundamentals" data-i18n="tabBasic">
               Basic
             </button>
+            <button class="tab" data-tab="fundamentalsReports" data-i18n="tabFundamentals">
+              Fundamental Data
+            </button>
             <button class="tab" data-tab="statistics" data-i18n="tabTechnical">
               Technical Stats
             </button>
@@ -117,6 +120,24 @@
                 </tr>
               </thead>
               <tbody id="fundamentals-body"></tbody>
+            </table>
+
+            <table class="stock-table hidden" id="fundamentals-reports-table">
+              <thead>
+                <tr>
+                  <th data-i18n="colCode">Code</th>
+                  <th data-i18n="colName">Name</th>
+                  <th data-i18n="colAnnDate">Announcement Date</th>
+                  <th data-i18n="colEndDate">Reporting Period</th>
+                  <th data-i18n="colBasicEps">Basic EPS</th>
+                  <th data-i18n="colRevenue">Revenue</th>
+                  <th data-i18n="colOperateProfit">Operating Profit</th>
+                  <th data-i18n="colNetIncome">Net Profit</th>
+                  <th data-i18n="colGrossMargin">Gross Margin</th>
+                  <th data-i18n="colRoe">ROE</th>
+                </tr>
+              </thead>
+              <tbody id="fundamentals-reports-body"></tbody>
             </table>
 
             <table class="stock-table hidden" id="statistics-table">

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Dict, Optional, Sequence
 
 import pandas as pd
 from psycopg2 import sql
@@ -100,6 +100,55 @@ class IncomeStatementDAO(PostgresDAOBase):
                 )
                 latest = cur.fetchone()[0]
         return latest
+
+    def fetch_latest_statements(self, codes: Sequence[str]) -> Dict[str, dict]:
+        if not codes:
+            return {}
+
+        query = sql.SQL(
+            """
+            SELECT DISTINCT ON (ts_code)
+                   ts_code,
+                   ann_date,
+                   end_date,
+                   basic_eps,
+                   revenue,
+                   operate_profit,
+                   n_income
+            FROM {schema}.{table}
+            WHERE ts_code = ANY(%s)
+            ORDER BY ts_code, ann_date DESC, end_date DESC
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, (list(codes),))
+                rows = cur.fetchall()
+
+        statements: Dict[str, dict] = {}
+        for (
+            ts_code,
+            ann_date,
+            end_date,
+            basic_eps,
+            revenue,
+            operate_profit,
+            n_income,
+        ) in rows:
+            statements[ts_code] = {
+                "ann_date": ann_date,
+                "end_date": end_date,
+                "basic_eps": basic_eps,
+                "revenue": revenue,
+                "operate_profit": operate_profit,
+                "n_income": n_income,
+            }
+        return statements
 
 
 __all__ = [
