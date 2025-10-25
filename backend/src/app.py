@@ -32,6 +32,7 @@ from .dao import (
 from .services import (
     get_stock_overview,
     list_finance_breakfast,
+    list_fundamental_metrics,
     sync_daily_indicator,
     sync_financial_indicators,
     sync_finance_breakfast,
@@ -94,6 +95,35 @@ class StockItem(BaseModel):
 class StockListResponse(BaseModel):
     total: int
     items: List[StockItem]
+
+
+class FundamentalMetricItem(BaseModel):
+    code: str
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    exchange: Optional[str] = None
+    net_income_end_date_latest: Optional[str] = Field(None, alias="netIncomeEndDateLatest")
+    net_income_end_date_prev1: Optional[str] = Field(None, alias="netIncomeEndDatePrev1")
+    net_income_end_date_prev2: Optional[str] = Field(None, alias="netIncomeEndDatePrev2")
+    revenue_end_date_latest: Optional[str] = Field(None, alias="revenueEndDateLatest")
+    roe_end_date_latest: Optional[str] = Field(None, alias="roeEndDateLatest")
+    net_income_yoy_latest: Optional[float] = Field(None, alias="netIncomeYoyLatest")
+    net_income_yoy_prev1: Optional[float] = Field(None, alias="netIncomeYoyPrev1")
+    net_income_yoy_prev2: Optional[float] = Field(None, alias="netIncomeYoyPrev2")
+    net_income_qoq_latest: Optional[float] = Field(None, alias="netIncomeQoqLatest")
+    revenue_yoy_latest: Optional[float] = Field(None, alias="revenueYoyLatest")
+    revenue_qoq_latest: Optional[float] = Field(None, alias="revenueQoqLatest")
+    roe_yoy_latest: Optional[float] = Field(None, alias="roeYoyLatest")
+    roe_qoq_latest: Optional[float] = Field(None, alias="roeQoqLatest")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class FundamentalMetricsListResponse(BaseModel):
+    total: int
+    items: List[FundamentalMetricItem]
 
 
 class SyncDailyTradeRequest(BaseModel):
@@ -816,6 +846,14 @@ async def start_financial_indicator_job(payload: SyncFinancialIndicatorRequest) 
     asyncio.create_task(_run_financial_indicator_job(payload))
 
 
+async def start_fundamental_metrics_job(payload: SyncFundamentalMetricsRequest) -> None:
+    if _job_running("fundamental_metrics"):
+        raise HTTPException(status_code=409, detail="Fundamental metrics sync already running")
+    monitor.start("fundamental_metrics", message="Syncing fundamental metrics")
+    monitor.update("fundamental_metrics", progress=0.0)
+    asyncio.create_task(_run_fundamental_metrics_job(payload))
+
+
 async def start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> None:
     if _job_running("finance_breakfast"):
         raise HTTPException(status_code=409, detail="Finance breakfast sync already running")
@@ -1006,13 +1044,55 @@ def list_stocks(
             basicEps=item.get("basic_eps"),
             revenue=item.get("revenue"),
             operateProfit=item.get("operate_profit"),
-            netIncome=item.get("n_income"),
+            netIncome=item.get("net_income"),
             grossMargin=item.get("gross_margin"),
             roe=item.get("roe"),
         )
         for item in result["items"]
     ]
     return StockListResponse(total=result["total"], items=items)
+
+
+@app.get("/fundamental-metrics", response_model=FundamentalMetricsListResponse)
+def list_fundamental_metrics_api(
+    keyword: Optional[str] = Query(None, description="Keyword to search code/name/industry"),
+    market: Optional[str] = Query(None, description="Filter by market"),
+    exchange: Optional[str] = Query(None, description="Filter by exchange"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> FundamentalMetricsListResponse:
+    """Return paginated derived fundamental metrics."""
+    result = list_fundamental_metrics(
+        keyword=keyword,
+        market=market,
+        exchange=exchange,
+        limit=limit,
+        offset=offset,
+    )
+    items = [
+        FundamentalMetricItem(
+            code=item["code"],
+            name=item.get("name"),
+            industry=item.get("industry"),
+            market=item.get("market"),
+            exchange=item.get("exchange"),
+            netIncomeEndDateLatest=item.get("net_income_end_date_latest"),
+            netIncomeEndDatePrev1=item.get("net_income_end_date_prev1"),
+            netIncomeEndDatePrev2=item.get("net_income_end_date_prev2"),
+            revenueEndDateLatest=item.get("revenue_end_date_latest"),
+            roeEndDateLatest=item.get("roe_end_date_latest"),
+            netIncomeYoyLatest=item.get("net_income_yoy_latest"),
+            netIncomeYoyPrev1=item.get("net_income_yoy_prev1"),
+            netIncomeYoyPrev2=item.get("net_income_yoy_prev2"),
+            netIncomeQoqLatest=item.get("net_income_qoq_latest"),
+            revenueYoyLatest=item.get("revenue_yoy_latest"),
+            revenueQoqLatest=item.get("revenue_qoq_latest"),
+            roeYoyLatest=item.get("roe_yoy_latest"),
+            roeQoqLatest=item.get("roe_qoq_latest"),
+        )
+        for item in result["items"]
+    ]
+    return FundamentalMetricsListResponse(total=result["total"], items=items)
 
 
 @app.get("/finance-breakfast", response_model=List[FinanceBreakfastItem])

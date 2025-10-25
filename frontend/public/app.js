@@ -1,4 +1,4 @@
-﻿const translations = getTranslations("basicInfo");
+const translations = getTranslations("basicInfo");
 const API_BASE =
   window.API_BASE_URL ||
   (window.location.hostname === "localhost"
@@ -8,25 +8,29 @@ const PAGE_SIZE = 20;
 
 const exchangeLabels = {
   en: { SSE: "SSE", SZSE: "SZSE", BSE: "BSE" },
-  zh: { SSE: "上交所", SZSE: "深交所", BSE: "北交所" },
+  zh: {
+    SSE: "\u4e0a\u4ea4\u6240",
+    SZSE: "\u6df1\u4ea4\u6240",
+    BSE: "\u5317\u4ea4\u6240",
+  },
 };
 
 const marketLabels = {
   en: {
-    主板: "Main Board",
-    创业板: "ChiNext",
-    科创板: "STAR Market",
+    "\u4e3b\u677f": "Main Board",
+    "\u521b\u4e1a\u677f": "ChiNext",
+    "\u79d1\u521b\u677f": "STAR Market",
     "Main Board": "Main Board",
-    "ChiNext": "ChiNext",
+    ChiNext: "ChiNext",
     "STAR Market": "STAR Market",
   },
   zh: {
-    主板: "主板",
-    创业板: "创业板",
-    科创板: "科创板",
-    "Main Board": "主板",
-    "ChiNext": "创业板",
-    "STAR Market": "科创板",
+    "\u4e3b\u677f": "\u4e3b\u677f",
+    "\u521b\u4e1a\u677f": "\u521b\u4e1a\u677f",
+    "\u79d1\u521b\u677f": "\u79d1\u521b\u677f",
+    "Main Board": "\u4e3b\u677f",
+    ChiNext: "\u521b\u4e1a\u677f",
+    "STAR Market": "\u79d1\u521b\u677f",
   },
 };
 
@@ -63,27 +67,38 @@ function persistLanguage(lang) {
 }
 
 let currentLang = getInitialLanguage();
+
 const state = {
-  page: 1,
-  total: 0,
-  items: [],
-  filters: {
-    keyword: "",
-    market: "all",
-    exchange: "all",
+  trading: {
+    page: 1,
+    total: 0,
+    items: [],
+    filters: { keyword: "", market: "all", exchange: "all" },
+  },
+  metrics: {
+    page: 1,
+    total: 0,
+    items: [],
+    filters: { keyword: "", market: "all", exchange: "all" },
   },
 };
 
+let activeTab = "tradingData";
+
 const elements = {
-  fundamentalsBody: document.getElementById("fundamentals-body"),
-  fundamentalsReportsBody: document.getElementById("fundamentals-reports-body"),
-  statisticsBody: document.getElementById("statistics-body"),
-  tabs: document.querySelectorAll(".tab"),
   tables: {
-    fundamentals: document.getElementById("fundamentals-table"),
-    fundamentalsReports: document.getElementById("fundamentals-reports-table"),
-    statistics: document.getElementById("statistics-table"),
+    tradingData: document.getElementById("trading-data-table"),
+    financialData: document.getElementById("financial-data-table"),
+    tradingStats: document.getElementById("trading-stats-table"),
+    financialStats: document.getElementById("financial-stats-table"),
   },
+  bodies: {
+    tradingData: document.getElementById("trading-data-body"),
+    financialData: document.getElementById("financial-data-body"),
+    tradingStats: document.getElementById("trading-stats-body"),
+    financialStats: document.getElementById("financial-stats-body"),
+  },
+  tabs: document.querySelectorAll(".tab"),
   langButtons: document.querySelectorAll(".lang-btn"),
   searchBox: document.querySelector(".search-box"),
   keywordInput: document.getElementById("keyword"),
@@ -129,24 +144,20 @@ function applyTranslations() {
   document.documentElement.lang = currentLang;
   document.title = dict.title;
 
-  document
-    .querySelectorAll("[data-i18n]")
-    .forEach((el) => {
-      const key = el.dataset.i18n;
-      const value = dict[key];
-      if (typeof value === "string") {
-        el.textContent = value;
-      }
-    });
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.dataset.i18n;
+    const value = dict[key];
+    if (typeof value === "string") {
+      el.textContent = value;
+    }
+  });
 
-  document
-    .querySelectorAll("[data-placeholder-en]")
-    .forEach((el) => {
-      const placeholder = el.dataset[`placeholder${currentLang.toUpperCase()}`];
-      if (typeof placeholder === "string") {
-        el.placeholder = placeholder;
-      }
-    });
+  document.querySelectorAll("[data-placeholder-en]").forEach((el) => {
+    const placeholder = el.dataset[`placeholder${currentLang.toUpperCase()}`];
+    if (typeof placeholder === "string") {
+      el.placeholder = placeholder;
+    }
+  });
 }
 
 function formatPercent(value, { fromRatio = false } = {}) {
@@ -191,169 +202,225 @@ function appendEmptyRow(body, colSpan) {
   body.appendChild(row);
 }
 
-function renderTable(data = state.items) {
-  elements.fundamentalsBody.innerHTML = "";
-  if (elements.fundamentalsReportsBody) {
-    elements.fundamentalsReportsBody.innerHTML = "";
+function renderTradingDataTable(items) {
+  const body = elements.bodies.tradingData;
+  if (!body) {
+    return;
   }
-  if (elements.statisticsBody) {
-    elements.statisticsBody.innerHTML = "";
-  }
+  body.innerHTML = "";
 
-  if (!data.length) {
-    appendEmptyRow(elements.fundamentalsBody, 11);
-    if (elements.fundamentalsReportsBody) {
-      appendEmptyRow(elements.fundamentalsReportsBody, 14);
-    }
-    if (elements.statisticsBody) {
-      appendEmptyRow(elements.statisticsBody, 11);
-    }
+  if (!items.length) {
+    appendEmptyRow(body, 11);
     return;
   }
 
   const marketMap = marketLabels[currentLang] || {};
   const exchangeMap = exchangeLabels[currentLang] || {};
 
-  data.forEach((item) => {
-    const marketLabel = item.market ? marketMap[item.market] ?? item.market : EMPTY_VALUE;
-    const exchangeLabel = item.exchange ? exchangeMap[item.exchange] ?? item.exchange : EMPTY_VALUE;
+  items.forEach((item) => {
+    const marketLabel =
+      item.market && marketMap[item.market] ? marketMap[item.market] : item.market ?? EMPTY_VALUE;
+    const exchangeLabel =
+      item.exchange && exchangeMap[item.exchange]
+        ? exchangeMap[item.exchange]
+        : item.exchange ?? EMPTY_VALUE;
     const changeClass = getTrendClass(item.pct_change);
-    const lastPrice = formatOptionalNumber(item.last_price, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-    const changeDisplay = formatPercent(item.pct_change);
-    const volumeDisplay = formatOptionalNumber(item.volume, { maximumFractionDigits: 0 });
-    const marketCapDisplay = formatOptionalNumber(item.market_cap, { maximumFractionDigits: 0 });
-    const peDisplay = formatOptionalNumber(item.pe_ratio, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-    const turnoverDisplay =
-      item.turnover_rate == null
-        ? EMPTY_VALUE
-        : `${formatOptionalNumber(item.turnover_rate, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}%`;
 
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${item.code}</td>
       <td>${item.name ?? EMPTY_VALUE}</td>
       <td>${item.industry ?? EMPTY_VALUE}</td>
-      <td>${marketLabel}</td>
-      <td>${exchangeLabel}</td>
-      <td>${lastPrice}</td>
-      <td class="${changeClass}">
-        ${changeDisplay}
-      </td>
-      <td>${volumeDisplay}</td>
-      <td>${marketCapDisplay}</td>
-      <td>${peDisplay}</td>
-      <td>${turnoverDisplay}</td>
-    `;
-    elements.fundamentalsBody.appendChild(row);
-    
-    if (elements.fundamentalsReportsBody) {
-      const annDateDisplay = formatOptionalDate(item.ann_date);
-      const endDateDisplay = formatOptionalDate(item.end_date);
-      const basicEpsDisplay = formatOptionalNumber(item.basic_eps, {
+      <td>${marketLabel ?? EMPTY_VALUE}</td>
+      <td>${exchangeLabel ?? EMPTY_VALUE}</td>
+      <td>${formatOptionalNumber(item.last_price, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-      });
-      const revenueDisplay = formatOptionalNumber(
-        item.revenue === null || item.revenue === undefined
-            ? null
-            : item.revenue / 1_000_000,
-        { maximumFractionDigits: 2 }
-      );
-      const operateProfitDisplay = formatOptionalNumber(
-        item.operate_profit === null || item.operate_profit === undefined
-            ? null
-            : item.operate_profit / 1_000_000,
-        { maximumFractionDigits: 2 }
-      );
-      const netIncomeDisplay = formatOptionalNumber(
-        item.net_income === null || item.net_income === undefined
-            ? null
-            : item.net_income / 1_000_000,
-        { maximumFractionDigits: 2 }
-      );
-      const grossMarginDisplay = formatOptionalNumber(
-        item.gross_margin === null || item.gross_margin === undefined
-            ? null
-            : item.gross_margin / 1_000_000,
-        { maximumFractionDigits: 2 }
-      );
-      const roeDisplay = formatFinancialPercent(item.roe);
-      const netIncomeYoyLatestDisplay = formatPercent(item.net_income_yoy_latest, { fromRatio: true });
-      const netIncomeYoyPrev1Display = formatPercent(item.net_income_yoy_prev1, { fromRatio: true });
-      const netIncomeYoyPrev2Display = formatPercent(item.net_income_yoy_prev2, { fromRatio: true });
-      const netIncomeQoqDisplay = formatPercent(item.net_income_qoq_latest, { fromRatio: true });
-      const revenueYoyDisplay = formatPercent(item.revenue_yoy_latest, { fromRatio: true });
-      const revenueQoqDisplay = formatPercent(item.revenue_qoq_latest, { fromRatio: true });
-      const roeYoyDisplay = formatPercent(item.roe_yoy_latest, { fromRatio: true });
-      const roeQoqDisplay = formatPercent(item.roe_qoq_latest, { fromRatio: true });
-      
-      const fundamentalsRow = document.createElement("tr");
-      fundamentalsRow.innerHTML = `
-        <td>${item.code}</td>
-        <td>${item.name ?? EMPTY_VALUE}</td>
-        <td>${annDateDisplay}</td>
-        <td>${endDateDisplay}</td>
-        <td>${basicEpsDisplay}</td>
-        <td>${revenueDisplay}</td>
-        <td>${operateProfitDisplay}</td>
-        <td>${netIncomeDisplay}</td>
-        <td>${grossMarginDisplay}</td>
-        <td>${roeDisplay}</td>
-        <td class="${getTrendClass(item.net_income_yoy_latest)}">${netIncomeYoyLatestDisplay}</td>
-        <td class="${getTrendClass(item.net_income_yoy_prev1)}">${netIncomeYoyPrev1Display}</td>
-        <td class="${getTrendClass(item.net_income_yoy_prev2)}">${netIncomeYoyPrev2Display}</td>
-        <td class="${getTrendClass(item.net_income_qoq_latest)}">${netIncomeQoqDisplay}</td>
-        <td class="${getTrendClass(item.revenue_yoy_latest)}">${revenueYoyDisplay}</td>
-        <td class="${getTrendClass(item.revenue_qoq_latest)}">${revenueQoqDisplay}</td>
-        <td class="${getTrendClass(item.roe_yoy_latest)}">${roeYoyDisplay}</td>
-        <td class="${getTrendClass(item.roe_qoq_latest)}">${roeQoqDisplay}</td>
-      `;
-      elements.fundamentalsReportsBody.appendChild(fundamentalsRow);
-    }
-      
-      if (elements.statisticsBody) {
-      const statsValues = [
-        { value: item.pct_change_1y },
-        { value: item.pct_change_6m },
-        { value: item.pct_change_3m },
-        { value: item.pct_change_1m },
-        { value: item.pct_change_2w },
-        { value: item.pct_change_1w },
-      ];
-      const maValues = [item.ma_20, item.ma_10, item.ma_5];
-
-      const statsRow = document.createElement("tr");
-      statsRow.innerHTML = `
-        <td>${item.code}</td>
-        <td>${item.name ?? EMPTY_VALUE}</td>
-        ${statsValues
-          .map((entry) => {
-            const display = formatPercent(entry.value, { fromRatio: true });
-            const trendClass = getTrendClass(entry.value);
-            return `<td class="${trendClass}">${display}</td>`;
-          })
-          .join("")}
-        ${maValues
-          .map((ma) =>
-            `<td>${formatOptionalNumber(ma, {
+      })}</td>
+      <td class="${changeClass}">${formatPercent(item.pct_change)}</td>
+      <td>${formatOptionalNumber(item.volume, { maximumFractionDigits: 0 })}</td>
+      <td>${formatOptionalNumber(item.market_cap, { maximumFractionDigits: 0 })}</td>
+      <td>${formatOptionalNumber(item.pe_ratio, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}</td>
+      <td>${
+        item.turnover_rate == null
+          ? EMPTY_VALUE
+          : `${formatOptionalNumber(item.turnover_rate, {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
-            })}</td>`
-          )
-          .join("")}
-      `;
-      elements.statisticsBody.appendChild(statsRow);
-    }
+            })}%`
+      }</td>
+    `;
+    body.appendChild(row);
   });
+}
+
+function renderFinancialDataTable(items) {
+  const body = elements.bodies.financialData;
+  if (!body) {
+    return;
+  }
+  body.innerHTML = "";
+
+  if (!items.length) {
+    appendEmptyRow(body, 10);
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${item.code}</td>
+      <td>${item.name ?? EMPTY_VALUE}</td>
+      <td>${formatOptionalDate(item.ann_date)}</td>
+      <td>${formatOptionalDate(item.end_date)}</td>
+      <td>${formatOptionalNumber(item.basic_eps, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}</td>
+      <td>${formatOptionalNumber(
+        item.revenue === null || item.revenue === undefined ? null : item.revenue / 1_000_000,
+        { maximumFractionDigits: 2 }
+      )}</td>
+      <td>${formatOptionalNumber(
+        item.operate_profit === null || item.operate_profit === undefined
+          ? null
+          : item.operate_profit / 1_000_000,
+        { maximumFractionDigits: 2 }
+      )}</td>
+      <td>${formatOptionalNumber(
+        item.net_income === null || item.net_income === undefined ? null : item.net_income / 1_000_000,
+        { maximumFractionDigits: 2 }
+      )}</td>
+      <td>${formatOptionalNumber(
+        item.gross_margin === null || item.gross_margin === undefined
+          ? null
+          : item.gross_margin / 1_000_000,
+        { maximumFractionDigits: 2 }
+      )}</td>
+      <td>${formatFinancialPercent(item.roe)}</td>
+    `;
+    body.appendChild(row);
+  });
+}
+
+function renderTradingStatsTable(items) {
+  const body = elements.bodies.tradingStats;
+  if (!body) {
+    return;
+  }
+  body.innerHTML = "";
+
+  if (!items.length) {
+    appendEmptyRow(body, 11);
+    return;
+  }
+
+  items.forEach((item) => {
+    const statsValues = [
+      item.pct_change_1y,
+      item.pct_change_6m,
+      item.pct_change_3m,
+      item.pct_change_1m,
+      item.pct_change_2w,
+      item.pct_change_1w,
+    ];
+    const maValues = [item.ma_20, item.ma_10, item.ma_5];
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${item.code}</td>
+      <td>${item.name ?? EMPTY_VALUE}</td>
+      ${statsValues
+        .map((value) => {
+          const trendClass = getTrendClass(value);
+          return `<td class="${trendClass}">${formatPercent(value, { fromRatio: true })}</td>`;
+        })
+        .join("")}
+      ${maValues
+        .map((value) =>
+          `<td>${formatOptionalNumber(value, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}</td>`
+        )
+        .join("")}
+    `;
+    body.appendChild(row);
+  });
+}
+
+function renderFinancialStatsTable(items) {
+  const body = elements.bodies.financialStats;
+  if (!body) {
+    return;
+  }
+  body.innerHTML = "";
+
+  if (!items.length) {
+    appendEmptyRow(body, 11);
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${item.code}</td>
+      <td>${item.name ?? EMPTY_VALUE}</td>
+      <td>${formatOptionalDate(item.reportingPeriod)}</td>
+      <td class="${getTrendClass(item.netIncomeYoyLatest)}">${formatPercent(
+      item.netIncomeYoyLatest,
+      { fromRatio: true }
+    )}</td>
+      <td class="${getTrendClass(item.netIncomeYoyPrev1)}">${formatPercent(
+      item.netIncomeYoyPrev1,
+      { fromRatio: true }
+    )}</td>
+      <td class="${getTrendClass(item.netIncomeYoyPrev2)}">${formatPercent(
+      item.netIncomeYoyPrev2,
+      { fromRatio: true }
+    )}</td>
+      <td class="${getTrendClass(item.netIncomeQoqLatest)}">${formatPercent(
+      item.netIncomeQoqLatest,
+      { fromRatio: true }
+    )}</td>
+      <td class="${getTrendClass(item.revenueYoyLatest)}">${formatPercent(
+      item.revenueYoyLatest,
+      { fromRatio: true }
+    )}</td>
+      <td class="${getTrendClass(item.revenueQoqLatest)}">${formatPercent(
+      item.revenueQoqLatest,
+      { fromRatio: true }
+    )}</td>
+      <td class="${getTrendClass(item.roeYoyLatest)}">${formatPercent(item.roeYoyLatest, {
+      fromRatio: true,
+    })}</td>
+      <td class="${getTrendClass(item.roeQoqLatest)}">${formatPercent(item.roeQoqLatest, {
+      fromRatio: true,
+    })}</td>
+    `;
+    body.appendChild(row);
+  });
+}
+
+function renderActiveTab() {
+  switch (activeTab) {
+    case "financialData":
+      renderFinancialDataTable(state.trading.items);
+      break;
+    case "tradingStats":
+      renderTradingStatsTable(state.trading.items);
+      break;
+    case "financialStats":
+      renderFinancialStatsTable(state.metrics.items);
+      break;
+    case "tradingData":
+    default:
+      renderTradingDataTable(state.trading.items);
+      break;
+  }
 }
 
 function collectFilters() {
@@ -365,20 +432,24 @@ function collectFilters() {
 }
 
 function setActiveTab(tabName) {
+  activeTab = tabName;
+
   elements.tabs.forEach((tab) => {
     const isActive = tab.dataset.tab === tabName;
     tab.classList.toggle("tab--active", isActive);
   });
 
   Object.entries(elements.tables).forEach(([key, table]) => {
-    if (!table) {
-      return;
+    if (table) {
+      table.classList.toggle("hidden", key !== tabName);
     }
-    table.classList.toggle("hidden", key !== tabName);
   });
 
-  if (tabName === "statistics" && !elements.tables.statistics) {
-    console.warn("Statistics table is not available in the DOM.");
+  if (tabName === "financialStats" && !state.metrics.items.length) {
+    loadFinancialStats(1);
+  } else {
+    renderActiveTab();
+    updatePaginationControls();
   }
 }
 
@@ -389,36 +460,41 @@ function updateLanguage(lang) {
     btn.classList.toggle("active", btn.dataset.lang === lang)
   );
   applyTranslations();
-  renderTable();
+  renderActiveTab();
   updatePaginationControls();
 }
 
 function updatePaginationControls() {
-  const totalPages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
+  const currentState = activeTab === "financialStats" ? state.metrics : state.trading;
+  const totalPages = Math.max(1, Math.ceil(currentState.total / PAGE_SIZE));
   const dict = translations[currentLang];
   const pageText = dict.paginationInfo
-    .replace("{current}", state.page)
+    .replace("{current}", currentState.page)
     .replace("{totalPages}", totalPages)
-    .replace("{total}", formatNumber(state.total));
-  elements.pageInfo.textContent = pageText;
-  elements.prevPage.disabled = state.page <= 1;
-  elements.nextPage.disabled = state.page >= totalPages;
+    .replace("{total}", formatNumber(currentState.total));
+  if (elements.pageInfo) {
+    elements.pageInfo.textContent = pageText;
+  }
+  if (elements.prevPage) {
+    elements.prevPage.disabled = currentState.page <= 1;
+  }
+  if (elements.nextPage) {
+    elements.nextPage.disabled = currentState.page >= totalPages;
+  }
 }
 
-async function loadStocks(page = 1) {
-  state.page = page;
-  const filters = collectFilters();
-  state.filters = filters;
+async function loadTradingData(page = 1) {
+  state.trading.page = page;
+  state.trading.filters = collectFilters();
 
   const params = new URLSearchParams();
   params.set("limit", PAGE_SIZE.toString());
-  params.set("offset", ((state.page - 1) * PAGE_SIZE).toString());
+  params.set("offset", ((state.trading.page - 1) * PAGE_SIZE).toString());
 
+  const filters = state.trading.filters;
   if (filters.keyword) params.set("keyword", filters.keyword);
-  if (filters.market && filters.market !== "all")
-    params.set("market", filters.market);
-  if (filters.exchange && filters.exchange !== "all")
-    params.set("exchange", filters.exchange);
+  if (filters.market && filters.market !== "all") params.set("market", filters.market);
+  if (filters.exchange && filters.exchange !== "all") params.set("exchange", filters.exchange);
 
   try {
     const response = await fetch(`${API_BASE}/stocks?${params.toString()}`);
@@ -426,8 +502,8 @@ async function loadStocks(page = 1) {
       throw new Error(`Request failed with status ${response.status}`);
     }
     const data = await response.json();
-    state.total = data.total;
-    state.items = data.items.map((item) => ({
+    state.trading.total = data.total;
+    state.trading.items = data.items.map((item) => ({
       code: item.code,
       name: item.name,
       industry: item.industry,
@@ -460,76 +536,146 @@ async function loadStocks(page = 1) {
     }));
   } catch (error) {
     console.error("Failed to fetch stock data:", error);
-    state.total = 0;
-    state.items = [];
+    state.trading.total = 0;
+    state.trading.items = [];
   }
 
-  renderTable();
-  updatePaginationControls();
+  if (activeTab !== "financialStats") {
+    renderActiveTab();
+    updatePaginationControls();
+  }
+}
+
+async function loadFinancialStats(page = 1) {
+  state.metrics.page = page;
+  state.metrics.filters = collectFilters();
+
+  const params = new URLSearchParams();
+  params.set("limit", PAGE_SIZE.toString());
+  params.set("offset", ((state.metrics.page - 1) * PAGE_SIZE).toString());
+
+  const filters = state.metrics.filters;
+  if (filters.keyword) params.set("keyword", filters.keyword);
+  if (filters.market && filters.market !== "all") params.set("market", filters.market);
+  if (filters.exchange && filters.exchange !== "all") params.set("exchange", filters.exchange);
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/fundamental-metrics?${params.toString()}`
+    );
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const data = await response.json();
+    state.metrics.total = data.total;
+    state.metrics.items = data.items.map((item) => ({
+      code: item.code,
+      name: item.name,
+      reportingPeriod: item.netIncomeEndDateLatest,
+      netIncomeYoyLatest: item.netIncomeYoyLatest,
+      netIncomeYoyPrev1: item.netIncomeYoyPrev1,
+      netIncomeYoyPrev2: item.netIncomeYoyPrev2,
+      netIncomeQoqLatest: item.netIncomeQoqLatest,
+      revenueYoyLatest: item.revenueYoyLatest,
+      revenueQoqLatest: item.revenueQoqLatest,
+      roeYoyLatest: item.roeYoyLatest,
+      roeQoqLatest: item.roeQoqLatest,
+    }));
+  } catch (error) {
+    console.error("Failed to fetch fundamental metrics data:", error);
+    state.metrics.total = 0;
+    state.metrics.items = [];
+  }
+
+  if (activeTab === "financialStats") {
+    renderFinancialStatsTable(state.metrics.items);
+    updatePaginationControls();
+  }
 }
 
 elements.langButtons.forEach((btn) =>
   btn.addEventListener("click", () => updateLanguage(btn.dataset.lang))
 );
 
-elements.applyButton.addEventListener("click", () => {
-  loadStocks(1);
-});
+if (elements.applyButton) {
+  elements.applyButton.addEventListener("click", () => {
+    loadTradingData(1);
+    if (activeTab === "financialStats") {
+      loadFinancialStats(1);
+    }
+  });
+}
 
-elements.resetButton.addEventListener("click", () => {
-  elements.keywordInput.value = "";
-  elements.marketSelect.value = "all";
-  elements.exchangeSelect.value = "all";
-  elements.searchBox.value = "";
-  loadStocks(1);
-});
+function resetFilters() {
+  if (elements.keywordInput) {
+    elements.keywordInput.value = "";
+  }
+  if (elements.marketSelect) {
+    elements.marketSelect.value = "all";
+  }
+  if (elements.exchangeSelect) {
+    elements.exchangeSelect.value = "all";
+  }
+  if (elements.searchBox) {
+    elements.searchBox.value = "";
+  }
+}
+
+if (elements.resetButton) {
+  elements.resetButton.addEventListener("click", () => {
+    resetFilters();
+    loadTradingData(1);
+    if (activeTab === "financialStats") {
+      loadFinancialStats(1);
+    }
+  });
+}
 
 elements.tabs.forEach((tab) =>
   tab.addEventListener("click", () => setActiveTab(tab.dataset.tab))
 );
 
-elements.prevPage.addEventListener("click", () => {
-  if (state.page > 1) {
-    loadStocks(state.page - 1);
-  }
-});
+if (elements.prevPage) {
+  elements.prevPage.addEventListener("click", () => {
+    if (activeTab === "financialStats") {
+      if (state.metrics.page > 1) {
+        loadFinancialStats(state.metrics.page - 1);
+      }
+    } else if (state.trading.page > 1) {
+      loadTradingData(state.trading.page - 1);
+    }
+  });
+}
 
-elements.nextPage.addEventListener("click", () => {
-  const totalPages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
-  if (state.page < totalPages) {
-    loadStocks(state.page + 1);
-  }
-});
+if (elements.nextPage) {
+  elements.nextPage.addEventListener("click", () => {
+    const currentState = activeTab === "financialStats" ? state.metrics : state.trading;
+    const totalPages = Math.max(1, Math.ceil(currentState.total / PAGE_SIZE));
 
-elements.searchBox.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    elements.keywordInput.value = event.target.value.trim();
-    loadStocks(1);
-  }
-});
+    if (currentState.page < totalPages) {
+      if (activeTab === "financialStats") {
+        loadFinancialStats(currentState.page + 1);
+      } else {
+        loadTradingData(currentState.page + 1);
+      }
+    }
+  });
+}
 
-// Initial render
-setActiveTab("fundamentals");
+if (elements.searchBox) {
+  elements.searchBox.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      if (elements.keywordInput) {
+        elements.keywordInput.value = event.target.value.trim();
+      }
+      loadTradingData(1);
+      if (activeTab === "financialStats") {
+        loadFinancialStats(1);
+      }
+    }
+  });
+}
+
+setActiveTab("tradingData");
 updateLanguage(currentLang);
-loadStocks(1);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+loadTradingData(1);

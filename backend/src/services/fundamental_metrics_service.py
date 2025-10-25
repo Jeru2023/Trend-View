@@ -5,18 +5,18 @@ Service layer for computing derived fundamental metrics.
 from __future__ import annotations
 
 import logging
+import math
 import time
+from datetime import date, datetime
 from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
 
+from ..config.runtime_config import load_runtime_config
 from ..config.settings import load_settings
 from ..dao import FinancialIndicatorDAO, IncomeStatementDAO
-from ..dao.fundamental_metrics_dao import (
-    FundamentalMetricsDAO,
-    FUNDAMENTAL_METRICS_FIELDS,
-)
+from ..dao.fundamental_metrics_dao import FundamentalMetricsDAO, FUNDAMENTAL_METRICS_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -198,4 +198,78 @@ def sync_fundamental_metrics(
     return {"rows": affected, "elapsed_seconds": elapsed}
 
 
-__all__ = ["sync_fundamental_metrics"]
+def list_fundamental_metrics(
+    *,
+    keyword: Optional[str] = None,
+    market: Optional[str] = None,
+    exchange: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    settings_path: Optional[str] = None,
+) -> dict[str, object]:
+    """
+    Return paginated fundamental metrics to power the dashboard views.
+    """
+    settings = load_settings(settings_path)
+    runtime_config = load_runtime_config()
+    dao = FundamentalMetricsDAO(settings.postgres)
+    result = dao.query_metrics(
+        keyword=keyword,
+        market=market,
+        exchange=exchange,
+        include_st=runtime_config.include_st,
+        include_delisted=runtime_config.include_delisted,
+        limit=limit,
+        offset=offset,
+    )
+
+    def _format_date(value: object) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d")
+        if isinstance(value, date):
+            return value.isoformat()
+        text = str(value).strip()
+        return text or None
+
+    def _safe_float(value: object) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(numeric):
+            return None
+        return numeric
+
+    items: list[dict[str, object]] = []
+    for item in result["items"]:
+        items.append(
+            {
+                "code": item["code"],
+                "name": item.get("name"),
+                "industry": item.get("industry"),
+                "market": item.get("market"),
+                "exchange": item.get("exchange"),
+                "net_income_end_date_latest": _format_date(item.get("net_income_end_date_latest")),
+                "net_income_end_date_prev1": _format_date(item.get("net_income_end_date_prev1")),
+                "net_income_end_date_prev2": _format_date(item.get("net_income_end_date_prev2")),
+                "revenue_end_date_latest": _format_date(item.get("revenue_end_date_latest")),
+                "roe_end_date_latest": _format_date(item.get("roe_end_date_latest")),
+                "net_income_yoy_latest": _safe_float(item.get("net_income_yoy_latest")),
+                "net_income_yoy_prev1": _safe_float(item.get("net_income_yoy_prev1")),
+                "net_income_yoy_prev2": _safe_float(item.get("net_income_yoy_prev2")),
+                "net_income_qoq_latest": _safe_float(item.get("net_income_qoq_latest")),
+                "revenue_yoy_latest": _safe_float(item.get("revenue_yoy_latest")),
+                "revenue_qoq_latest": _safe_float(item.get("revenue_qoq_latest")),
+                "roe_yoy_latest": _safe_float(item.get("roe_yoy_latest")),
+                "roe_qoq_latest": _safe_float(item.get("roe_qoq_latest")),
+            }
+        )
+
+    return {"total": result["total"], "items": items}
+
+
+__all__ = ["sync_fundamental_metrics", "list_fundamental_metrics"]

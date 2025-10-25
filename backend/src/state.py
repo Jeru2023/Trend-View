@@ -42,7 +42,8 @@ class SyncMonitor:
             "daily_indicator": JobProgress(),
             "income_statement": JobProgress(),
             "financial_indicator": JobProgress(),
-            \"finance_breakfast\": JobProgress(),\n            "fundamental_metrics": JobProgress(),
+            "finance_breakfast": JobProgress(),
+            "fundamental_metrics": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():

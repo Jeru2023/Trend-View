@@ -129,7 +129,8 @@ class FinancialIndicatorDAO(PostgresDAOBase):
                 schema=sql.Identifier(self.config.schema),
                 table=sql.Identifier(self._table_name),
             )
-            frame = pd.read_sql_query(query, conn, params=(per_code,))
+            query_str = query.as_string(conn)
+            frame = pd.read_sql_query(query_str, conn, params=(per_code,))
         frame["ann_date"] = pd.to_datetime(frame["ann_date"], errors="coerce")
         frame["end_date"] = pd.to_datetime(frame["end_date"], errors="coerce")
         return frame

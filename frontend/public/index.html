@@ -91,19 +91,22 @@
           </section>
 
           <section class="tabs">
-            <button class="tab tab--active" data-tab="fundamentals" data-i18n="tabBasic">
-              Basic
+            <button class="tab tab--active" data-tab="tradingData" data-i18n="tabTradingData">
+              Trading Data
             </button>
-            <button class="tab" data-tab="fundamentalsReports" data-i18n="tabFundamentals">
-              Fundamental Data
+            <button class="tab" data-tab="financialData" data-i18n="tabFinancialData">
+              Financial Data
             </button>
-            <button class="tab" data-tab="statistics" data-i18n="tabTechnical">
-              Technical Stats
+            <button class="tab" data-tab="tradingStats" data-i18n="tabTradingStats">
+              Trading Stats
+            </button>
+            <button class="tab" data-tab="financialStats" data-i18n="tabFinancialStats">
+              Financial Stats
             </button>
           </section>
 
           <section class="table-wrapper">
-            <table class="stock-table" id="fundamentals-table">
+            <table class="stock-table" id="trading-data-table">
               <thead>
                 <tr>
                   <th data-i18n="colCode">Code</th>
@@ -119,10 +122,10 @@
                   <th data-i18n="colTurnover">Turnover Rate</th>
                 </tr>
               </thead>
-              <tbody id="fundamentals-body"></tbody>
+              <tbody id="trading-data-body"></tbody>
             </table>
 
-            <table class="stock-table hidden" id="fundamentals-reports-table">
+            <table class="stock-table hidden" id="financial-data-table">
               <thead>
                 <tr>
                   <th data-i18n="colCode">Code</th>
@@ -137,10 +140,10 @@
                   <th data-i18n="colRoe">ROE</th>
                 </tr>
               </thead>
-              <tbody id="fundamentals-reports-body"></tbody>
+              <tbody id="financial-data-body"></tbody>
             </table>
 
-            <table class="stock-table hidden" id="statistics-table">
+            <table class="stock-table hidden" id="trading-stats-table">
               <thead>
                 <tr>
                   <th data-i18n="colCode">Code</th>
@@ -156,7 +159,26 @@
                   <th data-i18n="colMa5">MA5</th>
                 </tr>
               </thead>
-              <tbody id="statistics-body"></tbody>
+              <tbody id="trading-stats-body"></tbody>
+            </table>
+
+            <table class="stock-table hidden" id="financial-stats-table">
+              <thead>
+                <tr>
+                  <th data-i18n="colCode">Code</th>
+                  <th data-i18n="colName">Name</th>
+                  <th data-i18n="colReportingPeriod">Reporting Period</th>
+                  <th data-i18n="colNetIncomeYoyLatest">Net Profit YoY (Latest)</th>
+                  <th data-i18n="colNetIncomeYoyPrev1">Net Profit YoY (Prev)</th>
+                  <th data-i18n="colNetIncomeYoyPrev2">Net Profit YoY (Prev-2)</th>
+                  <th data-i18n="colNetIncomeQoqLatest">Net Profit QoQ</th>
+                  <th data-i18n="colRevenueYoyLatest">Revenue YoY</th>
+                  <th data-i18n="colRevenueQoqLatest">Revenue QoQ</th>
+                  <th data-i18n="colRoeYoyLatest">ROE YoY</th>
+                  <th data-i18n="colRoeQoqLatest">ROE QoQ</th>
+                </tr>
+              </thead>
+              <tbody id="financial-stats-body"></tbody>
             </table>
           </section>
 
