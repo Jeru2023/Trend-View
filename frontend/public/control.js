@@ -74,6 +74,15 @@ const elements = {
     progress: document.getElementById("daily-trade-metrics-progress"),
     button: document.getElementById("run-daily-trade-metrics"),
   },
+  fundamentalMetrics: {
+    status: document.getElementById("fundamental-metrics-status"),
+    updated: document.getElementById("fundamental-metrics-updated"),
+    duration: document.getElementById("fundamental-metrics-duration"),
+    rows: document.getElementById("fundamental-metrics-rows"),
+    message: document.getElementById("fundamental-metrics-message"),
+    progress: document.getElementById("fundamental-metrics-progress"),
+    button: document.getElementById("run-fundamental-metrics"),
+  },
   dailyIndicator: {
     status: document.getElementById("daily-indicator-status"),
     updated: document.getElementById("daily-indicator-updated"),
@@ -239,6 +248,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const fundamentalSnapshot = jobs.fundamental_metrics || {
+      status: "idle",
+      progress: 0,
+    };
     const indicatorSnapshot = jobs.daily_indicator || {
       status: "idle",
       progress: 0,
@@ -260,6 +273,7 @@ async function loadStatus() {
     updateJobCard(elements.dailyTrade, dailySnapshot);
     updateJobCard(elements.dailyTradeMetrics, metricsSnapshot);
     updateJobCard(elements.dailyIndicator, indicatorSnapshot);
+    updateJobCard(elements.fundamentalMetrics, fundamentalSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.financeBreakfast, breakfastSnapshot);
@@ -279,6 +293,7 @@ async function loadStatus() {
       dailySnapshot,
       metricsSnapshot,
       indicatorSnapshot,
+      fundamentalSnapshot,
       incomeSnapshot,
       financialSnapshot,
       breakfastSnapshot,
@@ -333,6 +348,9 @@ function initActions() {
   );
   elements.dailyIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/daily-indicators", {})
+  );
+  elements.fundamentalMetrics.button.addEventListener("click", () =>
+    triggerJob("/control/sync/fundamental-metrics", {})
   );
   elements.incomeStatement.button.addEventListener("click", () =>
     triggerJob("/control/sync/income-statements", {})

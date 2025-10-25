@@ -66,6 +66,14 @@
       colNetIncome: "Net Profit (M)",
       colGrossMargin: "Gross Profit (M)",
       colRoe: "ROE",
+      colNetIncomeYoyLatest: "Net Profit YoY (Latest)",
+      colNetIncomeYoyPrev1: "Net Profit YoY (Prev)",
+      colNetIncomeYoyPrev2: "Net Profit YoY (Prev-2)",
+      colNetIncomeQoqLatest: "Net Profit QoQ",
+      colRevenueYoyLatest: "Revenue YoY",
+      colRevenueQoqLatest: "Revenue QoQ",
+      colRoeYoyLatest: "ROE YoY",
+      colRoeQoqLatest: "ROE QoQ",
       colPct1Y: "1Y Change (%)",
         colPct6M: "6M Change (%)",
         colPct3M: "3M Change (%)",
@@ -117,8 +125,16 @@
         colRevenue: "营收（百万）",
         colOperateProfit: "营业利润（百万）",
         colNetIncome: "净利润（百万）",
-        colGrossMargin: "毛利（百万）",
-        colRoe: "资产收益率",
+      colGrossMargin: "毛利（百万）",
+      colRoe: "资产收益率",
+      colNetIncomeYoyLatest: "净利润同比",
+      colNetIncomeYoyPrev1: "净利润同比（上一期）",
+      colNetIncomeYoyPrev2: "净利润同比（上上期）",
+      colNetIncomeQoqLatest: "净利润环比",
+      colRevenueYoyLatest: "营收同比",
+      colRevenueQoqLatest: "营收环比",
+      colRoeYoyLatest: "ROE同比",
+      colRoeQoqLatest: "ROE环比",
         colPct1Y: "一年涨跌幅",
         colPct6M: "半年涨跌幅",
         colPct3M: "三个月涨跌幅",
@@ -161,6 +177,9 @@
         financialIndicatorTitle: "Financial Indicators",
         financialIndicatorSubtitle:
           "Collect per-stock profitability and efficiency ratios via the Tushare fina_indicator API.",
+        fundamentalMetricsTitle: "Fundamental Metrics",
+        fundamentalMetricsSubtitle:
+          "Compute YoY and QoQ KPIs from income statements and indicators (auto 19:10).",
         financeBreakfastTitle: "Finance Breakfast",
         financeBreakfastSubtitle: "Daily morning digest sourced from Eastmoney (AkShare stock_info_cjzc_em).",
         runNow: "Run Now",
@@ -208,6 +227,9 @@
         incomeStatementSubtitle: "逐个股票调用 income 接口获取最新利润表数据。",
         financialIndicatorTitle: "财务指标数据",
         financialIndicatorSubtitle: "逐个股票调用 fina_indicator 接口同步盈利能力与运营效率指标。",
+        fundamentalMetricsTitle: "基本面衍生指标",
+        fundamentalMetricsSubtitle:
+          "基于最新财报计算净利润、营收、ROE 的同比与环比（19:10 自动执行）。",
         financeBreakfastTitle: "财经早餐",
         financeBreakfastSubtitle: "每日早间资讯，来源东方财富财经早餐（AkShare stock_info_cjzc_em）。",
         runNow: "立即执行",
@@ -307,5 +329,3 @@
 
   global.availableLanguages = Object.keys(registry.shared);
 })(window);
-
-

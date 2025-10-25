@@ -1,4 +1,4 @@
-"""
+﻿"""
 Data access object for income statements fetched via Tushare ``pro.income``.
 """
 
@@ -87,6 +87,41 @@ class IncomeStatementDAO(PostgresDAOBase):
                 )
                 count, last_updated = cur.fetchone()
         return {"count": count or 0, "updated_at": last_updated}
+
+    def fetch_recent(self, per_code: int = 8) -> pd.DataFrame:
+        """Return the most recent income statements per security."""
+        if per_code <= 0:
+            raise ValueError("per_code must be positive")
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            query = sql.SQL(
+                """
+                SELECT ts_code,
+                       ann_date,
+                       end_date,
+                       revenue,
+                       n_income
+                FROM (
+                    SELECT ts_code,
+                           ann_date,
+                           end_date,
+                           revenue,
+                           n_income,
+                           ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY end_date DESC, ann_date DESC) AS rn
+                    FROM {schema}.{table}
+                ) ranked
+                WHERE rn <= %s
+                ORDER BY ts_code, end_date
+                """
+            ).format(
+                schema=sql.Identifier(self.config.schema),
+                table=sql.Identifier(self._table_name),
+            )
+            frame = pd.read_sql_query(query, conn, params=(per_code,))
+        frame["ann_date"] = pd.to_datetime(frame["ann_date"], errors="coerce")
+        frame["end_date"] = pd.to_datetime(frame["end_date"], errors="coerce")
+        return frame
 
     def latest_period_end(self) -> Optional[date]:
         with self.connect() as conn:

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Service layer for synchronising Tushare stock basic data into PostgreSQL.
 """
 
@@ -17,6 +17,7 @@ from ..dao import (
     DailyTradeDAO,
     DailyTradeMetricsDAO,
     FinancialIndicatorDAO,
+    FundamentalMetricsDAO,
     IncomeStatementDAO,
     StockBasicDAO,
 )
@@ -107,7 +108,7 @@ def get_stock_overview(
     metrics: Dict[str, dict] = daily_dao.fetch_latest_metrics(codes)
     indicator_dao = DailyIndicatorDAO(settings.postgres)
     indicators: Dict[str, dict] = indicator_dao.fetch_latest_indicators(codes)
-    derived_metrics = DailyTradeMetricsDAO(settings.postgres).fetch_metrics(codes)
+    derived_metrics = DailyTradeMetricsDAO(settings.postgres).fetch_metrics(codes)\n    fundamental_metrics = FundamentalMetricsDAO(settings.postgres).fetch_metrics(codes)
     income_dao = IncomeStatementDAO(settings.postgres)
     income_statements = income_dao.fetch_latest_statements(codes)
     financial_dao = FinancialIndicatorDAO(settings.postgres)
@@ -162,7 +163,7 @@ def get_stock_overview(
         item["basic_eps"] = _safe_float(income.get("basic_eps"))
         item["revenue"] = _safe_float(income.get("revenue"))
         item["operate_profit"] = _safe_float(income.get("operate_profit"))
-        item["n_income"] = _safe_float(income.get("n_income"))
+        item["net_income"] = _safe_float(income.get("n_income"))
         financial = financials.get(item["code"], {})
         if item["ann_date"] is None:
             item["ann_date"] = _format_date(financial.get("ann_date"))
@@ -170,6 +171,15 @@ def get_stock_overview(
             item["end_date"] = _format_date(financial.get("end_date"))
         item["gross_margin"] = _safe_float(financial.get("gross_margin"))
         item["roe"] = _safe_float(financial.get("roe"))
+        fundamental = fundamental_metrics.get(item["code"], {})
+        item["net_income_yoy_latest"] = _safe_float(fundamental.get("net_income_yoy_latest"))
+        item["net_income_yoy_prev1"] = _safe_float(fundamental.get("net_income_yoy_prev1"))
+        item["net_income_yoy_prev2"] = _safe_float(fundamental.get("net_income_yoy_prev2"))
+        item["net_income_qoq_latest"] = _safe_float(fundamental.get("net_income_qoq_latest"))
+        item["revenue_yoy_latest"] = _safe_float(fundamental.get("revenue_yoy_latest"))
+        item["revenue_qoq_latest"] = _safe_float(fundamental.get("revenue_qoq_latest"))
+        item["roe_yoy_latest"] = _safe_float(fundamental.get("roe_yoy_latest"))
+        item["roe_qoq_latest"] = _safe_float(fundamental.get("roe_qoq_latest"))
 
     return result
 

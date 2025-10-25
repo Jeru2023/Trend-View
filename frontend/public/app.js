@@ -203,7 +203,7 @@ function renderTable(data = state.items) {
   if (!data.length) {
     appendEmptyRow(elements.fundamentalsBody, 11);
     if (elements.fundamentalsReportsBody) {
-      appendEmptyRow(elements.fundamentalsReportsBody, 10);
+      appendEmptyRow(elements.fundamentalsReportsBody, 14);
     }
     if (elements.statisticsBody) {
       appendEmptyRow(elements.statisticsBody, 11);
@@ -263,22 +263,38 @@ function renderTable(data = state.items) {
         maximumFractionDigits: 2,
       });
       const revenueDisplay = formatOptionalNumber(
-        item.revenue === null || item.revenue === undefined ? null : item.revenue / 1_000_000,
+        item.revenue === null || item.revenue === undefined
+            ? null
+            : item.revenue / 1_000_000,
         { maximumFractionDigits: 2 }
       );
       const operateProfitDisplay = formatOptionalNumber(
-        item.operate_profit === null || item.operate_profit === undefined ? null : item.operate_profit / 1_000_000,
+        item.operate_profit === null || item.operate_profit === undefined
+            ? null
+            : item.operate_profit / 1_000_000,
         { maximumFractionDigits: 2 }
       );
       const netIncomeDisplay = formatOptionalNumber(
-        item.net_income === null || item.net_income === undefined ? null : item.net_income / 1_000_000,
+        item.net_income === null || item.net_income === undefined
+            ? null
+            : item.net_income / 1_000_000,
         { maximumFractionDigits: 2 }
       );
       const grossMarginDisplay = formatOptionalNumber(
-        item.gross_margin === null || item.gross_margin === undefined ? null : item.gross_margin / 1_000_000,
+        item.gross_margin === null || item.gross_margin === undefined
+            ? null
+            : item.gross_margin / 1_000_000,
         { maximumFractionDigits: 2 }
       );
       const roeDisplay = formatFinancialPercent(item.roe);
+      const netIncomeYoyLatestDisplay = formatPercent(item.net_income_yoy_latest, { fromRatio: true });
+      const netIncomeYoyPrev1Display = formatPercent(item.net_income_yoy_prev1, { fromRatio: true });
+      const netIncomeYoyPrev2Display = formatPercent(item.net_income_yoy_prev2, { fromRatio: true });
+      const netIncomeQoqDisplay = formatPercent(item.net_income_qoq_latest, { fromRatio: true });
+      const revenueYoyDisplay = formatPercent(item.revenue_yoy_latest, { fromRatio: true });
+      const revenueQoqDisplay = formatPercent(item.revenue_qoq_latest, { fromRatio: true });
+      const roeYoyDisplay = formatPercent(item.roe_yoy_latest, { fromRatio: true });
+      const roeQoqDisplay = formatPercent(item.roe_qoq_latest, { fromRatio: true });
       
       const fundamentalsRow = document.createElement("tr");
       fundamentalsRow.innerHTML = `
@@ -292,9 +308,17 @@ function renderTable(data = state.items) {
         <td>${netIncomeDisplay}</td>
         <td>${grossMarginDisplay}</td>
         <td>${roeDisplay}</td>
+        <td class="${getTrendClass(item.net_income_yoy_latest)}">${netIncomeYoyLatestDisplay}</td>
+        <td class="${getTrendClass(item.net_income_yoy_prev1)}">${netIncomeYoyPrev1Display}</td>
+        <td class="${getTrendClass(item.net_income_yoy_prev2)}">${netIncomeYoyPrev2Display}</td>
+        <td class="${getTrendClass(item.net_income_qoq_latest)}">${netIncomeQoqDisplay}</td>
+        <td class="${getTrendClass(item.revenue_yoy_latest)}">${revenueYoyDisplay}</td>
+        <td class="${getTrendClass(item.revenue_qoq_latest)}">${revenueQoqDisplay}</td>
+        <td class="${getTrendClass(item.roe_yoy_latest)}">${roeYoyDisplay}</td>
+        <td class="${getTrendClass(item.roe_qoq_latest)}">${roeQoqDisplay}</td>
       `;
       elements.fundamentalsReportsBody.appendChild(fundamentalsRow);
-     }
+    }
       
       if (elements.statisticsBody) {
       const statsValues = [
@@ -488,8 +512,6 @@ elements.searchBox.addEventListener("keydown", (event) => {
 setActiveTab("fundamentals");
 updateLanguage(currentLang);
 loadStocks(1);
-
-
 
 
 

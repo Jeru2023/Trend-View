@@ -26,6 +26,7 @@ from .dao import (
     FinancialIndicatorDAO,
     FinanceBreakfastDAO,
     IncomeStatementDAO,
+    FundamentalMetricsDAO,
     StockBasicDAO,
 )
 from .services import (
@@ -37,6 +38,7 @@ from .services import (
     sync_income_statements,
     sync_daily_trade,
     sync_daily_trade_metrics,
+    sync_fundamental_metrics,
     sync_stock_basic,
 )
 from .state import monitor
@@ -76,6 +78,14 @@ class StockItem(BaseModel):
     net_income: Optional[float] = Field(None, alias="netIncome")
     gross_margin: Optional[float] = Field(None, alias="grossMargin")
     roe: Optional[float] = Field(None, alias="roe")
+    net_income_yoy_latest: Optional[float] = Field(None, alias="netIncomeYoyLatest")
+    net_income_yoy_prev1: Optional[float] = Field(None, alias="netIncomeYoyPrev1")
+    net_income_yoy_prev2: Optional[float] = Field(None, alias="netIncomeYoyPrev2")
+    net_income_qoq_latest: Optional[float] = Field(None, alias="netIncomeQoqLatest")
+    revenue_yoy_latest: Optional[float] = Field(None, alias="revenueYoyLatest")
+    revenue_qoq_latest: Optional[float] = Field(None, alias="revenueQoqLatest")
+    roe_yoy_latest: Optional[float] = Field(None, alias="roeYoyLatest")
+    roe_qoq_latest: Optional[float] = Field(None, alias="roeQoqLatest")
 
     class Config:
         allow_population_by_field_name = True
@@ -116,6 +126,21 @@ class SyncDailyTradeMetricsRequest(BaseModel):
 class SyncDailyTradeMetricsResponse(BaseModel):
     rows: int
     trade_date: Optional[str] = Field(None, alias="tradeDate")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncFundamentalMetricsRequest(BaseModel):
+    per_code: Optional[int] = Field(8, ge=1, le=24, alias="perCode")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncFundamentalMetricsResponse(BaseModel):
+    rows: int
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
     class Config:
@@ -279,6 +304,10 @@ async def _run_stock_basic_job(list_statuses: Optional[List[str]], market: Optio
 
     def job() -> None:
         started = time.perf_counter()
+        monitor.update(
+            "fundamental_metrics",
+            last_market=f"PER:{request.per_code}" if request.per_code is not None else "PER:AUTO",
+        )
         try:
             rows = sync_stock_basic(
                 list_statuses=tuple(list_statuses or ["L", "D", "P"]),
@@ -446,6 +475,59 @@ async def _run_daily_trade_metrics_job(request: SyncDailyTradeMetricsRequest) ->
     monitor.update("daily_trade_metrics", last_market=f"HISTORY:{label}")
     await loop.run_in_executor(None, job)
 
+
+
+async def _run_fundamental_metrics_job(request: SyncFundamentalMetricsRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "fundamental_metrics",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update(
+            "fundamental_metrics",
+            last_market=f"PER:{request.per_code}" if request.per_code is not None else "PER:AUTO",
+        )
+        try:
+            kwargs: dict[str, object] = {"progress_callback": progress_callback}
+            if request.per_code is not None:
+                kwargs["per_code"] = request.per_code
+            result = sync_fundamental_metrics(**kwargs)
+            stats: Dict[str, object] = {}
+            try:
+                stats = FundamentalMetricsDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh fundamental_metrics stats: %s", stats_exc)
+            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
+            monitor.finish(
+                "fundamental_metrics",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message="Fundamental metrics sync completed",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "fundamental_metrics",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
 
 async def _run_daily_indicator_job(request: SyncDailyIndicatorRequest) -> None:
     loop = asyncio.get_running_loop()
@@ -763,6 +845,12 @@ async def safe_start_daily_trade_metrics_job(payload: SyncDailyTradeMetricsReque
         logger.info("Daily trade metrics sync skipped: %s", exc.detail)
 
 
+async def safe_start_fundamental_metrics_job(payload: SyncFundamentalMetricsRequest) -> None:
+    try:
+        await start_fundamental_metrics_job(payload)
+    except HTTPException as exc:
+        logger.info("Fundamental metrics sync skipped: %s", exc.detail)
+
 async def safe_start_daily_indicator_job(payload: SyncDailyIndicatorRequest) -> None:
     try:
         await start_daily_indicator_job(payload)
@@ -841,6 +929,14 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=19, minute=0),
             id="daily_trade_metrics_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_fundamental_metrics_job(SyncFundamentalMetricsRequest())
+            ),
+            CronTrigger(hour=19, minute=10),
+            id="fundamental_metrics_daily",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -977,6 +1073,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect daily_trade_metrics stats: %s", exc)
         stats_map["daily_trade_metrics"] = {}
     try:
+        stats_map["fundamental_metrics"] = FundamentalMetricsDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect fundamental_metrics stats: %s", exc)
+        stats_map["fundamental_metrics"] = {}
+    try:
         stats_map["income_statement"] = IncomeStatementDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect income_statement stats: %s", exc)
@@ -1058,6 +1159,12 @@ async def control_sync_daily_trade_metrics(payload: SyncDailyTradeMetricsRequest
     return {"status": "started"}
 
 
+@app.post("/control/sync/fundamental-metrics")
+async def control_sync_fundamental_metrics(payload: SyncFundamentalMetricsRequest) -> dict[str, str]:
+    await start_fundamental_metrics_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/daily-indicators")
 async def control_sync_daily_indicators(payload: SyncDailyIndicatorRequest) -> dict[str, str]:
     await start_daily_indicator_job(payload)
@@ -1094,6 +1201,7 @@ def control_debug_stats() -> dict[str, object]:
             "income_statement": IncomeStatementDAO(settings.postgres).stats(),
             "financial_indicator": FinancialIndicatorDAO(settings.postgres).stats(),
             "finance_breakfast": FinanceBreakfastDAO(settings.postgres).stats(),
+            "fundamental_metrics": FundamentalMetricsDAO(settings.postgres).stats(),
         },
         "monitor": monitor.snapshot(),
     }
@@ -1136,6 +1244,18 @@ def trigger_daily_trade_metrics_sync(payload: SyncDailyTradeMetricsRequest) -> S
         rows=result["rows"],
         tradeDate=result.get("trade_date"),
         elapsedSeconds=result["elapsed_seconds"],
+    )
+
+
+@app.post("/sync/fundamental-metrics", response_model=SyncFundamentalMetricsResponse)
+def trigger_fundamental_metrics_sync(payload: SyncFundamentalMetricsRequest) -> SyncFundamentalMetricsResponse:
+    kwargs: Dict[str, object] = {}
+    if payload.per_code is not None:
+        kwargs["per_code"] = payload.per_code
+    result = sync_fundamental_metrics(**kwargs)
+    return SyncFundamentalMetricsResponse(
+        rows=int(result["rows"]),
+        elapsedSeconds=float(result["elapsed_seconds"]),
     )
 
 

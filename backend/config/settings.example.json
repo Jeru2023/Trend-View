@@ -22,6 +22,7 @@
         "income_statement_table": "income_statements",
         "financial_indicator_table": "financial_indicators",
         "finance_breakfast_table": "finance_breakfast",
+        "fundamental_metrics_table": "fundamental_metrics",
         "connect_timeout": 3,
         "application_name": "trend_view_backend",
         "statement_timeout_ms": 300000,
