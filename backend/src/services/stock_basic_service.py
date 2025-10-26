@@ -83,7 +83,7 @@ def get_stock_overview(
     keyword: str | None = None,
     market: str | None = None,
     exchange: str | None = None,
-    limit: int = 50,
+    limit: Optional[int] = 50,
     offset: int = 0,
     settings_path: str | None = None,
 ) -> dict[str, object]:

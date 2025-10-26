@@ -121,6 +121,7 @@ class StockBasicDAO(PostgresDAOBase):
         include_delisted: bool = True,
         limit: int = 50,
         offset: int = 0,
+        filters: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """
         Retrieve stock fundamentals with optional filtering and pagination.
@@ -182,11 +183,19 @@ class StockBasicDAO(PostgresDAOBase):
         if conditions:
             where_clause = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(conditions)
 
-        query = select_base + where_clause + sql.SQL(" ORDER BY ts_code LIMIT %s OFFSET %s")
-        query_params = params + [limit, offset]
+        order_clause = sql.SQL(" ORDER BY ts_code")
+        limit_clause: Optional[sql.SQL] = None
+        query_params = params.copy()
+        count_params = params.copy()
+        if limit is not None and limit > 0:
+            limit_clause = sql.SQL(" LIMIT %s OFFSET %s")
+            query_params.extend([limit, offset])
+
+        query = select_base + where_clause + order_clause
+        if limit_clause is not None:
+            query += limit_clause
 
         count_query = count_base + where_clause
-        count_params = params.copy()
 
         with self.connect() as conn:
             self.ensure_table(conn)

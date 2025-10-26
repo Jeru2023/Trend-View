@@ -14,6 +14,16 @@ const API_BASE =
 const PAGE_SIZE = 20;
 const LANG_STORAGE_KEY = "trend-view-lang";
 const EMPTY_VALUE = "--";
+const DEFAULT_FILTERS = {
+  keyword: "",
+  market: "all",
+  exchange: "all",
+  volumeSpikeMin: 1.8,
+  peMin: 0,
+  roeMin: 3,
+  netIncomeQoqMin: 0,
+  netIncomeYoyMinPercent: 10,
+};
 
 const exchangeLabels = {
   en: { SSE: "SSE", SZSE: "SZSE", BSE: "BSE" },
@@ -43,6 +53,19 @@ const marketLabels = {
   },
 };
 
+function createDefaultFilterState() {
+  return {
+    keyword: DEFAULT_FILTERS.keyword,
+    market: DEFAULT_FILTERS.market,
+    exchange: DEFAULT_FILTERS.exchange,
+    volumeSpikeMin: DEFAULT_FILTERS.volumeSpikeMin,
+    peMin: DEFAULT_FILTERS.peMin,
+    roeMin: DEFAULT_FILTERS.roeMin,
+    netIncomeQoqMin: DEFAULT_FILTERS.netIncomeQoqMin,
+    netIncomeYoyMin: DEFAULT_FILTERS.netIncomeYoyMinPercent / 100,
+  };
+}
+
 let currentLang = getInitialLanguage();
 let activeTab = "tradingData";
 
@@ -51,13 +74,13 @@ const state = {
     page: 1,
     total: 0,
     items: [],
-    filters: { keyword: "", market: "all", exchange: "all" },
+    filters: createDefaultFilterState(),
   },
   metrics: {
     page: 1,
     total: 0,
     items: [],
-    filters: { keyword: "", market: "all", exchange: "all" },
+    filters: createDefaultFilterState(),
   },
 };
 
@@ -68,6 +91,11 @@ const elements = {
   keywordInput: document.getElementById("keyword"),
   marketSelect: document.getElementById("market"),
   exchangeSelect: document.getElementById("exchange"),
+  volumeSpikeInput: document.getElementById("volume-spike-min"),
+  peMinInput: document.getElementById("pe-min"),
+  roeMinInput: document.getElementById("roe-min"),
+  netIncomeQoqInput: document.getElementById("net-income-qoq-min"),
+  netIncomeYoyInput: document.getElementById("net-income-yoy-min"),
   applyButton: document.getElementById("apply-filters"),
   resetButton: document.getElementById("reset-filters"),
   prevPage: document.getElementById("prev-page"),
@@ -86,10 +114,49 @@ const tabRegistry = TAB_MODULES.reduce((registry, module) => {
   return registry;
 }, {});
 
+function setNumericFilterInputs(filters) {
+  if (elements.volumeSpikeInput) {
+    elements.volumeSpikeInput.value = String(
+      filters.volumeSpikeMin ?? DEFAULT_FILTERS.volumeSpikeMin
+    );
+  }
+  if (elements.peMinInput) {
+    elements.peMinInput.value = String(filters.peMin ?? DEFAULT_FILTERS.peMin);
+  }
+  if (elements.roeMinInput) {
+    elements.roeMinInput.value = String(filters.roeMin ?? DEFAULT_FILTERS.roeMin);
+  }
+  if (elements.netIncomeQoqInput) {
+    elements.netIncomeQoqInput.value = String(
+      filters.netIncomeQoqMin ?? DEFAULT_FILTERS.netIncomeQoqMin
+    );
+  }
+  if (elements.netIncomeYoyInput) {
+    const ratio = filters.netIncomeYoyMin ?? (DEFAULT_FILTERS.netIncomeYoyMinPercent / 100);
+    elements.netIncomeYoyInput.value = String((ratio * 100).toFixed(2).replace(/\.?0+$/, ""));
+  }
+}
+
+function parseNumericInput(element, fallback) {
+  if (!element) {
+    return fallback;
+  }
+  const value = parseFloat(element.value);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function syncMetricsFromTrading() {
+  state.metrics.page = state.trading.page;
+  state.metrics.total = state.trading.total;
+  state.metrics.items = state.trading.items;
+  state.metrics.filters = { ...state.trading.filters };
+}
+
 initialize().catch((error) => console.error("Failed to initialize basic info page:", error));
 
 async function initialize() {
   bindEvents();
+  setNumericFilterInputs(state.trading.filters);
   await updateLanguage(currentLang);
   await setActiveTab(activeTab, { force: true });
   await loadTradingData(1);
@@ -105,11 +172,6 @@ function bindEvents() {
   if (elements.applyButton) {
     elements.applyButton.addEventListener("click", () => {
       loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
-      if (isMetricsTabActive()) {
-        loadFinancialStats(1).catch((error) =>
-          console.error("Failed to reload financial stats data:", error)
-        );
-      }
     });
   }
 
@@ -117,11 +179,6 @@ function bindEvents() {
     elements.resetButton.addEventListener("click", () => {
       resetFilters();
       loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
-      if (isMetricsTabActive()) {
-        loadFinancialStats(1).catch((error) =>
-          console.error("Failed to reload financial stats data:", error)
-        );
-      }
     });
   }
 
@@ -135,9 +192,9 @@ function bindEvents() {
   if (elements.prevPage) {
     elements.prevPage.addEventListener("click", () => {
       if (isMetricsTabActive()) {
-        if (state.metrics.page > 1) {
-          loadFinancialStats(state.metrics.page - 1).catch((error) =>
-            console.error("Failed to load previous financial stats page:", error)
+        if (state.trading.page > 1) {
+          loadTradingData(state.trading.page - 1).catch((error) =>
+            console.error("Failed to load previous trading page:", error)
           );
         }
       } else if (state.trading.page > 1) {
@@ -153,15 +210,9 @@ function bindEvents() {
       const currentState = getActiveDataState();
       const totalPages = Math.max(1, Math.ceil(currentState.total / PAGE_SIZE));
       if (currentState.page < totalPages) {
-        if (isMetricsTabActive()) {
-          loadFinancialStats(currentState.page + 1).catch((error) =>
-            console.error("Failed to load next financial stats page:", error)
-          );
-        } else {
-          loadTradingData(currentState.page + 1).catch((error) =>
-            console.error("Failed to load next trading page:", error)
-          );
-        }
+        loadTradingData(state.trading.page + 1).catch((error) =>
+          console.error("Failed to load next trading page:", error)
+        );
       }
     });
   }
@@ -173,11 +224,6 @@ function bindEvents() {
           elements.keywordInput.value = event.target.value.trim();
         }
         loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
-        if (isMetricsTabActive()) {
-          loadFinancialStats(1).catch((error) =>
-            console.error("Failed to reload financial stats data:", error)
-          );
-        }
       }
     });
   }
@@ -202,13 +248,12 @@ async function setActiveTab(tabName, { force = false } = {}) {
     }
   });
 
-  if (tabName === "financialStats" && !state.metrics.items.length) {
-    await loadFinancialStats(1);
-    return;
+  if (tabName === "financialStats") {
+    await loadFinancialStats();
+  } else {
+    await renderActiveTab();
+    updatePaginationControls();
   }
-
-  await renderActiveTab();
-  updatePaginationControls();
 }
 
 async function updateLanguage(lang) {
@@ -326,6 +371,11 @@ async function loadTradingData(page = 1) {
   if (filters.keyword) params.set("keyword", filters.keyword);
   if (filters.market && filters.market !== "all") params.set("market", filters.market);
   if (filters.exchange && filters.exchange !== "all") params.set("exchange", filters.exchange);
+  params.set("volumeSpikeMin", filters.volumeSpikeMin.toString());
+  params.set("peMin", filters.peMin.toString());
+  params.set("roeMin", filters.roeMin.toString());
+  params.set("netIncomeQoqMin", filters.netIncomeQoqMin.toString());
+  params.set("netIncomeYoyMin", filters.netIncomeYoyMin.toString());
 
   try {
     const response = await fetch(`${API_BASE}/stocks?${params.toString()}`);
@@ -355,68 +405,48 @@ async function loadTradingData(page = 1) {
       pct_change_1w: item.pctChange1W,
       ma_20: item.ma20,
       ma_10: item.ma10,
-      ma_5: item.ma5,
-      volume_spike: item.volumeSpike,
-      ann_date: item.annDate,
-      end_date: item.endDate,
-      basic_eps: item.basicEps,
-      revenue: item.revenue,
-      operate_profit: item.operateProfit,
-      net_income: item.netIncome,
-      gross_margin: item.grossMargin,
-      roe: item.roe,
-    }));
+        ma_5: item.ma5,
+        volume_spike: item.volumeSpike,
+        ann_date: item.annDate,
+        end_date: item.endDate,
+        reportingPeriod: item.endDate,
+        basic_eps: item.basicEps,
+        revenue: item.revenue,
+        operate_profit: item.operateProfit,
+        net_income: item.netIncome,
+        gross_margin: item.grossMargin,
+        roe: item.roe,
+        net_income_yoy_latest: item.netIncomeYoyLatest,
+        net_income_yoy_prev1: item.netIncomeYoyPrev1,
+        net_income_yoy_prev2: item.netIncomeYoyPrev2,
+        net_income_qoq_latest: item.netIncomeQoqLatest,
+        revenue_yoy_latest: item.revenueYoyLatest,
+        revenue_qoq_latest: item.revenueQoqLatest,
+        roe_yoy_latest: item.roeYoyLatest,
+        roe_qoq_latest: item.roeQoqLatest,
+        netIncomeYoyLatest: item.netIncomeYoyLatest,
+        netIncomeYoyPrev1: item.netIncomeYoyPrev1,
+        netIncomeYoyPrev2: item.netIncomeYoyPrev2,
+        netIncomeQoqLatest: item.netIncomeQoqLatest,
+        revenueYoyLatest: item.revenueYoyLatest,
+        revenueQoqLatest: item.revenueQoqLatest,
+        roeYoyLatest: item.roeYoyLatest,
+        roeQoqLatest: item.roeQoqLatest,
+      }));
+    syncMetricsFromTrading();
   } catch (error) {
     console.error("Failed to fetch stock data:", error);
     state.trading.total = 0;
     state.trading.items = [];
+    syncMetricsFromTrading();
   }
 
-  if (!isMetricsTabActive()) {
-    await renderActiveTab();
-    updatePaginationControls();
-  }
+  await renderActiveTab();
+  updatePaginationControls();
 }
 
-async function loadFinancialStats(page = 1) {
-  state.metrics.page = page;
-  state.metrics.filters = collectFilters();
-
-  const params = new URLSearchParams();
-  params.set("limit", PAGE_SIZE.toString());
-  params.set("offset", ((state.metrics.page - 1) * PAGE_SIZE).toString());
-
-  const filters = state.metrics.filters;
-  if (filters.keyword) params.set("keyword", filters.keyword);
-  if (filters.market && filters.market !== "all") params.set("market", filters.market);
-  if (filters.exchange && filters.exchange !== "all") params.set("exchange", filters.exchange);
-
-  try {
-    const response = await fetch(`${API_BASE}/fundamental-metrics?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
-    }
-    const data = await response.json();
-    state.metrics.total = data.total;
-    state.metrics.items = data.items.map((item) => ({
-      code: item.code,
-      name: item.name,
-      reportingPeriod: item.netIncomeEndDateLatest,
-      netIncomeYoyLatest: item.netIncomeYoyLatest,
-      netIncomeYoyPrev1: item.netIncomeYoyPrev1,
-      netIncomeYoyPrev2: item.netIncomeYoyPrev2,
-      netIncomeQoqLatest: item.netIncomeQoqLatest,
-      revenueYoyLatest: item.revenueYoyLatest,
-      revenueQoqLatest: item.revenueQoqLatest,
-      roeYoyLatest: item.roeYoyLatest,
-      roeQoqLatest: item.roeQoqLatest,
-    }));
-  } catch (error) {
-    console.error("Failed to fetch fundamental metrics data:", error);
-    state.metrics.total = 0;
-    state.metrics.items = [];
-  }
-
+async function loadFinancialStats() {
+  syncMetricsFromTrading();
   if (isMetricsTabActive()) {
     await renderActiveTab();
     updatePaginationControls();
@@ -424,26 +454,52 @@ async function loadFinancialStats(page = 1) {
 }
 
 function collectFilters() {
+  const keyword = elements.keywordInput?.value?.trim() || "";
+  const market = elements.marketSelect?.value || "all";
+  const exchange = elements.exchangeSelect?.value || "all";
+  const volumeSpikeMin = parseNumericInput(
+    elements.volumeSpikeInput,
+    DEFAULT_FILTERS.volumeSpikeMin
+  );
+  const peMin = parseNumericInput(elements.peMinInput, DEFAULT_FILTERS.peMin);
+  const roeMin = parseNumericInput(elements.roeMinInput, DEFAULT_FILTERS.roeMin);
+  const netIncomeQoqMin = parseNumericInput(
+    elements.netIncomeQoqInput,
+    DEFAULT_FILTERS.netIncomeQoqMin
+  );
+  const netIncomeYoyPercent = parseNumericInput(
+    elements.netIncomeYoyInput,
+    DEFAULT_FILTERS.netIncomeYoyMinPercent
+  );
+
   return {
-    keyword: elements.keywordInput?.value?.trim() || "",
-    market: elements.marketSelect?.value || "all",
-    exchange: elements.exchangeSelect?.value || "all",
+    keyword,
+    market,
+    exchange,
+    volumeSpikeMin,
+    peMin,
+    roeMin,
+    netIncomeQoqMin,
+    netIncomeYoyMin: netIncomeYoyPercent / 100,
   };
 }
 
 function resetFilters() {
   if (elements.keywordInput) {
-    elements.keywordInput.value = "";
+    elements.keywordInput.value = DEFAULT_FILTERS.keyword;
   }
   if (elements.marketSelect) {
-    elements.marketSelect.value = "all";
+    elements.marketSelect.value = DEFAULT_FILTERS.market;
   }
   if (elements.exchangeSelect) {
-    elements.exchangeSelect.value = "all";
+    elements.exchangeSelect.value = DEFAULT_FILTERS.exchange;
   }
+  setNumericFilterInputs(createDefaultFilterState());
   if (elements.searchBox) {
-    elements.searchBox.value = "";
+    elements.searchBox.value = DEFAULT_FILTERS.keyword;
   }
+  state.trading.filters = createDefaultFilterState();
+  state.metrics.filters = createDefaultFilterState();
 }
 
 function updatePaginationControls() {

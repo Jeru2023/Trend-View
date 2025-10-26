@@ -991,15 +991,69 @@ def list_stocks(
     exchange: Optional[str] = Query(None, description="Filter by exchange"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    volume_spike_min: float = Query(
+        1.8,
+        alias="volumeSpikeMin",
+        ge=0.0,
+        description="Minimum volume spike ratio (latest volume / 10-day average).",
+    ),
+    pe_min: float = Query(
+        0.0,
+        alias="peMin",
+        description="Minimum PE ratio filter.",
+    ),
+    roe_min: float = Query(
+        3.0,
+        alias="roeMin",
+        description="Minimum ROE filter.",
+    ),
+    net_income_qoq_min: float = Query(
+        0.0,
+        alias="netIncomeQoqMin",
+        description="Minimum net income QoQ ratio filter.",
+    ),
+    net_income_yoy_min: float = Query(
+        0.1,
+        alias="netIncomeYoyMin",
+        description="Minimum net income YoY ratio filter.",
+    ),
 ) -> StockListResponse:
     """Return paginated stock fundamentals enriched with latest trading data."""
     result = get_stock_overview(
         keyword=keyword,
         market=market,
         exchange=exchange,
-        limit=limit,
-        offset=offset,
+        limit=None,
+        offset=0,
     )
+
+    def _passes_filters(payload: dict[str, object]) -> bool:
+        def _gt(key: str, threshold: float) -> bool:
+            value = payload.get(key)
+            if value is None:
+                return False
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                return False
+            return numeric > threshold
+
+        return all(
+            (
+                _gt("volume_spike", volume_spike_min),
+                _gt("pe_ratio", pe_min),
+                _gt("roe", roe_min),
+                _gt("net_income_qoq_latest", net_income_qoq_min),
+                _gt("net_income_yoy_latest", net_income_yoy_min),
+            )
+        )
+
+    filtered_items = [item for item in result["items"] if _passes_filters(item)]
+
+    start_index = offset if offset >= 0 else 0
+    end_index = start_index + limit if limit is not None else None
+    paged_items = filtered_items[start_index:end_index]
+
     items = [
         StockItem(
             code=item["code"],
@@ -1020,23 +1074,31 @@ def list_stocks(
             pctChange3M=item.get("pct_change_3m"),
             pctChange1M=item.get("pct_change_1m"),
             pctChange2W=item.get("pct_change_2w"),
-              pctChange1W=item.get("pct_change_1w"),
-              ma20=item.get("ma_20"),
-              ma10=item.get("ma_10"),
-              ma5=item.get("ma_5"),
-              volumeSpike=item.get("volume_spike"),
-              annDate=item.get("ann_date"),
-              endDate=item.get("end_date"),
-              basicEps=item.get("basic_eps"),
-              revenue=item.get("revenue"),
-              operateProfit=item.get("operate_profit"),
+            pctChange1W=item.get("pct_change_1w"),
+            ma20=item.get("ma_20"),
+            ma10=item.get("ma_10"),
+            ma5=item.get("ma_5"),
+            volumeSpike=item.get("volume_spike"),
+            annDate=item.get("ann_date"),
+            endDate=item.get("end_date"),
+            basicEps=item.get("basic_eps"),
+            revenue=item.get("revenue"),
+            operateProfit=item.get("operate_profit"),
             netIncome=item.get("net_income"),
             grossMargin=item.get("gross_margin"),
             roe=item.get("roe"),
+            netIncomeYoyLatest=item.get("net_income_yoy_latest"),
+            netIncomeYoyPrev1=item.get("net_income_yoy_prev1"),
+            netIncomeYoyPrev2=item.get("net_income_yoy_prev2"),
+            netIncomeQoqLatest=item.get("net_income_qoq_latest"),
+            revenueYoyLatest=item.get("revenue_yoy_latest"),
+            revenueQoqLatest=item.get("revenue_qoq_latest"),
+            roeYoyLatest=item.get("roe_yoy_latest"),
+            roeQoqLatest=item.get("roe_qoq_latest"),
         )
-        for item in result["items"]
+        for item in paged_items
     ]
-    return StockListResponse(total=result["total"], items=items)
+    return StockListResponse(total=len(filtered_items), items=items)
 
 
 @app.get("/fundamental-metrics", response_model=FundamentalMetricsListResponse)
