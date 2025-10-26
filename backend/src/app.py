@@ -947,22 +947,6 @@ async def startup_event() -> None:
         )
         scheduler.add_job(
             lambda: asyncio.get_running_loop().create_task(
-                safe_start_income_statement_job(SyncIncomeStatementRequest())
-            ),
-            CronTrigger(hour=18, minute=0),
-            id="income_statement_daily",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
-                safe_start_financial_indicator_job(SyncFinancialIndicatorRequest())
-            ),
-            CronTrigger(hour=18, minute=30),
-            id="financial_indicator_daily",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
                 safe_start_daily_trade_metrics_job(SyncDailyTradeMetricsRequest())
             ),
             CronTrigger(hour=19, minute=0),

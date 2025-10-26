@@ -4,8 +4,8 @@
       en: {
         brandName: "Trend View",
         brandTagline: "Investment Intelligence Hub",
-        navBasics: "Basic Insights",
-        navBasicInfo: "Basic Info",
+        navBasics: "Intelligence Suite",
+        navMarketIntelligence: "Market Intelligence",
         navNews: "Market News",
         navSignals: "Technical Signals",
         navPortfolio: "Portfolio Monitor",
@@ -18,8 +18,8 @@
       zh: {
         brandName: "趋势视图",
         brandTagline: "智能投研中心",
-        navBasics: "基础洞察",
-        navBasicInfo: "基础信息",
+        navBasics: "市场洞察",
+        navMarketIntelligence: "市场洞察",
         navNews: "市场资讯",
         navSignals: "技术信号",
         navPortfolio: "组合监控",
@@ -30,11 +30,11 @@
         navDailyFinance: "每日财经"
       }
     },
-    basicInfo: {
+    marketIntelligence: {
       en: {
-        title: "Trend View - Basic Info",
-        pageTitle: "Basic Information",
-        pageSubtitle: "Review fundamentals and recent market performance with ease.",
+        title: "Trend View - Market Intelligence",
+        pageTitle: "Market Intelligence Dashboard",
+        pageSubtitle: "Blend fundamentals, trading flow, and custom signals for actionable insights.",
         filterKeyword: "Keyword",
         filterMarket: "Market",
         filterExchange: "Exchange",
@@ -95,9 +95,9 @@
         exchangeBSE: "BSE"
       },
       zh: {
-        title: "趋势视图 - 基础信息",
-        pageTitle: "基础信息",
-        pageSubtitle: "快速掌握核心基本面与最新行情。",
+        title: "趋势视图 - 市场洞察",
+        pageTitle: "市场洞察中心",
+        pageSubtitle: "整合财务与行情数据，支持自定义筛选与信号分析。",
         filterKeyword: "关键词",
         filterMarket: "市场",
         filterExchange: "交易所",

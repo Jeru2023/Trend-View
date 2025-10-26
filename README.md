@@ -46,14 +46,14 @@ python -m pip install -r requirements.txt
 
 ## Frontend - Static Assets
 
-The UI is a static stock list page located under `frontend/public`.
+The Market Intelligence dashboard ships as static assets under `frontend/public`.
 
 ```sh
 cd frontend/public
 python -m http.server 3000
 ```
 
-Open `http://localhost:3000/index.html` to interact with the page. The frontend consumes the backend `/stocks` endpoint (defaults to `http://localhost:8000`; override by defining `window.API_BASE_URL` before loading `app.js` if necessary).
+Open `http://localhost:3000/market-intelligence.html` (or simply `/`, which redirects) to explore the Market Intelligence dashboard. The frontend consumes the backend `/stocks` endpoint (defaults to `http://localhost:8000`; override by defining `window.API_BASE_URL` before loading `market-intelligence.js` if necessary).
 
 ## Folder Structure
 
@@ -68,8 +68,8 @@ Use the control panel at `frontend/public/control.html` to trigger manual data u
 - `/control/status` exposes progress information for stock_basic, daily_trade, daily_indicator, income_statement, financial_indicator, and finance_breakfast jobs.
 - Configuration changes (ST/delisted filters, daily trade window) persist to `backend/config/control_config.json`.
 - Daily indicator sync fetches valuation metrics (daily_basic) each trading day at 17:05 by default; you can trigger it manually when needed.
-- Income statement sync pulls the latest eight statements per stock via `pro.income`, iterating code-by-code each day at 18:00 or on demand. When the local stock list is empty the job auto-fetches stock basics to obtain codes before continuing.
-- Financial indicator sync collects profitability and efficiency ratios via `fina_indicator`, iterating code-by-code with a default limit of eight rows per stock and running nightly at 18:30 (also available on demand).
+- Income statement sync pulls the latest eight statements per stock via `pro.income`, iterating code-by-code when you trigger it from the control panel or API. When the local stock list is empty the job auto-fetches stock basics to obtain codes before continuing.
+- Financial indicator sync collects profitability and efficiency ratios via `fina_indicator`, iterating code-by-code with a default limit of eight rows per stock. Trigger it manually from the control panel or API whenever fresh data is required.
 - Finance breakfast sync retrieves the Eastmoney morning digest through AkShare each day at 07:00, with on-demand refresh support from the control panel.
 
 
