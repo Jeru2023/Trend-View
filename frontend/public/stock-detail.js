@@ -9,6 +9,7 @@ const LANG_STORAGE_KEY = "trend-view-lang";
 let currentLang = document.documentElement.getAttribute("data-pref-lang") || getInitialLanguage();
 let candlestickData = [];
 let currentDetail = null;
+let candlestickChartInstance = null;
 
 const elements = {
   status: document.getElementById("detail-status"),
@@ -29,7 +30,8 @@ const elements = {
   statsList: document.getElementById("stats-list"),
   fundamentalsList: document.getElementById("fundamentals-list"),
   langButtons: document.querySelectorAll(".lang-btn"),
-  canvas: document.getElementById("candlestick-canvas"),
+  candlestickContainer: document.getElementById("candlestick-chart"),
+  candlestickEmpty: document.getElementById("candlestick-empty"),
 };
 
 function getInitialLanguage() {
@@ -120,6 +122,116 @@ function renderList(container, rows) {
     `;
     })
     .join("");
+}
+
+function ensureCandlestickChart() {
+  if (!window.echarts || !elements.candlestickContainer) {
+    return null;
+  }
+  if (!candlestickChartInstance) {
+    candlestickChartInstance = window.echarts.init(elements.candlestickContainer);
+  }
+  return candlestickChartInstance;
+}
+
+function hideCandlestickChart() {
+  if (candlestickChartInstance) {
+    candlestickChartInstance.clear();
+  }
+  if (elements.candlestickContainer) {
+    elements.candlestickContainer.classList.add("hidden");
+  }
+  if (elements.candlestickEmpty) {
+    elements.candlestickEmpty.classList.remove("hidden");
+  }
+}
+
+function renderCandlestickChart() {
+  const chart = ensureCandlestickChart();
+  if (!chart) {
+    return;
+  }
+
+  if (!candlestickData.length) {
+    hideCandlestickChart();
+    return;
+  }
+
+  elements.candlestickContainer.classList.remove("hidden");
+  elements.candlestickEmpty.classList.add("hidden");
+
+  const dict = translations[currentLang];
+  const categories = candlestickData.map((item) => {
+    const formatted = formatDate(item.time);
+    return formatted === "--" ? item.time : formatted;
+  });
+  const seriesData = candlestickData.map((item) => [
+    item.open,
+    item.close,
+    item.low,
+    item.high,
+  ]);
+
+  chart.setOption(
+    {
+      animation: false,
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "cross" },
+        backgroundColor: "rgba(17,23,39,0.9)",
+      },
+      grid: { left: 40, right: 16, top: 16, bottom: 60 },
+      xAxis: {
+        type: "category",
+        scale: true,
+        boundaryGap: true,
+        data: categories,
+        axisLine: { lineStyle: { color: "#cbd5f5" } },
+        axisTick: { alignWithLabel: true },
+        axisLabel: { color: "#64748b" },
+      },
+      yAxis: {
+        scale: true,
+        axisLine: { show: false },
+        axisLabel: { color: "#64748b" },
+        splitLine: { lineStyle: { color: "#e5e7eb" } },
+      },
+      dataZoom: [
+        { type: "inside", start: 60, end: 100, minSpan: 5 },
+        {
+          type: "slider",
+          start: 60,
+          end: 100,
+          height: 24,
+          bottom: 12,
+          borderColor: "rgba(148, 163, 184, 0.4)",
+          handleSize: 16,
+        },
+      ],
+      series: [
+        {
+          name: dict.candlestickTitle,
+          type: "candlestick",
+          data: seriesData,
+          itemStyle: {
+            color: "#16a34a",
+            color0: "#dc2626",
+            borderColor: "#16a34a",
+            borderColor0: "#dc2626",
+          },
+        },
+      ],
+    },
+    true
+  );
+
+  chart.resize();
+}
+
+function resizeCandlestickChart() {
+  if (candlestickChartInstance) {
+    candlestickChartInstance.resize();
+  }
 }
 
 function renderDetail(detail) {
@@ -325,7 +437,7 @@ function renderDetail(detail) {
   ]);
 
   candlestickData = detail.dailyTradeHistory || [];
-  drawCandlestickChart();
+  renderCandlestickChart();
 }
 
 function setStatus(messageKey, isError = false) {
@@ -335,106 +447,25 @@ function setStatus(messageKey, isError = false) {
   elements.status.classList.remove("hidden");
   elements.hero.classList.add("hidden");
   elements.grid.classList.add("hidden");
+  if (candlestickChartInstance) {
+    candlestickChartInstance.clear();
+  }
+  if (elements.candlestickContainer) {
+    elements.candlestickContainer.classList.add("hidden");
+  }
+  if (elements.candlestickEmpty) {
+    elements.candlestickEmpty.classList.add("hidden");
+  }
 }
 
 function showDetail() {
   elements.status.classList.add("hidden");
   elements.grid.classList.remove("hidden");
   elements.hero.classList.remove("hidden");
-}
-
-function drawCandlestickChart() {
-  const canvas = elements.canvas;
-  if (!canvas) {
-    return;
+  if (elements.candlestickEmpty) {
+    elements.candlestickEmpty.classList.add("hidden");
   }
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return;
-  }
-
-  const devicePixelRatio = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth * devicePixelRatio;
-  const height = canvas.clientHeight * devicePixelRatio;
-  canvas.width = width;
-  canvas.height = height;
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#f9fafb";
-  ctx.fillRect(0, 0, width, height);
-
-  const noDataMessage = translations[currentLang].noCandlestickData || "No candlestick data";
-
-  if (!candlestickData.length) {
-    ctx.fillStyle = "#9ca3af";
-    ctx.font = `${16 * devicePixelRatio}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(noDataMessage, width / 2, height / 2);
-    return;
-  }
-
-  const highs = candlestickData.map((d) => d.high).filter((v) => v !== null && v !== undefined);
-  const lows = candlestickData.map((d) => d.low).filter((v) => v !== null && v !== undefined);
-  if (!highs.length || !lows.length) {
-    ctx.fillStyle = "#9ca3af";
-    ctx.font = `${16 * devicePixelRatio}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(noDataMessage, width / 2, height / 2);
-    return;
-  }
-
-  const maxPrice = Math.max(...highs);
-  const minPrice = Math.min(...lows);
-  const padding = (maxPrice - minPrice || 1) * 0.1;
-  const chartMax = maxPrice + padding;
-  const chartMin = minPrice - padding;
-
-  const chartWidth = width * 0.9;
-  const chartHeight = height * 0.8;
-  const chartX = width * 0.05;
-  const chartY = height * 0.1;
-
-  const candleWidth = Math.max(chartWidth / candlestickData.length * 0.6, 4);
-  const candleGap = chartWidth / candlestickData.length;
-
-  const scaleY = (value) =>
-    chartY + (chartMax - value) / (chartMax - chartMin || 1) * chartHeight;
-
-  ctx.strokeStyle = "#e5e7eb";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(chartX, chartY);
-  ctx.lineTo(chartX, chartY + chartHeight);
-  ctx.lineTo(chartX + chartWidth, chartY + chartHeight);
-  ctx.stroke();
-
-  candlestickData.forEach((bar, index) => {
-    const open = bar.open;
-    const close = bar.close;
-    const high = bar.high;
-    const low = bar.low;
-    if ([open, close, high, low].some((v) => v === null || v === undefined)) {
-      return;
-    }
-    const x = chartX + index * candleGap + candleGap / 2;
-    const wickTop = scaleY(high);
-    const wickBottom = scaleY(low);
-    const bodyTop = scaleY(Math.max(open, close));
-    const bodyBottom = scaleY(Math.min(open, close));
-
-    const isUp = close >= open;
-    const bodyColor = isUp ? "#16a34a" : "#dc2626";
-
-    ctx.strokeStyle = bodyColor;
-    ctx.beginPath();
-    ctx.moveTo(x, wickTop);
-    ctx.lineTo(x, wickBottom);
-    ctx.stroke();
-
-    ctx.fillStyle = bodyColor;
-    const bodyHeight = Math.max(bodyBottom - bodyTop, 1);
-    ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
-  });
+  resizeCandlestickChart();
 }
 
 async function fetchDetail(code) {
@@ -471,7 +502,7 @@ function handleLanguageSwitch(lang) {
     renderDetail(currentDetail);
     showDetail();
   }
-  drawCandlestickChart();
+  renderCandlestickChart();
 }
 
 function initLanguageButtons() {
@@ -492,7 +523,7 @@ function initialize() {
   }
   document.title = `${translations[currentLang].pageTitle} - ${code}`;
   fetchDetail(code);
-  window.addEventListener("resize", () => drawCandlestickChart());
+  window.addEventListener("resize", resizeCandlestickChart);
 }
 
 document.addEventListener("DOMContentLoaded", initialize);
