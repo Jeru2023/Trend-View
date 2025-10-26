@@ -16,6 +16,10 @@ Frontend assets (HTML/CSS/JS) must be saved as UTF-8 without BOM to avoid render
 - Shut down VS Code (or restart the Python language server) before stopping PostgreSQL so the editor releases connections and doesn’t leave orphaned `postgres.exe` backends attached to log files.
 - PostgreSQL connection counts climb when external tools leave sessions idle—inspect with `pg_stat_activity` and terminate stale `trend_view` backends before blaming DAO code.
 - DAO helpers now enforce managed connections with explicit close + transaction handling; keep statement/idle timeout values tuned in `settings.*.json` so stray sessions get reclaimed automatically.
+- When editing frontend assets that contain non-ASCII text, preserve UTF-8 encoding (prefer escaped literals if tooling is unreliable) and verify syntax immediately after the change.
+- Avoid bulk encoding conversions on large files unless a backup exists; work on copies or use targeted replacements to prevent irreversible corruption.
+- After any change that touches encoding-sensitive code, reload the page/run the bundler right away so unexpected “unexpected token” errors surface early.
+- Confirm Git/history availability before destructive edits; when in doubt, stash or make a safety commit prior to risky transformations.
 
 ## Documentation Standards
 Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, even if requirements are delivered in another language.
