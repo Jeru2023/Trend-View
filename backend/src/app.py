@@ -1,4 +1,4 @@
-﻿"""
+"""
 FastAPI application exposing Trend View backend services and control panel APIs.
 """
 
@@ -30,6 +30,7 @@ from .dao import (
     StockBasicDAO,
 )
 from .services import (
+    get_stock_detail,
     get_stock_overview,
     list_finance_breakfast,
     list_fundamental_metrics,
@@ -91,6 +92,96 @@ class StockItem(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+
+
+class StockTradingSnapshot(BaseModel):
+    code: str
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    exchange: Optional[str] = None
+    last_price: Optional[float] = Field(None, alias="lastPrice")
+    pct_change: Optional[float] = Field(None, alias="pctChange")
+    volume: Optional[float] = None
+    market_cap: Optional[float] = Field(None, alias="marketCap")
+    pe_ratio: Optional[float] = Field(None, alias="peRatio")
+    turnover_rate: Optional[float] = Field(None, alias="turnoverRate")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockFinancialSnapshot(BaseModel):
+    code: str
+    name: Optional[str] = None
+    ann_date: Optional[str] = Field(None, alias="annDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+    basic_eps: Optional[float] = Field(None, alias="basicEps")
+    revenue: Optional[float] = None
+    operate_profit: Optional[float] = Field(None, alias="operateProfit")
+    net_income: Optional[float] = Field(None, alias="netIncome")
+    gross_margin: Optional[float] = Field(None, alias="grossMargin")
+    roe: Optional[float] = Field(None, alias="roe")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockTradingStats(BaseModel):
+    code: str
+    name: Optional[str] = None
+    pct_change_1y: Optional[float] = Field(None, alias="pctChange1Y")
+    pct_change_6m: Optional[float] = Field(None, alias="pctChange6M")
+    pct_change_3m: Optional[float] = Field(None, alias="pctChange3M")
+    pct_change_1m: Optional[float] = Field(None, alias="pctChange1M")
+    pct_change_2w: Optional[float] = Field(None, alias="pctChange2W")
+    pct_change_1w: Optional[float] = Field(None, alias="pctChange1W")
+    volume_spike: Optional[float] = Field(None, alias="volumeSpike")
+    ma_20: Optional[float] = Field(None, alias="ma20")
+    ma_10: Optional[float] = Field(None, alias="ma10")
+    ma_5: Optional[float] = Field(None, alias="ma5")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockFinancialStats(BaseModel):
+    code: str
+    name: Optional[str] = None
+    reporting_period: Optional[str] = Field(None, alias="reportingPeriod")
+    net_income_yoy_latest: Optional[float] = Field(None, alias="netIncomeYoyLatest")
+    net_income_yoy_prev1: Optional[float] = Field(None, alias="netIncomeYoyPrev1")
+    net_income_yoy_prev2: Optional[float] = Field(None, alias="netIncomeYoyPrev2")
+    net_income_qoq_latest: Optional[float] = Field(None, alias="netIncomeQoqLatest")
+    revenue_yoy_latest: Optional[float] = Field(None, alias="revenueYoyLatest")
+    revenue_qoq_latest: Optional[float] = Field(None, alias="revenueQoqLatest")
+    roe_yoy_latest: Optional[float] = Field(None, alias="roeYoyLatest")
+    roe_qoq_latest: Optional[float] = Field(None, alias="roeQoqLatest")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class DailyTradeBar(BaseModel):
+    time: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: Optional[float] = None
+
+
+class StockDetailResponse(BaseModel):
+    profile: StockItem
+    trading_data: StockTradingSnapshot = Field(..., alias="tradingData")
+    financial_data: StockFinancialSnapshot = Field(..., alias="financialData")
+    trading_stats: StockTradingStats = Field(..., alias="tradingStats")
+    financial_stats: StockFinancialStats = Field(..., alias="financialStats")
+    daily_trade_history: List[DailyTradeBar] = Field(..., alias="dailyTradeHistory")
+
+    class Config:
+        allow_population_by_field_name = True
+        allow_population_by_alias = True
 
 
 class StockListResponse(BaseModel):
@@ -1100,6 +1191,20 @@ def list_stocks(
     ]
     return StockListResponse(total=len(filtered_items), items=items)
 
+@app.get("/stocks/{code}", response_model=StockDetailResponse)
+def get_stock_detail_api(
+    code: str,
+    history_limit: int = Query(
+        180,
+        ge=30,
+        le=500,
+        description="Number of most recent trading days to include in the candlestick series.",
+    ),
+) -> StockDetailResponse:
+    detail = get_stock_detail(code, history_limit=history_limit)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Stock '{code}' not found")
+    return StockDetailResponse(**detail)
 
 @app.get("/fundamental-metrics", response_model=FundamentalMetricsListResponse)
 def list_fundamental_metrics_api(
@@ -1440,6 +1545,7 @@ def trigger_finance_breakfast_sync(payload: SyncFinanceBreakfastRequest) -> Sync
 
 
 __all__ = ["app"]
+
 
 
 

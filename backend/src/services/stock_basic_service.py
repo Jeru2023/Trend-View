@@ -1,4 +1,4 @@
-﻿"""
+"""
 Service layer for synchronising Tushare stock basic data into PostgreSQL.
 """
 
@@ -85,6 +85,7 @@ def get_stock_overview(
     exchange: str | None = None,
     limit: Optional[int] = 50,
     offset: int = 0,
+    codes: Optional[Sequence[str]] = None,
     settings_path: str | None = None,
 ) -> dict[str, object]:
     """
@@ -101,6 +102,7 @@ def get_stock_overview(
         include_delisted=runtime_config.include_delisted,
         limit=limit,
         offset=offset,
+        codes=codes,
     )
 
     codes = [item["code"] for item in result["items"]]
@@ -188,9 +190,144 @@ def get_stock_overview(
     return result
 
 
+def get_stock_detail(
+    code: str,
+    *,
+    history_limit: int = 180,
+    settings_path: str | None = None,
+) -> Optional[dict[str, object]]:
+    if not code:
+        return None
+    overview = get_stock_overview(
+        codes=[code],
+        limit=None,
+        offset=0,
+        settings_path=settings_path,
+    )
+    if not overview["items"]:
+        return None
+    item = overview["items"][0]
+
+    def _safe_float(value: object) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(numeric):
+            return None
+        return numeric
+
+    settings = load_settings(settings_path)
+    daily_trade_dao = DailyTradeDAO(settings.postgres)
+    history_rows = daily_trade_dao.fetch_price_history(code, limit=history_limit)
+    candles: list[dict[str, object]] = []
+    for row in history_rows:
+        open_price = _safe_float(row.get("open"))
+        high_price = _safe_float(row.get("high"))
+        low_price = _safe_float(row.get("low"))
+        close_price = _safe_float(row.get("close"))
+        if None in (open_price, high_price, low_price, close_price):
+            continue
+        candles.append(
+            {
+                "time": row.get("trade_date"),
+                "open": open_price,
+                "high": high_price,
+                "low": low_price,
+                "close": close_price,
+                "volume": _safe_float(row.get("volume")),
+            }
+        )
+
+    trading_data = {
+        "code": item["code"],
+        "name": item.get("name"),
+        "industry": item.get("industry"),
+        "market": item.get("market"),
+        "exchange": item.get("exchange"),
+        "lastPrice": item.get("last_price"),
+        "pctChange": item.get("pct_change"),
+        "volume": item.get("volume"),
+        "marketCap": item.get("market_cap"),
+        "peRatio": item.get("pe_ratio"),
+        "turnoverRate": item.get("turnover_rate"),
+    }
+
+    financial_data = {
+        "code": item["code"],
+        "name": item.get("name"),
+        "annDate": item.get("ann_date"),
+        "endDate": item.get("end_date"),
+        "basicEps": item.get("basic_eps"),
+        "revenue": item.get("revenue"),
+        "operateProfit": item.get("operate_profit"),
+        "netIncome": item.get("net_income"),
+        "grossMargin": item.get("gross_margin"),
+        "roe": item.get("roe"),
+    }
+
+    trading_stats = {
+        "code": item["code"],
+        "name": item.get("name"),
+        "pctChange1Y": item.get("pct_change_1y"),
+        "pctChange6M": item.get("pct_change_6m"),
+        "pctChange3M": item.get("pct_change_3m"),
+        "pctChange1M": item.get("pct_change_1m"),
+        "pctChange2W": item.get("pct_change_2w"),
+        "pctChange1W": item.get("pct_change_1w"),
+        "volumeSpike": item.get("volume_spike"),
+        "ma20": item.get("ma_20"),
+        "ma10": item.get("ma_10"),
+        "ma5": item.get("ma_5"),
+    }
+
+    financial_stats = {
+        "code": item["code"],
+        "name": item.get("name"),
+        "reportingPeriod": item.get("end_date"),
+        "netIncomeYoyLatest": item.get("net_income_yoy_latest"),
+        "netIncomeYoyPrev1": item.get("net_income_yoy_prev1"),
+        "netIncomeYoyPrev2": item.get("net_income_yoy_prev2"),
+        "netIncomeQoqLatest": item.get("net_income_qoq_latest"),
+        "revenueYoyLatest": item.get("revenue_yoy_latest"),
+        "revenueQoqLatest": item.get("revenue_qoq_latest"),
+        "roeYoyLatest": item.get("roe_yoy_latest"),
+        "roeQoqLatest": item.get("roe_qoq_latest"),
+    }
+
+    profile = {
+        "code": item["code"],
+        "name": item.get("name"),
+        "industry": item.get("industry"),
+        "market": item.get("market"),
+        "exchange": item.get("exchange"),
+        "status": item.get("status"),
+        "lastPrice": item.get("last_price"),
+        "pctChange": item.get("pct_change"),
+        "volume": item.get("volume"),
+        "tradeDate": item.get("trade_date"),
+        "marketCap": item.get("market_cap"),
+        "peRatio": item.get("pe_ratio"),
+        "turnoverRate": item.get("turnover_rate"),
+        "volumeSpike": item.get("volume_spike"),
+    }
+
+    return {
+        "profile": profile,
+        "tradingData": trading_data,
+        "financialData": financial_data,
+        "tradingStats": trading_stats,
+        "financialStats": financial_stats,
+        "dailyTradeHistory": candles,
+    }
+
+
 __all__ = [
     "sync_stock_basic",
     "get_stock_overview",
+    "get_stock_detail",
 ]
 
 

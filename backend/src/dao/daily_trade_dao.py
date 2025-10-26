@@ -219,6 +219,53 @@ class DailyTradeDAO(PostgresDAOBase):
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce")
         return frame
 
+    def fetch_price_history(
+        self,
+        ts_code: str,
+        *,
+        limit: int = 180,
+    ) -> list[dict[str, object]]:
+        """
+        Return recent OHLCV bars for the given security.
+        """
+        if not ts_code:
+            return []
+        if limit is not None and limit <= 0:
+            return []
+
+        query = sql.SQL(
+            """
+            SELECT trade_date, open, high, low, close, vol
+            FROM {schema}.{table}
+            WHERE ts_code = %s
+            ORDER BY trade_date DESC
+            LIMIT %s
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, (ts_code, limit))
+                rows = cur.fetchall()
+
+        history = []
+        for trade_date, open_price, high_price, low_price, close_price, volume in reversed(rows):
+            history.append(
+                {
+                    "trade_date": trade_date.isoformat() if isinstance(trade_date, date) else str(trade_date),
+                    "open": float(open_price) if open_price is not None else None,
+                    "high": float(high_price) if high_price is not None else None,
+                    "low": float(low_price) if low_price is not None else None,
+                    "close": float(close_price) if close_price is not None else None,
+                    "volume": float(volume) if volume is not None else None,
+                }
+            )
+        return history
+
 
 __all__ = [
     "DailyTradeDAO",

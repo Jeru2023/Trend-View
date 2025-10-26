@@ -17,10 +17,16 @@ export const financialDataTab = {
     }
 
     items.forEach((item) => {
+      const detailUrl = `stock-detail.html?code=${encodeURIComponent(item.code)}`;
+      const codeCell = `<a class="table-link" href="${detailUrl}">${item.code}</a>`;
+      const nameCell =
+        item.name !== null && item.name !== undefined && item.name !== ""
+          ? `<a class="table-link" href="${detailUrl}">${item.name}</a>`
+          : ctx.emptyValue;
       const row = document.createElement("tr");
       row.innerHTML = `
-        <td>${item.code}</td>
-        <td>${item.name ?? ctx.emptyValue}</td>
+        <td>${codeCell}</td>
+        <td>${nameCell}</td>
         <td>${ctx.formatOptionalDate(item.ann_date)}</td>
         <td>${ctx.formatOptionalDate(item.end_date)}</td>
         <td>${ctx.formatOptionalNumber(item.basic_eps, {

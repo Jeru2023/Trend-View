@@ -121,6 +121,7 @@ class StockBasicDAO(PostgresDAOBase):
         include_delisted: bool = True,
         limit: int = 50,
         offset: int = 0,
+        codes: Sequence[str] | None = None,
         filters: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """
@@ -179,6 +180,10 @@ class StockBasicDAO(PostgresDAOBase):
                 conditions.append(sql.SQL("name NOT ILIKE %s"))
                 params.append(f"{prefix}%")
 
+        if codes:
+            conditions.append(sql.SQL("ts_code = ANY(%s)"))
+            params.append(list(codes))
+
         where_clause = sql.SQL("")
         if conditions:
             where_clause = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(conditions)
@@ -196,6 +201,7 @@ class StockBasicDAO(PostgresDAOBase):
             query += limit_clause
 
         count_query = count_base + where_clause
+        count_params = params.copy()
 
         with self.connect() as conn:
             self.ensure_table(conn)

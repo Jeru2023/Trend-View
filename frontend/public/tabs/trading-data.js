@@ -20,11 +20,17 @@ export const tradingDataTab = {
       const marketLabel = ctx.getMarketLabel(item.market);
       const exchangeLabel = ctx.getExchangeLabel(item.exchange);
       const changeClass = ctx.getTrendClass(item.pct_change);
+      const detailUrl = `stock-detail.html?code=${encodeURIComponent(item.code)}`;
+      const codeCell = `<a class="table-link" href="${detailUrl}">${item.code}</a>`;
+      const nameCell =
+        item.name !== null && item.name !== undefined && item.name !== ""
+          ? `<a class="table-link" href="${detailUrl}">${item.name}</a>`
+          : ctx.emptyValue;
 
       const row = document.createElement("tr");
       row.innerHTML = `
-        <td>${item.code}</td>
-        <td>${item.name ?? ctx.emptyValue}</td>
+        <td>${codeCell}</td>
+        <td>${nameCell}</td>
         <td>${item.industry ?? ctx.emptyValue}</td>
         <td>${marketLabel ?? ctx.emptyValue}</td>
         <td>${exchangeLabel ?? ctx.emptyValue}</td>

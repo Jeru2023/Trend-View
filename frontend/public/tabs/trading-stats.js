@@ -45,8 +45,8 @@ export const tradingStatsTab = {
     items.forEach((item) => {
       const row = document.createElement("tr");
       const cells = [
-        `<td>${item.code}</td>`,
-        `<td>${item.name ?? ctx.emptyValue}</td>`,
+        `<td><a class="table-link" href="stock-detail.html?code=${encodeURIComponent(item.code)}">${item.code}</a></td>`,
+        `<td>${item.name ? `<a class="table-link" href="stock-detail.html?code=${encodeURIComponent(item.code)}">${item.name}</a>` : ctx.emptyValue}</td>`,
       ];
 
       STAT_FIELDS.forEach((field) => {

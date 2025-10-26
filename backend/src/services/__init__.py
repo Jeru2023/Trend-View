@@ -6,7 +6,7 @@ from .financial_indicator_service import sync_financial_indicators
 from .finance_breakfast_service import list_finance_breakfast, sync_finance_breakfast
 from .daily_trade_service import sync_daily_trade
 from .daily_trade_metrics_service import sync_daily_trade_metrics
-from .stock_basic_service import get_stock_overview, sync_stock_basic
+from .stock_basic_service import get_stock_overview, get_stock_detail, sync_stock_basic
 from .fundamental_metrics_service import list_fundamental_metrics, sync_fundamental_metrics
 
 __all__ = [
@@ -21,4 +21,5 @@ __all__ = [
     "sync_stock_basic",
     "sync_fundamental_metrics",
     "list_fundamental_metrics",
+    "get_stock_detail",
 ]
