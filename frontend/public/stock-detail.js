@@ -10,6 +10,7 @@ let currentLang = document.documentElement.getAttribute("data-pref-lang") || get
 let candlestickData = [];
 let currentDetail = null;
 let candlestickChartInstance = null;
+let candlestickRenderTimeout = null;
 
 const elements = {
   status: document.getElementById("detail-status"),
@@ -124,6 +125,60 @@ function renderList(container, rows) {
     .join("");
 }
 
+function parseTradeDate(value) {
+  if (!value) {
+    return null;
+  }
+  let normalized = value;
+  if (typeof normalized === "number") {
+    normalized = String(normalized);
+  }
+  if (typeof normalized !== "string") {
+    return null;
+  }
+  const trimmed = normalized.trim();
+  if (/^\d{8}$/.test(trimmed)) {
+    const year = Number.parseInt(trimmed.slice(0, 4), 10);
+    const month = Number.parseInt(trimmed.slice(4, 6), 10) - 1;
+    const day = Number.parseInt(trimmed.slice(6, 8), 10);
+    return new Date(Date.UTC(year, month, day));
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const date = new Date(trimmed);
+    if (Number.isFinite(date.getTime())) {
+      return date;
+    }
+  }
+  const date = new Date(trimmed);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function limitCandlestickRange(data) {
+  if (!Array.isArray(data) || !data.length) {
+    return [];
+  }
+  let latest = null;
+  data.forEach((item) => {
+    const parsed = parseTradeDate(item?.time);
+    if (parsed && (!latest || parsed > latest)) {
+      latest = parsed;
+    }
+  });
+  if (!latest) {
+    return data.slice(-252);
+  }
+  const cutoff = new Date(latest);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 365);
+  const filtered = data.filter((item) => {
+    const parsed = parseTradeDate(item?.time);
+    return !parsed || parsed >= cutoff;
+  });
+  if (filtered.length) {
+    return filtered;
+  }
+  return data.slice(-252);
+}
+
 function ensureCandlestickChart() {
   if (!window.echarts || !elements.candlestickContainer) {
     return null;
@@ -135,6 +190,10 @@ function ensureCandlestickChart() {
 }
 
 function hideCandlestickChart() {
+  if (candlestickRenderTimeout) {
+    window.clearTimeout(candlestickRenderTimeout);
+    candlestickRenderTimeout = null;
+  }
   if (candlestickChartInstance) {
     candlestickChartInstance.clear();
   }
@@ -147,13 +206,32 @@ function hideCandlestickChart() {
 }
 
 function renderCandlestickChart() {
-  const chart = ensureCandlestickChart();
-  if (!chart) {
-    return;
+  if (candlestickRenderTimeout) {
+    window.clearTimeout(candlestickRenderTimeout);
+    candlestickRenderTimeout = null;
   }
 
   if (!candlestickData.length) {
     hideCandlestickChart();
+    return;
+  }
+
+  if (!window.echarts) {
+    candlestickRenderTimeout = window.setTimeout(() => {
+      candlestickRenderTimeout = null;
+      renderCandlestickChart();
+    }, 150);
+    if (elements.candlestickContainer) {
+      elements.candlestickContainer.classList.add("hidden");
+    }
+    if (elements.candlestickEmpty) {
+      elements.candlestickEmpty.classList.remove("hidden");
+    }
+    return;
+  }
+
+  const chart = ensureCandlestickChart();
+  if (!chart) {
     return;
   }
 
@@ -165,39 +243,85 @@ function renderCandlestickChart() {
     const formatted = formatDate(item.time);
     return formatted === "--" ? item.time : formatted;
   });
+  const upColor = "#16a34a";
+  const downColor = "#dc2626";
   const seriesData = candlestickData.map((item) => [
     item.open,
     item.close,
     item.low,
     item.high,
   ]);
+  const volumeSeries = candlestickData.map((item) => {
+    const volumeValue =
+      item.volume === null || item.volume === undefined || Number.isNaN(item.volume)
+        ? 0
+        : Number(item.volume);
+    const rising = item.close >= item.open;
+    return {
+      value: volumeValue,
+      itemStyle: { color: rising ? upColor : downColor },
+    };
+  });
 
   chart.setOption(
     {
       animation: false,
+      axisPointer: {
+        link: [{ xAxisIndex: [0, 1] }],
+      },
       tooltip: {
         trigger: "axis",
-        axisPointer: { type: "cross" },
+        axisPointer: { type: "cross", snap: false },
         backgroundColor: "rgba(17,23,39,0.9)",
       },
-      grid: { left: 40, right: 16, top: 16, bottom: 60 },
-      xAxis: {
-        type: "category",
-        scale: true,
-        boundaryGap: true,
-        data: categories,
-        axisLine: { lineStyle: { color: "#cbd5f5" } },
-        axisTick: { alignWithLabel: true },
-        axisLabel: { color: "#64748b" },
-      },
-      yAxis: {
-        scale: true,
-        axisLine: { show: false },
-        axisLabel: { color: "#64748b" },
-        splitLine: { lineStyle: { color: "#e5e7eb" } },
-      },
+      grid: [
+        { left: 40, right: 16, top: 16, height: "60%" },
+        { left: 40, right: 16, top: "70%", height: "24%" },
+      ],
+      xAxis: [
+        {
+          type: "category",
+          scale: true,
+          boundaryGap: true,
+          data: categories,
+          axisLine: { lineStyle: { color: "#cbd5f5" } },
+          axisTick: { alignWithLabel: true, show: false },
+          axisLabel: { color: "#64748b" },
+          splitLine: { show: false },
+        },
+        {
+          type: "category",
+          gridIndex: 1,
+          scale: true,
+          boundaryGap: true,
+          data: categories,
+          axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.4)" } },
+          axisTick: { show: false },
+          axisLabel: { color: "#94a3b8" },
+          splitLine: { show: false },
+        },
+      ],
+      yAxis: [
+        {
+          scale: true,
+          axisLine: { show: false },
+          axisLabel: { color: "#64748b" },
+          splitLine: { lineStyle: { color: "#e5e7eb" } },
+          min: (value) => value.min,
+        },
+        {
+          gridIndex: 1,
+          scale: true,
+          axisLine: { show: false },
+          axisLabel: {
+            color: "#94a3b8",
+            formatter: (value) => formatNumber(value, { notation: "compact" }),
+          },
+          splitLine: { show: false },
+        },
+      ],
       dataZoom: [
-        { type: "inside", start: 60, end: 100, minSpan: 5 },
+        { type: "inside", xAxisIndex: [0, 1], start: 60, end: 100, minSpan: 5 },
         {
           type: "slider",
           start: 60,
@@ -206,19 +330,30 @@ function renderCandlestickChart() {
           bottom: 12,
           borderColor: "rgba(148, 163, 184, 0.4)",
           handleSize: 16,
+          xAxisIndex: [0, 1],
         },
       ],
       series: [
         {
           name: dict.candlestickTitle,
           type: "candlestick",
+          xAxisIndex: 0,
+          yAxisIndex: 0,
           data: seriesData,
           itemStyle: {
-            color: "#16a34a",
-            color0: "#dc2626",
-            borderColor: "#16a34a",
-            borderColor0: "#dc2626",
+            color: upColor,
+            color0: downColor,
+            borderColor: upColor,
+            borderColor0: downColor,
           },
+        },
+        {
+          name: dict.labelVolume,
+          type: "bar",
+          xAxisIndex: 1,
+          yAxisIndex: 1,
+          data: volumeSeries,
+          barWidth: "60%",
         },
       ],
     },
@@ -436,7 +571,7 @@ function renderDetail(detail) {
     },
   ]);
 
-  candlestickData = detail.dailyTradeHistory || [];
+  candlestickData = limitCandlestickRange(detail.dailyTradeHistory || []);
   renderCandlestickChart();
 }
 
@@ -456,6 +591,9 @@ function setStatus(messageKey, isError = false) {
   if (elements.candlestickEmpty) {
     elements.candlestickEmpty.classList.add("hidden");
   }
+  if (candlestickData && candlestickData.length) {
+    renderCandlestickChart();
+  }
 }
 
 function showDetail() {
@@ -464,6 +602,9 @@ function showDetail() {
   elements.hero.classList.remove("hidden");
   if (elements.candlestickEmpty) {
     elements.candlestickEmpty.classList.add("hidden");
+  }
+  if (candlestickData && candlestickData.length) {
+    renderCandlestickChart();
   }
   resizeCandlestickChart();
 }
@@ -527,5 +668,7 @@ function initialize() {
 }
 
 document.addEventListener("DOMContentLoaded", initialize);
+
+
 
 

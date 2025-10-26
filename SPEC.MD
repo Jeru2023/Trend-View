@@ -26,7 +26,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 
 ## Feature Log
 - 2025-10-20 (FEATURE frontend-002): Added control panel with scheduled sync automation, runtime configuration toggles, and manual job triggers.
-- 2025-10-28 (FEATURE frontend-009): Refreshed stock detail experience with hero metrics, localized summaries, ECharts-powered candlestick visualization (with empty-state fallback), and removal of the trading snapshot card.
+- 2025-10-28 (FEATURE frontend-009): Refreshed stock detail experience with hero metrics, localized summaries, ECharts-powered candlestick visualization (last-year scope with volume bars and empty-state fallback), and removal of the trading snapshot card.
 - 2025-10-20 (FEATURE backend-001): Added Tushare API client, DAO layer, and service to fetch and upsert A-share stock basics into PostgreSQL using configuration-driven credentials.
 - 2025-10-20 (FEATURE backend-002): Added daily trade ingestion pipeline covering API client helper, reusable DAO for daily trade data, batching service with duration reporting, and schema template for `daily_trade`.
 - 2025-10-20 (FEATURE backend-003): Delivered FastAPI entrypoint exposing health, stock listing, and sync endpoints backed by existing services.
