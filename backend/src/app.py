@@ -71,6 +71,7 @@ class StockItem(BaseModel):
     ma_20: Optional[float] = Field(None, alias="ma20")
     ma_10: Optional[float] = Field(None, alias="ma10")
     ma_5: Optional[float] = Field(None, alias="ma5")
+    volume_spike: Optional[float] = Field(None, alias="volumeSpike")
     ann_date: Optional[str] = Field(None, alias="annDate")
     end_date: Optional[str] = Field(None, alias="endDate")
     basic_eps: Optional[float] = Field(None, alias="basicEps")
@@ -1019,15 +1020,16 @@ def list_stocks(
             pctChange3M=item.get("pct_change_3m"),
             pctChange1M=item.get("pct_change_1m"),
             pctChange2W=item.get("pct_change_2w"),
-            pctChange1W=item.get("pct_change_1w"),
-            ma20=item.get("ma_20"),
-            ma10=item.get("ma_10"),
-            ma5=item.get("ma_5"),
-            annDate=item.get("ann_date"),
-            endDate=item.get("end_date"),
-            basicEps=item.get("basic_eps"),
-            revenue=item.get("revenue"),
-            operateProfit=item.get("operate_profit"),
+              pctChange1W=item.get("pct_change_1w"),
+              ma20=item.get("ma_20"),
+              ma10=item.get("ma_10"),
+              ma5=item.get("ma_5"),
+              volumeSpike=item.get("volume_spike"),
+              annDate=item.get("ann_date"),
+              endDate=item.get("end_date"),
+              basicEps=item.get("basic_eps"),
+              revenue=item.get("revenue"),
+              operateProfit=item.get("operate_profit"),
             netIncome=item.get("net_income"),
             grossMargin=item.get("gross_margin"),
             roe=item.get("roe"),

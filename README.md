@@ -53,7 +53,7 @@ cd frontend/public
 python -m http.server 3000
 ```
 
-Open `http://localhost:3000/market-intelligence.html` (or simply `/`, which redirects) to explore the Market Intelligence dashboard. The frontend consumes the backend `/stocks` endpoint (defaults to `http://localhost:8000`; override by defining `window.API_BASE_URL` before loading `market-intelligence.js` if necessary).
+Open `http://localhost:3000/index.html` (the Market Intelligence default page) to explore the dashboard. The frontend consumes the backend `/stocks` endpoint (defaults to `http://localhost:8000`; override by defining `window.API_BASE_URL` before loading `market-intelligence.js` if necessary).
 
 ## Folder Structure
 

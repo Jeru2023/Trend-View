@@ -17,25 +17,29 @@ const EMPTY_VALUE = "--";
 
 const exchangeLabels = {
   en: { SSE: "SSE", SZSE: "SZSE", BSE: "BSE" },
-  zh: { SSE: "上交所", SZSE: "深交所", BSE: "北交所" },
+  zh: {
+    SSE: "\u4e0a\u4ea4\u6240",
+    SZSE: "\u6df1\u4ea4\u6240",
+    BSE: "\u5317\u4ea4\u6240",
+  },
 };
 
 const marketLabels = {
   en: {
-    主板: "Main Board",
-    创业板: "ChiNext",
-    科创板: "STAR Market",
+    "\u4e3b\u677f": "Main Board",
+    "\u521b\u4e1a\u677f": "ChiNext",
+    "\u79d1\u521b\u677f": "STAR Market",
     "Main Board": "Main Board",
     ChiNext: "ChiNext",
     "STAR Market": "STAR Market",
   },
   zh: {
-    主板: "主板",
-    创业板: "创业板",
-    科创板: "科创板",
-    "Main Board": "主板",
-    ChiNext: "创业板",
-    "STAR Market": "科创板",
+    "\u4e3b\u677f": "\u4e3b\u677f",
+    "\u521b\u4e1a\u677f": "\u521b\u4e1a\u677f",
+    "\u79d1\u521b\u677f": "\u79d1\u521b\u677f",
+    "Main Board": "\u4e3b\u677f",
+    ChiNext: "\u521b\u4e1a\u677f",
+    "STAR Market": "\u79d1\u521b\u677f",
   },
 };
 
@@ -352,6 +356,7 @@ async function loadTradingData(page = 1) {
       ma_20: item.ma20,
       ma_10: item.ma10,
       ma_5: item.ma5,
+      volume_spike: item.volumeSpike,
       ann_date: item.annDate,
       end_date: item.endDate,
       basic_eps: item.basicEps,
@@ -589,3 +594,5 @@ function persistLanguage(lang) {
 }
 
 window.applyTranslations = applyTranslations;
+
+

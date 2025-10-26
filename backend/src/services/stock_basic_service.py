@@ -156,6 +156,9 @@ def get_stock_overview(
         item["ma_20"] = _safe_float(derived.get("ma_20"))
         item["ma_10"] = _safe_float(derived.get("ma_10"))
         item["ma_5"] = _safe_float(derived.get("ma_5"))
+        spike_value = _safe_float(derived.get("volume_spike"))
+        item["volume_spike"] = spike_value
+        item["volumeSpike"] = spike_value
         income = income_statements.get(item["code"], {})
         ann_date = income.get("ann_date")
         end_date = income.get("end_date")

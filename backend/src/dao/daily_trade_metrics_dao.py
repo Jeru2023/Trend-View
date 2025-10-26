@@ -30,6 +30,7 @@ DAILY_TRADE_METRICS_FIELDS: Sequence[str] = (
     "ma_20",
     "ma_10",
     "ma_5",
+    "volume_spike",
 )
 
 
@@ -50,6 +51,16 @@ class DailyTradeMetricsDAO(PostgresDAOBase):
             schema=self.config.schema,
             table=self._table_name,
         )
+        with conn.cursor() as cur:
+            cur.execute(
+                sql.SQL(
+                    "ALTER TABLE {schema}.{table} "
+                    "ADD COLUMN IF NOT EXISTS volume_spike NUMERIC"
+                ).format(
+                    schema=sql.Identifier(self.config.schema),
+                    table=sql.Identifier(self._table_name),
+                )
+            )
 
     def upsert(self, dataframe: pd.DataFrame) -> int:
         if dataframe.empty:
@@ -111,7 +122,8 @@ class DailyTradeMetricsDAO(PostgresDAOBase):
                    pct_change_1w,
                    ma_20,
                    ma_10,
-                   ma_5
+                   ma_5,
+                   volume_spike
             FROM {schema}.{table}
             WHERE ts_code = ANY(%s)
             """
@@ -138,6 +150,7 @@ class DailyTradeMetricsDAO(PostgresDAOBase):
             ma_20,
             ma_10,
             ma_5,
+            volume_spike,
         ) in rows:
             metrics[ts_code] = {
                 "pct_change_1y": pct_1y,
@@ -149,6 +162,7 @@ class DailyTradeMetricsDAO(PostgresDAOBase):
                 "ma_20": ma_20,
                 "ma_10": ma_10,
                 "ma_5": ma_5,
+                "volume_spike": volume_spike,
             }
         return metrics
 

@@ -202,7 +202,7 @@ class DailyTradeDAO(PostgresDAOBase):
         with self.connect() as conn:
             self.ensure_table(conn)
             base_sql = sql.SQL(
-                "SELECT ts_code, trade_date, close "
+                "SELECT ts_code, trade_date, close, vol AS volume "
                 "FROM {schema}.{table}"
             ).format(
                 schema=sql.Identifier(self.config.schema),

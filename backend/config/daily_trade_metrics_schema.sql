@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS {schema}.{table} (
     ma_20 NUMERIC,
     ma_10 NUMERIC,
     ma_5 NUMERIC,
+    volume_spike NUMERIC,
     updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (ts_code, trade_date)
 );

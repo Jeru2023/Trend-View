@@ -6,6 +6,11 @@ const STAT_FIELDS = [
   { key: "pct_change_2w", fromRatio: true },
   { key: "pct_change_1w", fromRatio: true },
   {
+    key: "volume_spike",
+    options: { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+    trend: "volume",
+  },
+  {
     key: "ma_20",
     options: { minimumFractionDigits: 2, maximumFractionDigits: 2 },
   },
@@ -22,7 +27,7 @@ const STAT_FIELDS = [
 export const tradingStatsTab = {
   id: "tradingStats",
   template: "tabs/trading-stats.html",
-  columnCount: 11,
+  columnCount: 12,
   dataSource: "trading",
   render(items, ctx) {
     const { body } = ctx;
@@ -45,17 +50,23 @@ export const tradingStatsTab = {
       ];
 
       STAT_FIELDS.forEach((field) => {
+        const value = item[field.key];
         if (field.fromRatio) {
-          const value = item[field.key];
           const cellClass = ctx.getTrendClass(value);
           cells.push(`<td class="${cellClass}">${ctx.formatPercent(value, { fromRatio: true })}</td>`);
         } else {
-          cells.push(
-            `<td>${ctx.formatOptionalNumber(item[field.key], field.options || {
+          const options =
+            field.options || {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
-            })}</td>`
-          );
+            };
+          let cellClass = "";
+          if (field.trend === "volume") {
+            const baseline = value === null || value === undefined ? null : value - 1;
+            cellClass = ctx.getTrendClass(baseline);
+          }
+          const formatted = ctx.formatOptionalNumber(value, options);
+          cells.push(`<td${cellClass ? ` class="${cellClass}"` : ""}>${formatted}</td>`);
         }
       });
 

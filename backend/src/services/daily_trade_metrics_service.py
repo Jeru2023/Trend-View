@@ -35,11 +35,15 @@ MA_WINDOWS = (
     ("ma_5", 5),
 )
 
+VOLUME_SPIKE_WINDOW = 10
+
 
 def _sanitize_history(frame: pd.DataFrame) -> pd.DataFrame:
     history = frame.copy()
     history["trade_date"] = pd.to_datetime(history["trade_date"], errors="coerce")
     history["close"] = pd.to_numeric(history["close"], errors="coerce")
+    if "volume" in history.columns:
+        history["volume"] = pd.to_numeric(history["volume"], errors="coerce")
     history = history.dropna(subset=["ts_code", "trade_date", "close"])
     history = history.sort_values(["ts_code", "trade_date"])
     return history
@@ -96,6 +100,26 @@ def _compute_metrics_for_group(group: pd.DataFrame) -> Optional[dict[str, object
             result[field] = None
             continue
         result[field] = float(tail.mean())
+
+    volumes = group.get("volume")
+    if volumes is not None:
+        latest_volume_value = pd.to_numeric(latest.get("volume"), errors="coerce")
+        if latest_volume_value is not None and not pd.isna(latest_volume_value):
+            previous = volumes.iloc[:-1].tail(VOLUME_SPIKE_WINDOW)
+            previous = pd.to_numeric(previous, errors="coerce").dropna()
+            if len(previous) >= VOLUME_SPIKE_WINDOW:
+                average_volume = float(previous.mean())
+                latest_volume = float(latest_volume_value)
+                if math.isfinite(average_volume) and average_volume > 0 and math.isfinite(latest_volume):
+                    result["volume_spike"] = latest_volume / average_volume
+                else:
+                    result["volume_spike"] = None
+            else:
+                result["volume_spike"] = None
+        else:
+            result["volume_spike"] = None
+    else:
+        result["volume_spike"] = None
 
     return result
 
@@ -180,6 +204,8 @@ def sync_daily_trade_metrics(
         }
 
     metrics_frame = pd.DataFrame.from_records(records)
+    if "volume_spike" not in metrics_frame.columns:
+        metrics_frame["volume_spike"] = None
 
     if progress_callback:
         progress_callback(0.75, "Persisting derived metrics", len(metrics_frame.index))
