@@ -12,6 +12,7 @@ const API_BASE =
     ? "http://localhost:8000"
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 const PAGE_SIZE = 20;
+const MARKET_CAP_UNIT = 100000000;
 const LANG_STORAGE_KEY = "trend-view-lang";
 const EMPTY_VALUE = "--";
 const FAVORITES_QUERY_PARAM = "favoritesOnly";
@@ -19,11 +20,13 @@ const FAVORITES_GROUP_QUERY_KEY = "favoriteGroup";
 const FAVORITES_GROUP_ALL = "all";
 const FAVORITES_GROUP_NONE = "__ungrouped__";
 const DEFAULT_FILTERS = {
-  keyword: "",
   market: "all",
-  exchange: "all",
+  industry: "all",
+  marketCapMin: null,
+  marketCapMax: null,
   volumeSpikeMin: 1.8,
   peMin: 0,
+  peMax: null,
   roeMin: 3,
   netIncomeQoqMin: 0,
   netIncomeYoyMinPercent: 10,
@@ -70,11 +73,13 @@ const marketLabels = {
 
 function createDefaultFilterState() {
   return {
-    keyword: DEFAULT_FILTERS.keyword,
     market: DEFAULT_FILTERS.market,
-    exchange: DEFAULT_FILTERS.exchange,
+    industry: DEFAULT_FILTERS.industry,
+    marketCapMin: DEFAULT_FILTERS.marketCapMin,
+    marketCapMax: DEFAULT_FILTERS.marketCapMax,
     volumeSpikeMin: DEFAULT_FILTERS.volumeSpikeMin,
     peMin: DEFAULT_FILTERS.peMin,
+    peMax: DEFAULT_FILTERS.peMax,
     roeMin: DEFAULT_FILTERS.roeMin,
     netIncomeQoqMin: DEFAULT_FILTERS.netIncomeQoqMin,
     netIncomeYoyMin: DEFAULT_FILTERS.netIncomeYoyMinPercent / 100,
@@ -107,15 +112,23 @@ const favoriteGroupsState = {
   loading: null,
 };
 
+let industryOptions = [];
+
 const elements = {
   tabs: document.querySelectorAll(".tab"),
   langButtons: document.querySelectorAll(".lang-btn"),
   searchBox: document.querySelector(".search-box"),
-  keywordInput: document.getElementById("keyword"),
+  contentHeader: document.querySelector(".content__header"),
+  filtersSection: document.querySelector(".filters"),
+  pageTitle: document.querySelector("[data-page-title]") || document.querySelector("[data-i18n='pageTitle']"),
+  pageSubtitle: document.querySelector("[data-page-subtitle]") || document.querySelector("[data-i18n='pageSubtitle']"),
   marketSelect: document.getElementById("market"),
-  exchangeSelect: document.getElementById("exchange"),
+  industrySelect: document.getElementById("industry"),
+  marketCapMinInput: document.getElementById("market-cap-min"),
+  marketCapMaxInput: document.getElementById("market-cap-max"),
   volumeSpikeInput: document.getElementById("volume-spike-min"),
   peMinInput: document.getElementById("pe-min"),
+  peMaxInput: document.getElementById("pe-max"),
   roeMinInput: document.getElementById("roe-min"),
   netIncomeQoqInput: document.getElementById("net-income-qoq-min"),
   netIncomeYoyInput: document.getElementById("net-income-yoy-min"),
@@ -126,8 +139,7 @@ const elements = {
   pageInfo: document.getElementById("page-info"),
   favoritesBanner: document.getElementById("favorites-banner"),
   favoritesBannerGroup: document.getElementById("favorites-banner-group"),
-  favoritesGroupSelect: document.getElementById("favorites-group-filter"),
-  favoritesBannerClear: document.getElementById("favorites-banner-clear"),
+  favoritesGroupTags: document.getElementById("favorites-group-tags"),
 };
 
 const tabRegistry = TAB_MODULES.reduce((registry, module) => {
@@ -142,25 +154,61 @@ const tabRegistry = TAB_MODULES.reduce((registry, module) => {
 }, {});
 
 function setNumericFilterInputs(filters) {
+  if (elements.marketCapMinInput) {
+    if (filters.marketCapMin !== null && filters.marketCapMin !== undefined) {
+      elements.marketCapMinInput.value = formatNumberForInput(
+        filters.marketCapMin / MARKET_CAP_UNIT,
+        2
+      );
+    } else {
+      elements.marketCapMinInput.value = "";
+    }
+  }
+  if (elements.marketCapMaxInput) {
+    if (filters.marketCapMax !== null && filters.marketCapMax !== undefined) {
+      elements.marketCapMaxInput.value = formatNumberForInput(
+        filters.marketCapMax / MARKET_CAP_UNIT,
+        2
+      );
+    } else {
+      elements.marketCapMaxInput.value = "";
+    }
+  }
   if (elements.volumeSpikeInput) {
-    elements.volumeSpikeInput.value = String(
-      filters.volumeSpikeMin ?? DEFAULT_FILTERS.volumeSpikeMin
+    elements.volumeSpikeInput.value = formatNumberForInput(
+      filters.volumeSpikeMin ?? DEFAULT_FILTERS.volumeSpikeMin,
+      2
     );
   }
   if (elements.peMinInput) {
-    elements.peMinInput.value = String(filters.peMin ?? DEFAULT_FILTERS.peMin);
+    elements.peMinInput.value = formatNumberForInput(
+      filters.peMin ?? DEFAULT_FILTERS.peMin,
+      2
+    );
+  }
+  if (elements.peMaxInput) {
+    if (filters.peMax !== null && filters.peMax !== undefined) {
+      elements.peMaxInput.value = formatNumberForInput(filters.peMax, 2);
+    } else {
+      elements.peMaxInput.value = "";
+    }
   }
   if (elements.roeMinInput) {
-    elements.roeMinInput.value = String(filters.roeMin ?? DEFAULT_FILTERS.roeMin);
+    elements.roeMinInput.value = formatNumberForInput(
+      filters.roeMin ?? DEFAULT_FILTERS.roeMin,
+      2
+    );
   }
   if (elements.netIncomeQoqInput) {
-    elements.netIncomeQoqInput.value = String(
-      filters.netIncomeQoqMin ?? DEFAULT_FILTERS.netIncomeQoqMin
+    elements.netIncomeQoqInput.value = formatNumberForInput(
+      filters.netIncomeQoqMin ?? DEFAULT_FILTERS.netIncomeQoqMin,
+      2
     );
   }
   if (elements.netIncomeYoyInput) {
-    const ratio = filters.netIncomeYoyMin ?? (DEFAULT_FILTERS.netIncomeYoyMinPercent / 100);
-    elements.netIncomeYoyInput.value = String((ratio * 100).toFixed(2).replace(/\.?0+$/, ""));
+    const ratio =
+      filters.netIncomeYoyMin ?? DEFAULT_FILTERS.netIncomeYoyMinPercent / 100;
+    elements.netIncomeYoyInput.value = formatNumberForInput(ratio * 100, 2);
   }
 }
 
@@ -270,36 +318,29 @@ async function ensureFavoriteGroupsLoaded(force = false) {
 }
 
 function renderFavoriteGroupOptions() {
-  if (!elements.favoritesGroupSelect) {
+  if (!elements.favoritesGroupTags) {
     return;
   }
-  const select = elements.favoritesGroupSelect;
+  const container = elements.favoritesGroupTags;
   const dict = translations[currentLang] || {};
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   const formatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
 
-  const valueMap = new Map();
-  (favoriteGroupsState.items || []).forEach((entry) => {
-    valueMap.set(entry.value, entry);
-  });
-  if (
-    state.favoriteGroup !== FAVORITES_GROUP_ALL &&
-    !valueMap.has(state.favoriteGroup)
-  ) {
-    valueMap.set(state.favoriteGroup, {
-      value: state.favoriteGroup,
-      name: state.favoriteGroup === FAVORITES_GROUP_NONE ? null : state.favoriteGroup,
-      total: 0,
-    });
-  }
+  const groupedValues = Array.isArray(favoriteGroupsState.items)
+    ? favoriteGroupsState.items.slice()
+    : [];
+
+  const totals = groupedValues.reduce(
+    (acc, entry) => acc + Number(entry.total ?? 0),
+    0
+  );
 
   const options = [];
   options.push({
     value: FAVORITES_GROUP_ALL,
-    label: dict.favoriteGroupAll || "All groups",
+    label: `${dict.favoriteGroupAll || "All groups"} (${formatter.format(totals)})`,
   });
 
-  const groupedValues = Array.from(valueMap.values());
   const ungroupedEntry = groupedValues.find(
     (entry) => entry.value === FAVORITES_GROUP_NONE
   );
@@ -322,18 +363,121 @@ function renderFavoriteGroupOptions() {
       });
     });
 
-  select.innerHTML = "";
-  options.forEach((option) => {
-    const node = document.createElement("option");
-    node.value = option.value;
-    node.textContent = option.label;
-    select.appendChild(node);
-  });
-
   if (!options.some((option) => option.value === state.favoriteGroup)) {
     state.favoriteGroup = FAVORITES_GROUP_ALL;
   }
-  select.value = state.favoriteGroup;
+
+  container.innerHTML = "";
+  options.forEach((option) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "favorite-group-tag";
+    button.dataset.groupValue = option.value;
+    button.setAttribute("role", "tab");
+    button.setAttribute(
+      "aria-selected",
+      option.value === state.favoriteGroup ? "true" : "false"
+    );
+    button.textContent = option.label;
+    if (option.value === state.favoriteGroup) {
+      button.classList.add("favorite-group-tag--active");
+    }
+    container.appendChild(button);
+  });
+  updateFavoriteGroupTagSelection();
+}
+
+function updateFavoriteGroupTagSelection() {
+  if (!elements.favoritesGroupTags) {
+    return;
+  }
+  const tags = elements.favoritesGroupTags.querySelectorAll("[data-group-value]");
+  tags.forEach((tag) => {
+    const value = tag.dataset.groupValue || FAVORITES_GROUP_ALL;
+    const isActive = value === state.favoriteGroup;
+    tag.classList.toggle("favorite-group-tag--active", isActive);
+    tag.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
+function renderIndustryOptions(options = industryOptions) {
+  if (!elements.industrySelect) {
+    return;
+  }
+  const select = elements.industrySelect;
+  const normalized = Array.isArray(options)
+    ? options
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean)
+    : [];
+  const uniqueValues = Array.from(new Set(normalized));
+  const locale = currentLang === "zh" ? "zh-CN" : "en";
+  uniqueValues.sort((a, b) => a.localeCompare(b, locale, { sensitivity: "base" }));
+
+  const currentFilterValue =
+    state.trading.filters?.industry && state.trading.filters.industry !== ""
+      ? state.trading.filters.industry
+      : select.value || DEFAULT_FILTERS.industry;
+
+  if (
+    currentFilterValue &&
+    currentFilterValue !== "all" &&
+    !uniqueValues.includes(currentFilterValue)
+  ) {
+    uniqueValues.unshift(currentFilterValue);
+  }
+
+  industryOptions = uniqueValues;
+
+  while (select.options.length > 1) {
+    select.remove(1);
+  }
+
+  industryOptions.forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
+  });
+
+  if (
+    currentFilterValue &&
+    currentFilterValue !== "all" &&
+    industryOptions.includes(currentFilterValue)
+  ) {
+    select.value = currentFilterValue;
+  } else {
+    select.value = DEFAULT_FILTERS.industry;
+  }
+}
+
+function updateSearchAreaVisibility() {
+  const shouldHide = state.favoritesOnly;
+  if (elements.contentHeader) {
+    elements.contentHeader.classList.toggle("hidden", shouldHide);
+    elements.contentHeader.setAttribute("aria-hidden", shouldHide ? "true" : "false");
+  }
+  if (elements.filtersSection) {
+    elements.filtersSection.classList.toggle("hidden", shouldHide);
+    elements.filtersSection.setAttribute("aria-hidden", shouldHide ? "true" : "false");
+  }
+}
+
+function updateHeaderTexts() {
+  const dict = translations[currentLang] || {};
+  if (elements.pageTitle) {
+    const titleKey = state.favoritesOnly ? "portfolioTitle" : "pageTitle";
+    const titleText = dict[titleKey] || dict.pageTitle || elements.pageTitle.textContent;
+    elements.pageTitle.textContent = titleText;
+  }
+  if (elements.pageSubtitle) {
+    const subtitleKey = state.favoritesOnly ? "portfolioSubtitle" : "pageSubtitle";
+    const subtitleText = (dict[subtitleKey] ?? "").trim();
+    elements.pageSubtitle.textContent = subtitleText;
+    const hasText = subtitleText.length > 0;
+    elements.pageSubtitle.classList.toggle("hidden", !hasText);
+    elements.pageSubtitle.setAttribute("aria-hidden", hasText ? "false" : "true");
+  }
 }
 
 function persistFavoritesQueryParam() {
@@ -358,23 +502,12 @@ function updateFavoritesUI() {
   if (elements.favoritesBanner) {
     elements.favoritesBanner.classList.toggle("hidden", !shouldShowBanner);
   }
-  if (elements.favoritesBannerClear) {
-    elements.favoritesBannerClear.disabled = !shouldShowBanner;
-  }
   if (elements.favoritesBannerGroup) {
     elements.favoritesBannerGroup.classList.toggle("hidden", !shouldShowBanner);
   }
-  if (elements.favoritesGroupSelect) {
-    const select = elements.favoritesGroupSelect;
-    const hasMatchingOption = Array.from(select.options || []).some(
-      (option) => option.value === state.favoriteGroup
-    );
-    const effectiveValue = hasMatchingOption ? state.favoriteGroup : FAVORITES_GROUP_ALL;
-    if (select.value !== effectiveValue) {
-      select.value = effectiveValue;
-    }
-    select.disabled = !shouldShowBanner || !favoriteGroupsState.loaded;
-  }
+  updateFavoriteGroupTagSelection();
+  updateSearchAreaVisibility();
+  updateHeaderTexts();
   const activeNavKey = state.favoritesOnly ? "portfolio" : "market-intelligence";
   if (document.body) {
     document.body.setAttribute("data-active-nav", activeNavKey);
@@ -424,6 +557,32 @@ function parseNumericInput(element, fallback) {
   }
   const value = parseFloat(element.value);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function parseOptionalNumericInput(element) {
+  if (!element) {
+    return null;
+  }
+  const raw = typeof element.value === "string" ? element.value.trim() : "";
+  if (!raw) {
+    return null;
+  }
+  const value = parseFloat(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatNumberForInput(value, fractionDigits = 2) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+  if (typeof fractionDigits === "number") {
+    return numeric.toFixed(fractionDigits).replace(/\.?0+$/, "");
+  }
+  return String(numeric);
 }
 
 function syncMetricsFromTrading() {
@@ -502,27 +661,19 @@ function bindEvents() {
   if (elements.searchBox) {
     elements.searchBox.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
-        if (elements.keywordInput) {
-          elements.keywordInput.value = event.target.value.trim();
-        }
+        event.target.value = event.target.value.trim();
         loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
       }
     });
   }
 
-  if (elements.favoritesBannerClear) {
-    elements.favoritesBannerClear.addEventListener("click", () => {
-      if (!state.favoritesOnly) {
+  if (elements.favoritesGroupTags) {
+    elements.favoritesGroupTags.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-group-value]");
+      if (!target) {
         return;
       }
-      setFavoritesMode(false);
-      loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
-    });
-  }
-
-  if (elements.favoritesGroupSelect) {
-    elements.favoritesGroupSelect.addEventListener("change", (event) => {
-      const selectedValue = event.target.value || FAVORITES_GROUP_ALL;
+      const selectedValue = target.dataset.groupValue || FAVORITES_GROUP_ALL;
       if (!state.favoritesOnly) {
         setFavoritesMode(true);
       }
@@ -697,14 +848,36 @@ async function loadTradingData(page = 1) {
   params.set("offset", ((state.trading.page - 1) * PAGE_SIZE).toString());
 
   const filters = state.trading.filters;
-  if (filters.keyword) params.set("keyword", filters.keyword);
-  if (filters.market && filters.market !== "all") params.set("market", filters.market);
-  if (filters.exchange && filters.exchange !== "all") params.set("exchange", filters.exchange);
-  params.set("volumeSpikeMin", filters.volumeSpikeMin.toString());
-  params.set("peMin", filters.peMin.toString());
-  params.set("roeMin", filters.roeMin.toString());
-  params.set("netIncomeQoqMin", filters.netIncomeQoqMin.toString());
-  params.set("netIncomeYoyMin", filters.netIncomeYoyMin.toString());
+  if (filters.market && filters.market !== "all") {
+    params.set("market", filters.market);
+  }
+  if (filters.industry && filters.industry !== "all") {
+    params.set("industry", filters.industry);
+  }
+  if (filters.marketCapMin !== null && filters.marketCapMin !== undefined) {
+    params.set("marketCapMin", filters.marketCapMin.toString());
+  }
+  if (filters.marketCapMax !== null && filters.marketCapMax !== undefined) {
+    params.set("marketCapMax", filters.marketCapMax.toString());
+  }
+  if (Number.isFinite(filters.volumeSpikeMin)) {
+    params.set("volumeSpikeMin", filters.volumeSpikeMin.toString());
+  }
+  if (Number.isFinite(filters.peMin)) {
+    params.set("peMin", filters.peMin.toString());
+  }
+  if (filters.peMax !== null && filters.peMax !== undefined && Number.isFinite(filters.peMax)) {
+    params.set("peMax", filters.peMax.toString());
+  }
+  if (Number.isFinite(filters.roeMin)) {
+    params.set("roeMin", filters.roeMin.toString());
+  }
+  if (Number.isFinite(filters.netIncomeQoqMin)) {
+    params.set("netIncomeQoqMin", filters.netIncomeQoqMin.toString());
+  }
+  if (Number.isFinite(filters.netIncomeYoyMin)) {
+    params.set("netIncomeYoyMin", filters.netIncomeYoyMin.toString());
+  }
   if (state.favoritesOnly) {
     params.set("favoritesOnly", "true");
     const groupParam = normalizeFavoriteGroupForRequest(state.favoriteGroup);
@@ -719,6 +892,11 @@ async function loadTradingData(page = 1) {
       throw new Error(`Request failed with status ${response.status}`);
     }
     const data = await response.json();
+    if (Array.isArray(data.industries)) {
+      renderIndustryOptions(data.industries);
+    } else if (!industryOptions.length) {
+      renderIndustryOptions();
+    }
     state.trading.total = data.total;
     state.trading.items = data.items.map((item) => {
       const favoriteGroup = normalizeFavoriteGroupValue(
@@ -798,14 +976,35 @@ async function loadFinancialStats() {
 }
 
 function collectFilters() {
-  const keyword = elements.keywordInput?.value?.trim() || "";
   const market = elements.marketSelect?.value || "all";
-  const exchange = elements.exchangeSelect?.value || "all";
+  const industry = elements.industrySelect?.value || "all";
+  let marketCapMin = parseOptionalNumericInput(elements.marketCapMinInput);
+  let marketCapMax = parseOptionalNumericInput(elements.marketCapMaxInput);
+  if (marketCapMin !== null) {
+    marketCapMin *= MARKET_CAP_UNIT;
+  }
+  if (marketCapMax !== null) {
+    marketCapMax *= MARKET_CAP_UNIT;
+  }
+  if (
+    marketCapMin !== null &&
+    marketCapMax !== null &&
+    marketCapMax < marketCapMin
+  ) {
+    const temp = marketCapMin;
+    marketCapMin = marketCapMax;
+    marketCapMax = temp;
+  }
+
   const volumeSpikeMin = parseNumericInput(
     elements.volumeSpikeInput,
     DEFAULT_FILTERS.volumeSpikeMin
   );
   const peMin = parseNumericInput(elements.peMinInput, DEFAULT_FILTERS.peMin);
+  let peMax = parseOptionalNumericInput(elements.peMaxInput);
+  if (peMax !== null && peMax < peMin) {
+    peMax = peMin;
+  }
   const roeMin = parseNumericInput(elements.roeMinInput, DEFAULT_FILTERS.roeMin);
   const netIncomeQoqMin = parseNumericInput(
     elements.netIncomeQoqInput,
@@ -817,11 +1016,13 @@ function collectFilters() {
   );
 
   return {
-    keyword,
     market,
-    exchange,
+    industry,
+    marketCapMin,
+    marketCapMax,
     volumeSpikeMin,
     peMin,
+    peMax,
     roeMin,
     netIncomeQoqMin,
     netIncomeYoyMin: netIncomeYoyPercent / 100,
@@ -829,21 +1030,19 @@ function collectFilters() {
 }
 
 function resetFilters() {
-  if (elements.keywordInput) {
-    elements.keywordInput.value = DEFAULT_FILTERS.keyword;
-  }
   if (elements.marketSelect) {
     elements.marketSelect.value = DEFAULT_FILTERS.market;
   }
-  if (elements.exchangeSelect) {
-    elements.exchangeSelect.value = DEFAULT_FILTERS.exchange;
+  if (elements.industrySelect) {
+    elements.industrySelect.value = DEFAULT_FILTERS.industry;
   }
-  setNumericFilterInputs(createDefaultFilterState());
+  const defaults = createDefaultFilterState();
+  setNumericFilterInputs(defaults);
   if (elements.searchBox) {
-    elements.searchBox.value = DEFAULT_FILTERS.keyword;
+    elements.searchBox.value = "";
   }
-  state.trading.filters = createDefaultFilterState();
-  state.metrics.filters = createDefaultFilterState();
+  state.trading.filters = { ...defaults };
+  state.metrics.filters = { ...defaults };
 }
 
 function updatePaginationControls() {
@@ -886,6 +1085,12 @@ function applyTranslations() {
     }
   });
 
+  if (elements.favoritesGroupTags) {
+    const label = dict.favoritesGroupLabel || "Group";
+    elements.favoritesGroupTags.setAttribute("aria-label", label);
+  }
+
+  renderIndustryOptions();
   renderFavoriteGroupOptions();
   updateFavoritesUI();
 }

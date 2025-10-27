@@ -218,26 +218,49 @@ body {
 .favorites-banner__group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.favorites-banner__group label {
+.favorites-banner__group span {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
 
-.favorites-banner__group select {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  font-size: 0.9rem;
-  color: var(--text);
-  min-width: 160px;
+.favorites-group-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.favorites-banner__group select:disabled {
-  opacity: 0.6;
+.favorite-group-tag {
+  border: 1px solid var(--primary);
+  background: rgba(29, 78, 216, 0.08);
+  color: var(--primary);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.favorite-group-tag:hover,
+.favorite-group-tag:focus-visible {
+  background: rgba(29, 78, 216, 0.16);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.2);
+}
+
+.favorite-group-tag--active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.favorite-group-tag--active:focus-visible {
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.35);
 }
 
 .favorites-banner__action {
@@ -259,26 +282,52 @@ body {
 
 .filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
   align-items: end;
 }
 
 .filter-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
 
 .filter-input-with-suffix {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-range--with-unit {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+}
+
+.filter-range input {
+  width: 100%;
+}
+
+.filter-range__separator,
+.filter-range__unit {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.filter-range__unit {
+  white-space: nowrap;
 }
 
 .filter-input-with-suffix span {
-    font-size: 0.85rem;
-    color: var(--text-muted);
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .table-link {

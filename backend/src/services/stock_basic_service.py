@@ -83,6 +83,7 @@ def get_stock_overview(
     *,
     keyword: str | None = None,
     market: str | None = None,
+    industry: str | None = None,
     exchange: str | None = None,
     limit: Optional[int] = 50,
     offset: int = 0,
@@ -130,6 +131,7 @@ def get_stock_overview(
     result = stock_dao.query_fundamentals(
         keyword=keyword,
         market=market,
+        industry=industry,
         exchange=exchange,
         include_st=runtime_config.include_st,
         include_delisted=runtime_config.include_delisted,

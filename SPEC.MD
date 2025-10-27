@@ -54,6 +54,10 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-29 (FIX backend/frontend-014a): Normalised favorite group values end-to-end and exposed them on stock list responses so watchlist filters display the assigned group name instead of defaulting to “Ungrouped”.
 - 2025-10-29 (UPDATE frontend-011): Removed the favorites group column from the Market Intelligence stock table to declutter the layout.
 - 2025-10-29 (FEATURE frontend/backend-015): Enhanced favorites with grouped watchlist support, detail-page heart toggle + toast, and Market Intelligence portfolio mode with group filter/banner integration.
+- 2025-10-29 (UPDATE frontend-012): Removed exchange and keyword filter controls from the Market Intelligence dashboard per latest requirements.
+- 2025-10-29 (UPDATE frontend/backend-016): Added industry dropdown, market cap and PE range filters, ROE suffix, and refined filter layout for the Market Intelligence dashboard.
+- 2025-10-29 (UPDATE frontend-013): Watchlist view now offers a toggle to hide or show the search and filter panel for focused portfolio monitoring.
+- 2025-10-29 (UPDATE frontend-014): Refined Portfolio Monitor with hidden search panel, tag-based group selector, updated copy, and streamlined watchlist banner.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.

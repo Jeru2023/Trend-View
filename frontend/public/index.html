@@ -46,39 +46,21 @@
         <section class="page">
           <header class="page__header">
           <div class="page__title">
-            <h1 data-i18n="pageTitle">Market Intelligence Dashboard</h1>
-            <p data-i18n="pageSubtitle">
+            <h1 data-page-title data-i18n="pageTitle">Market Intelligence Dashboard</h1>
+            <p data-page-subtitle data-i18n="pageSubtitle">
               Blend fundamentals, trading flow, and custom signals for actionable insights.
             </p>
             <div class="favorites-banner hidden" id="favorites-banner">
-              <span data-i18n="favoritesBannerText">Watchlist mode enabled · showing favorite stocks only.</span>
+              <span data-i18n="favoritesBannerText">Portfolio monitor · showing favorite stocks only.</span>
               <div class="favorites-banner__group hidden" id="favorites-banner-group">
-                <label for="favorites-group-filter" data-i18n="favoritesGroupLabel">Group</label>
-                <select id="favorites-group-filter"></select>
+                <span data-i18n="favoritesGroupLabel">Group</span>
+                <div class="favorites-group-tags" id="favorites-group-tags" role="tablist" aria-label="Favorite groups"></div>
               </div>
-              <button
-                class="favorites-banner__action"
-                id="favorites-banner-clear"
-                type="button"
-                data-i18n="favoritesBannerClear"
-              >
-                View all stocks
-              </button>
             </div>
           </div>
         </header>
 
           <section class="filters">
-            <div class="filter-group">
-              <label for="keyword" data-i18n="filterKeyword">Keyword</label>
-              <input
-                id="keyword"
-                type="text"
-                placeholder="Ping An Bank"
-                data-placeholder-en="Ping An Bank"
-                data-placeholder-zh="平安银行"
-              />
-            </div>
             <div class="filter-group">
               <label for="market" data-i18n="filterMarket">Market</label>
               <select id="market">
@@ -89,13 +71,33 @@
               </select>
             </div>
             <div class="filter-group">
-              <label for="exchange" data-i18n="filterExchange">Exchange</label>
-              <select id="exchange">
+              <label for="industry" data-i18n="filterIndustry">Industry</label>
+              <select id="industry">
                 <option value="all" data-i18n="filterAll">All</option>
-                <option value="SSE" data-i18n="exchangeSSE">SSE</option>
-                <option value="SZSE" data-i18n="exchangeSZSE">SZSE</option>
-                <option value="BSE" data-i18n="exchangeBSE">BSE</option>
               </select>
+            </div>
+            <div class="filter-group">
+              <label for="market-cap-min" data-i18n="filterMarketCap">Market Cap Range</label>
+              <div class="filter-range filter-range--with-unit">
+                <input
+                  id="market-cap-min"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  data-placeholder-en="Min"
+                  data-placeholder-zh="最小值"
+                />
+                <span class="filter-range__separator">-</span>
+                <input
+                  id="market-cap-max"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  data-placeholder-en="Max"
+                  data-placeholder-zh="最大值"
+                />
+                <span class="filter-range__unit" data-i18n="unitHundredMillion">亿</span>
+              </div>
             </div>
             <div class="filter-group">
               <label for="volume-spike-min" data-i18n="filterVolumeSpike">Volume Spike &gt;</label>
@@ -108,24 +110,40 @@
               />
             </div>
             <div class="filter-group">
-              <label for="pe-min" data-i18n="filterPe">PE &gt;</label>
-              <input
-                id="pe-min"
-                type="number"
-                min="0"
-                step="0.1"
-                value="0"
-              />
+              <label for="pe-min" data-i18n="filterPeRange">PE Range</label>
+              <div class="filter-range">
+                <input
+                  id="pe-min"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value="0"
+                  data-placeholder-en="Min"
+                  data-placeholder-zh="最小值"
+                />
+                <span class="filter-range__separator">-</span>
+                <input
+                  id="pe-max"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  data-placeholder-en="Max"
+                  data-placeholder-zh="最大值"
+                />
+              </div>
             </div>
             <div class="filter-group">
               <label for="roe-min" data-i18n="filterRoe">ROE &gt;</label>
-              <input
-                id="roe-min"
-                type="number"
-                min="0"
-                step="0.1"
-                value="3"
-              />
+              <div class="filter-input-with-suffix">
+                <input
+                  id="roe-min"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value="3"
+                />
+                <span>%</span>
+              </div>
             </div>
             <div class="filter-group">
               <label for="net-income-qoq-min" data-i18n="filterNetIncomeQoq">Net Profit QoQ &gt;</label>
@@ -197,9 +215,9 @@
       </main>
     </div>
 
-    <script src="i18n.js?v=20251109"></script>
+    <script src="i18n.js?v=20251113"></script>
     <script src="sidebar.js?v=20251109"></script>
-    <script type="module" src="market-intelligence.js?v=20251110"></script>
+    <script type="module" src="market-intelligence.js?v=20251114"></script>
   </body>
 </html>
 

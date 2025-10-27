@@ -116,6 +116,7 @@ class StockBasicDAO(PostgresDAOBase):
         *,
         keyword: str | None = None,
         market: str | None = None,
+        industry: str | None = None,
         exchange: str | None = None,
         include_st: bool = True,
         include_delisted: bool = True,
@@ -166,6 +167,10 @@ class StockBasicDAO(PostgresDAOBase):
         if exchange and exchange.lower() != "all":
             conditions.append(sql.SQL("exchange = %s"))
             params.append(exchange)
+
+        if industry and industry.lower() != "all":
+            conditions.append(sql.SQL("industry = %s"))
+            params.append(industry)
 
         if not include_delisted:
             exclude_statuses = ["D", "P"]

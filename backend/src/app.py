@@ -5,6 +5,7 @@ FastAPI application exposing Trend View backend services and control panel APIs.
 from __future__ import annotations
 
 import asyncio
+import math
 import logging
 import time
 from datetime import date, datetime
@@ -231,6 +232,7 @@ class StockDetailResponse(BaseModel):
 class StockListResponse(BaseModel):
     total: int
     items: List[StockItem]
+    industries: List[str] = Field(default_factory=list)
 
 
 class FavoriteEntry(BaseModel):
@@ -1170,6 +1172,7 @@ def health_check() -> dict[str, str]:
 def list_stocks(
     keyword: Optional[str] = Query(None, description="Keyword to search code/name/industry"),
     market: Optional[str] = Query(None, description="Filter by market"),
+    industry: Optional[str] = Query(None, description="Filter by industry"),
     exchange: Optional[str] = Query(None, description="Filter by exchange"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -1179,10 +1182,27 @@ def list_stocks(
         ge=0.0,
         description="Minimum volume spike ratio (latest volume / 10-day average).",
     ),
+    market_cap_min: Optional[float] = Query(
+        None,
+        alias="marketCapMin",
+        ge=0.0,
+        description="Minimum market capitalization filter (absolute currency units).",
+    ),
+    market_cap_max: Optional[float] = Query(
+        None,
+        alias="marketCapMax",
+        ge=0.0,
+        description="Maximum market capitalization filter (absolute currency units).",
+    ),
     pe_min: float = Query(
         0.0,
         alias="peMin",
         description="Minimum PE ratio filter.",
+    ),
+    pe_max: Optional[float] = Query(
+        None,
+        alias="peMax",
+        description="Maximum PE ratio filter.",
     ),
     roe_min: float = Query(
         3.0,
@@ -1219,6 +1239,7 @@ def list_stocks(
     result = get_stock_overview(
         keyword=keyword,
         market=market,
+        industry=industry,
         exchange=exchange,
         limit=None,
         offset=0,
@@ -1227,21 +1248,54 @@ def list_stocks(
         favorite_group_specified=group_specified,
     )
 
+    available_industries = sorted(
+        {
+            item.get("industry")
+            for item in result["items"]
+            if isinstance(item.get("industry"), str) and item.get("industry")
+        }
+    )
+
     def _passes_filters(payload: dict[str, object]) -> bool:
-        def _gt(key: str, threshold: float) -> bool:
+        def _extract_numeric(key: str) -> Optional[float]:
             value = payload.get(key)
             if value is None:
-                return False
+                return None
             try:
                 numeric = float(value)
             except (TypeError, ValueError):
+                return None
+            if not math.isfinite(numeric):
+                return None
+            return numeric
+
+        def _gt(key: str, threshold: float) -> bool:
+            if threshold is None:
+                return True
+            numeric = _extract_numeric(key)
+            if numeric is None:
                 return False
             return numeric > threshold
+
+        def _range(
+            key: str, *, minimum: Optional[float] = None, maximum: Optional[float] = None
+        ) -> bool:
+            if minimum is None and maximum is None:
+                return True
+            numeric = _extract_numeric(key)
+            if numeric is None:
+                return False
+            if minimum is not None and numeric < minimum:
+                return False
+            if maximum is not None and numeric > maximum:
+                return False
+            return True
 
         return all(
             (
                 _gt("volume_spike", volume_spike_min),
-                _gt("pe_ratio", pe_min),
+                _range("pe_ratio", minimum=pe_min, maximum=pe_max),
+                _range("market_cap", minimum=market_cap_min, maximum=market_cap_max),
                 _gt("roe", roe_min),
                 _gt("net_income_qoq_latest", net_income_qoq_min),
                 _gt("net_income_yoy_latest", net_income_yoy_min),
@@ -1303,7 +1357,7 @@ def list_stocks(
         )
         for item in paged_items
     ]
-    return StockListResponse(total=len(filtered_items), items=items)
+    return StockListResponse(total=len(filtered_items), items=items, industries=available_industries)
 
 @app.get("/stocks/{code}", response_model=StockDetailResponse)
 def get_stock_detail_api(
