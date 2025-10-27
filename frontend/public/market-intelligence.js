@@ -32,6 +32,28 @@ const DEFAULT_FILTERS = {
   netIncomeYoyMinPercent: 10,
 };
 
+const RESET_FILTERS = {
+  market: "all",
+  industry: "all",
+  marketCapMin: null,
+  marketCapMax: null,
+  volumeSpikeMin: null,
+  peMin: null,
+  peMax: null,
+  roeMin: null,
+  netIncomeQoqMin: null,
+  netIncomeYoyMinPercent: null,
+};
+const TRADING_STATS_SORT_FIELDS = [
+  "pctChange1Y",
+  "pctChange6M",
+  "pctChange3M",
+  "pctChange1M",
+  "pctChange2W",
+  "pctChange1W",
+];
+const TRADING_STATS_SORT_SET = new Set(TRADING_STATS_SORT_FIELDS);
+
 function normalizeFavoriteGroupValue(value) {
   if (value === null || value === undefined) {
     return null;
@@ -72,6 +94,7 @@ const marketLabels = {
 };
 
 function createDefaultFilterState() {
+  const netIncomeYoyPercent = DEFAULT_FILTERS.netIncomeYoyMinPercent;
   return {
     market: DEFAULT_FILTERS.market,
     industry: DEFAULT_FILTERS.industry,
@@ -82,7 +105,32 @@ function createDefaultFilterState() {
     peMax: DEFAULT_FILTERS.peMax,
     roeMin: DEFAULT_FILTERS.roeMin,
     netIncomeQoqMin: DEFAULT_FILTERS.netIncomeQoqMin,
-    netIncomeYoyMin: DEFAULT_FILTERS.netIncomeYoyMinPercent / 100,
+    netIncomeYoyMin:
+      typeof netIncomeYoyPercent === "number" ? netIncomeYoyPercent / 100 : null,
+  };
+}
+
+function createClearedFilterState() {
+  const netIncomeYoyPercent = RESET_FILTERS.netIncomeYoyMinPercent;
+  return {
+    market: RESET_FILTERS.market,
+    industry: RESET_FILTERS.industry,
+    marketCapMin: RESET_FILTERS.marketCapMin,
+    marketCapMax: RESET_FILTERS.marketCapMax,
+    volumeSpikeMin: RESET_FILTERS.volumeSpikeMin,
+    peMin: RESET_FILTERS.peMin,
+    peMax: RESET_FILTERS.peMax,
+    roeMin: RESET_FILTERS.roeMin,
+    netIncomeQoqMin: RESET_FILTERS.netIncomeQoqMin,
+    netIncomeYoyMin:
+      typeof netIncomeYoyPercent === "number" ? netIncomeYoyPercent / 100 : null,
+  };
+}
+
+function createDefaultSortState() {
+  return {
+    field: null,
+    order: "desc",
   };
 }
 
@@ -92,17 +140,23 @@ let activeTab = "tradingData";
 const state = {
   favoritesOnly: false,
   favoriteGroup: FAVORITES_GROUP_ALL,
+  search: {
+    keyword: "",
+    active: false,
+  },
   trading: {
     page: 1,
     total: 0,
     items: [],
     filters: createDefaultFilterState(),
+    sort: createDefaultSortState(),
   },
   metrics: {
     page: 1,
     total: 0,
     items: [],
     filters: createDefaultFilterState(),
+    sort: createDefaultSortState(),
   },
 };
 
@@ -149,6 +203,7 @@ const tabRegistry = TAB_MODULES.reduce((registry, module) => {
     body: null,
     isLoaded: false,
     loadingPromise: null,
+    sortInitialized: false,
   };
   return registry;
 }, {});
@@ -175,16 +230,18 @@ function setNumericFilterInputs(filters) {
     }
   }
   if (elements.volumeSpikeInput) {
-    elements.volumeSpikeInput.value = formatNumberForInput(
-      filters.volumeSpikeMin ?? DEFAULT_FILTERS.volumeSpikeMin,
-      2
-    );
+    if (filters.volumeSpikeMin === null || filters.volumeSpikeMin === undefined) {
+      elements.volumeSpikeInput.value = "";
+    } else {
+      elements.volumeSpikeInput.value = formatNumberForInput(filters.volumeSpikeMin, 2);
+    }
   }
   if (elements.peMinInput) {
-    elements.peMinInput.value = formatNumberForInput(
-      filters.peMin ?? DEFAULT_FILTERS.peMin,
-      2
-    );
+    if (filters.peMin === null || filters.peMin === undefined) {
+      elements.peMinInput.value = "";
+    } else {
+      elements.peMinInput.value = formatNumberForInput(filters.peMin, 2);
+    }
   }
   if (elements.peMaxInput) {
     if (filters.peMax !== null && filters.peMax !== undefined) {
@@ -194,21 +251,25 @@ function setNumericFilterInputs(filters) {
     }
   }
   if (elements.roeMinInput) {
-    elements.roeMinInput.value = formatNumberForInput(
-      filters.roeMin ?? DEFAULT_FILTERS.roeMin,
-      2
-    );
+    if (filters.roeMin === null || filters.roeMin === undefined) {
+      elements.roeMinInput.value = "";
+    } else {
+      elements.roeMinInput.value = formatNumberForInput(filters.roeMin, 2);
+    }
   }
   if (elements.netIncomeQoqInput) {
-    elements.netIncomeQoqInput.value = formatNumberForInput(
-      filters.netIncomeQoqMin ?? DEFAULT_FILTERS.netIncomeQoqMin,
-      2
-    );
+    if (filters.netIncomeQoqMin === null || filters.netIncomeQoqMin === undefined) {
+      elements.netIncomeQoqInput.value = "";
+    } else {
+      elements.netIncomeQoqInput.value = formatNumberForInput(filters.netIncomeQoqMin, 2);
+    }
   }
   if (elements.netIncomeYoyInput) {
-    const ratio =
-      filters.netIncomeYoyMin ?? DEFAULT_FILTERS.netIncomeYoyMinPercent / 100;
-    elements.netIncomeYoyInput.value = formatNumberForInput(ratio * 100, 2);
+    if (filters.netIncomeYoyMin === null || filters.netIncomeYoyMin === undefined) {
+      elements.netIncomeYoyInput.value = "";
+    } else {
+      elements.netIncomeYoyInput.value = formatNumberForInput(filters.netIncomeYoyMin * 100, 2);
+    }
   }
 }
 
@@ -398,6 +459,99 @@ function updateFavoriteGroupTagSelection() {
     tag.classList.toggle("favorite-group-tag--active", isActive);
     tag.setAttribute("aria-selected", isActive ? "true" : "false");
   });
+}
+
+function initializeTradingStatsSorting(container) {
+  if (!container) {
+    return;
+  }
+  const buttons = container.querySelectorAll("[data-sort-field]");
+  if (!buttons.length) {
+    return;
+  }
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = button.dataset.sortField;
+      if (!field || !TRADING_STATS_SORT_SET.has(field)) {
+        return;
+      }
+      handleTradingStatsSort(field);
+    });
+  });
+  updateTradingStatsSortIndicators();
+}
+
+function handleTradingStatsSort(field) {
+  if (!TRADING_STATS_SORT_SET.has(field)) {
+    return;
+  }
+  const current = state.trading.sort || createDefaultSortState();
+  let nextField = field;
+  let nextOrder = "desc";
+  if (current.field === field) {
+    if (current.order === "desc") {
+      nextOrder = "asc";
+    } else {
+      nextField = null;
+      nextOrder = "desc";
+    }
+  }
+  state.trading.sort = { field: nextField, order: nextOrder };
+  state.metrics.sort = { ...state.trading.sort };
+  updateTradingStatsSortIndicators();
+  loadTradingData(1).catch((error) =>
+    console.error("Failed to reload trading data:", error)
+  );
+}
+
+function updateTradingStatsSortIndicators() {
+  const tab = tabRegistry.tradingStats;
+  if (!tab || !tab.container) {
+    return;
+  }
+  const sortState = state.trading.sort || createDefaultSortState();
+  const buttons = tab.container.querySelectorAll("[data-sort-field]");
+  buttons.forEach((button) => {
+    const field = button.dataset.sortField;
+    const isActive = Boolean(sortState.field && sortState.field === field);
+    button.classList.toggle("table-sort--active", isActive);
+    const icon = button.querySelector(".table-sort__icon");
+    if (icon) {
+      icon.textContent = isActive ? (sortState.order === "asc" ? "↑" : "↓") : "";
+    }
+    const th = button.closest("th");
+    if (th) {
+      th.setAttribute(
+        "aria-sort",
+        isActive ? (sortState.order === "asc" ? "ascending" : "descending") : "none"
+      );
+    }
+  });
+}
+
+function clearSearchState() {
+  state.search.active = false;
+  state.search.keyword = "";
+  if (elements.searchBox && elements.searchBox.value) {
+    elements.searchBox.value = "";
+  }
+}
+
+function submitSearch(rawValue) {
+  const keyword = typeof rawValue === "string" ? rawValue.trim() : "";
+  if (keyword) {
+    state.search.keyword = keyword;
+    state.search.active = true;
+    if (elements.searchBox && elements.searchBox.value !== keyword) {
+      elements.searchBox.value = keyword;
+    }
+    if (state.favoritesOnly) {
+      setFavoritesMode(false);
+    }
+  } else {
+    clearSearchState();
+  }
+  loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
 }
 
 function renderIndustryOptions(options = industryOptions) {
@@ -590,6 +744,7 @@ function syncMetricsFromTrading() {
   state.metrics.total = state.trading.total;
   state.metrics.items = state.trading.items;
   state.metrics.filters = { ...state.trading.filters };
+  state.metrics.sort = { ...state.trading.sort };
 }
 
 initialize().catch((error) => console.error("Failed to initialize basic info page:", error));
@@ -597,6 +752,9 @@ initialize().catch((error) => console.error("Failed to initialize basic info pag
 async function initialize() {
   bindEvents();
   setNumericFilterInputs(state.trading.filters);
+  if (elements.searchBox) {
+    elements.searchBox.value = state.search.keyword;
+  }
   determineInitialFavoritesMode();
   await updateLanguage(currentLang);
   await setActiveTab(activeTab, { force: true });
@@ -612,6 +770,9 @@ function bindEvents() {
 
   if (elements.applyButton) {
     elements.applyButton.addEventListener("click", () => {
+      if (state.search.active) {
+        clearSearchState();
+      }
       loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
     });
   }
@@ -661,8 +822,36 @@ function bindEvents() {
   if (elements.searchBox) {
     elements.searchBox.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
-        event.target.value = event.target.value.trim();
-        loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
+        event.preventDefault();
+        submitSearch(event.target.value || "");
+      } else if (event.key === "Escape" && state.search.active) {
+        event.preventDefault();
+        clearSearchState();
+        loadTradingData(1).catch((error) =>
+          console.error("Failed to reload trading data:", error)
+        );
+      }
+    });
+
+    elements.searchBox.addEventListener("input", (event) => {
+      const value = (event.target.value || "").trim();
+      if (!value && state.search.active) {
+        clearSearchState();
+        loadTradingData(1).catch((error) =>
+          console.error("Failed to reload trading data:", error)
+        );
+      }
+    });
+
+    elements.searchBox.addEventListener("search", (event) => {
+      const value = event.target.value || "";
+      if (value.trim()) {
+        submitSearch(value);
+      } else if (state.search.active) {
+        clearSearchState();
+        loadTradingData(1).catch((error) =>
+          console.error("Failed to reload trading data:", error)
+        );
       }
     });
   }
@@ -743,6 +932,9 @@ async function renderActiveTab() {
   const context = createTabContext(tab);
   const data = tab.dataSource === "metrics" ? state.metrics.items : state.trading.items;
   tab.render(data, context);
+  if (tab.id === "tradingStats") {
+    updateTradingStatsSortIndicators();
+  }
 }
 
 function createTabContext(tab) {
@@ -796,6 +988,14 @@ async function ensureTabReady(tabId) {
         tab.isLoaded = true;
         tab.body = tab.container.querySelector(`[data-tab-body="${tabId}"]`);
         applyTranslations();
+        if (tab.id === "tradingStats") {
+          if (!tab.sortInitialized) {
+            initializeTradingStatsSorting(tab.container);
+            tab.sortInitialized = true;
+          } else {
+            updateTradingStatsSortIndicators();
+          }
+        }
       } catch (error) {
         console.error(error);
         tab.container.innerHTML = `<div class="tab-error">${translations[currentLang].noData}</div>`;
@@ -827,8 +1027,9 @@ function getActiveDataState() {
 }
 
 async function loadTradingData(page = 1) {
+  const searchActive = Boolean(state.search.active && state.search.keyword);
   let targetPage = page;
-  if (state.favoritesOnly) {
+  if (!searchActive && state.favoritesOnly) {
     try {
       const groupsChanged = await ensureFavoriteGroupsLoaded();
       if (groupsChanged) {
@@ -841,48 +1042,64 @@ async function loadTradingData(page = 1) {
   }
 
   state.trading.page = targetPage;
-  state.trading.filters = collectFilters();
+  if (!searchActive) {
+    state.trading.filters = collectFilters();
+  }
 
   const params = new URLSearchParams();
   params.set("limit", PAGE_SIZE.toString());
   params.set("offset", ((state.trading.page - 1) * PAGE_SIZE).toString());
+  const sortState = state.trading.sort || createDefaultSortState();
+  if (sortState.field) {
+    params.set("sortBy", sortState.field);
+    params.set("sortOrder", sortState.order || "desc");
+  }
 
-  const filters = state.trading.filters;
-  if (filters.market && filters.market !== "all") {
-    params.set("market", filters.market);
-  }
-  if (filters.industry && filters.industry !== "all") {
-    params.set("industry", filters.industry);
-  }
-  if (filters.marketCapMin !== null && filters.marketCapMin !== undefined) {
-    params.set("marketCapMin", filters.marketCapMin.toString());
-  }
-  if (filters.marketCapMax !== null && filters.marketCapMax !== undefined) {
-    params.set("marketCapMax", filters.marketCapMax.toString());
-  }
-  if (Number.isFinite(filters.volumeSpikeMin)) {
-    params.set("volumeSpikeMin", filters.volumeSpikeMin.toString());
-  }
-  if (Number.isFinite(filters.peMin)) {
-    params.set("peMin", filters.peMin.toString());
-  }
-  if (filters.peMax !== null && filters.peMax !== undefined && Number.isFinite(filters.peMax)) {
-    params.set("peMax", filters.peMax.toString());
-  }
-  if (Number.isFinite(filters.roeMin)) {
-    params.set("roeMin", filters.roeMin.toString());
-  }
-  if (Number.isFinite(filters.netIncomeQoqMin)) {
-    params.set("netIncomeQoqMin", filters.netIncomeQoqMin.toString());
-  }
-  if (Number.isFinite(filters.netIncomeYoyMin)) {
-    params.set("netIncomeYoyMin", filters.netIncomeYoyMin.toString());
-  }
-  if (state.favoritesOnly) {
-    params.set("favoritesOnly", "true");
-    const groupParam = normalizeFavoriteGroupForRequest(state.favoriteGroup);
-    if (groupParam) {
-      params.set("favoriteGroup", groupParam);
+  if (searchActive) {
+    const keyword = (state.search.keyword || "").trim();
+    if (keyword) {
+      params.set("keyword", keyword);
+    } else {
+      clearSearchState();
+    }
+  } else {
+    const filters = state.trading.filters;
+    if (filters.market && filters.market !== "all") {
+      params.set("market", filters.market);
+    }
+    if (filters.industry && filters.industry !== "all") {
+      params.set("industry", filters.industry);
+    }
+    if (filters.marketCapMin !== null && filters.marketCapMin !== undefined) {
+      params.set("marketCapMin", filters.marketCapMin.toString());
+    }
+    if (filters.marketCapMax !== null && filters.marketCapMax !== undefined) {
+      params.set("marketCapMax", filters.marketCapMax.toString());
+    }
+    if (Number.isFinite(filters.volumeSpikeMin)) {
+      params.set("volumeSpikeMin", filters.volumeSpikeMin.toString());
+    }
+    if (Number.isFinite(filters.peMin)) {
+      params.set("peMin", filters.peMin.toString());
+    }
+    if (filters.peMax !== null && filters.peMax !== undefined && Number.isFinite(filters.peMax)) {
+      params.set("peMax", filters.peMax.toString());
+    }
+    if (Number.isFinite(filters.roeMin)) {
+      params.set("roeMin", filters.roeMin.toString());
+    }
+    if (Number.isFinite(filters.netIncomeQoqMin)) {
+      params.set("netIncomeQoqMin", filters.netIncomeQoqMin.toString());
+    }
+    if (Number.isFinite(filters.netIncomeYoyMin)) {
+      params.set("netIncomeYoyMin", filters.netIncomeYoyMin.toString());
+    }
+    if (state.favoritesOnly) {
+      params.set("favoritesOnly", "true");
+      const groupParam = normalizeFavoriteGroupForRequest(state.favoriteGroup);
+      if (groupParam) {
+        params.set("favoriteGroup", groupParam);
+      }
     }
   }
 
@@ -978,6 +1195,7 @@ async function loadFinancialStats() {
 function collectFilters() {
   const market = elements.marketSelect?.value || "all";
   const industry = elements.industrySelect?.value || "all";
+
   let marketCapMin = parseOptionalNumericInput(elements.marketCapMinInput);
   let marketCapMax = parseOptionalNumericInput(elements.marketCapMaxInput);
   if (marketCapMin !== null) {
@@ -996,53 +1214,46 @@ function collectFilters() {
     marketCapMax = temp;
   }
 
-  const volumeSpikeMin = parseNumericInput(
-    elements.volumeSpikeInput,
-    DEFAULT_FILTERS.volumeSpikeMin
-  );
-  const peMin = parseNumericInput(elements.peMinInput, DEFAULT_FILTERS.peMin);
+  const volumeSpikeMinRaw = parseOptionalNumericInput(elements.volumeSpikeInput);
+  const peMin = parseOptionalNumericInput(elements.peMinInput);
   let peMax = parseOptionalNumericInput(elements.peMaxInput);
-  if (peMax !== null && peMax < peMin) {
+  if (peMax !== null && peMin !== null && peMax < peMin) {
     peMax = peMin;
   }
-  const roeMin = parseNumericInput(elements.roeMinInput, DEFAULT_FILTERS.roeMin);
-  const netIncomeQoqMin = parseNumericInput(
-    elements.netIncomeQoqInput,
-    DEFAULT_FILTERS.netIncomeQoqMin
-  );
-  const netIncomeYoyPercent = parseNumericInput(
-    elements.netIncomeYoyInput,
-    DEFAULT_FILTERS.netIncomeYoyMinPercent
-  );
+  const roeMin = parseOptionalNumericInput(elements.roeMinInput);
+  const netIncomeQoqMin = parseOptionalNumericInput(elements.netIncomeQoqInput);
+  const netIncomeYoyPercent = parseOptionalNumericInput(elements.netIncomeYoyInput);
 
   return {
     market,
     industry,
     marketCapMin,
     marketCapMax,
-    volumeSpikeMin,
+    volumeSpikeMin: volumeSpikeMinRaw,
     peMin,
     peMax,
     roeMin,
     netIncomeQoqMin,
-    netIncomeYoyMin: netIncomeYoyPercent / 100,
+    netIncomeYoyMin:
+      netIncomeYoyPercent !== null ? netIncomeYoyPercent / 100 : null,
   };
 }
 
 function resetFilters() {
+  const cleared = createClearedFilterState();
   if (elements.marketSelect) {
-    elements.marketSelect.value = DEFAULT_FILTERS.market;
+    elements.marketSelect.value = cleared.market;
   }
   if (elements.industrySelect) {
-    elements.industrySelect.value = DEFAULT_FILTERS.industry;
+    elements.industrySelect.value = cleared.industry;
   }
-  const defaults = createDefaultFilterState();
-  setNumericFilterInputs(defaults);
-  if (elements.searchBox) {
-    elements.searchBox.value = "";
-  }
-  state.trading.filters = { ...defaults };
-  state.metrics.filters = { ...defaults };
+  setNumericFilterInputs(cleared);
+  clearSearchState();
+  state.trading.filters = { ...cleared };
+  state.metrics.filters = { ...cleared };
+  state.trading.sort = createDefaultSortState();
+  state.metrics.sort = createDefaultSortState();
+  updateTradingStatsSortIndicators();
 }
 
 function updatePaginationControls() {
@@ -1085,6 +1296,10 @@ function applyTranslations() {
     }
   });
 
+  if (elements.searchBox) {
+    elements.searchBox.value = state.search.keyword;
+  }
+
   if (elements.favoritesGroupTags) {
     const label = dict.favoritesGroupLabel || "Group";
     elements.favoritesGroupTags.setAttribute("aria-label", label);
@@ -1093,6 +1308,7 @@ function applyTranslations() {
   renderIndustryOptions();
   renderFavoriteGroupOptions();
   updateFavoritesUI();
+  updateTradingStatsSortIndicators();
 }
 
 function formatNumber(value) {

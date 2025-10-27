@@ -550,6 +550,19 @@ function formatPercent(value, { fromRatio = false } = {}) {
   return `${(ratio * 100).toFixed(2)}%`;
 }
 
+function formatPercentFlexible(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "--";
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+  const treatAsRatio = Math.abs(numeric) <= 1;
+  const ratio = treatAsRatio ? numeric : numeric / 100;
+  return `${(ratio * 100).toFixed(2)}%`;
+}
+
 function formatDate(value) {
   if (!value) {
     return "--";
@@ -946,7 +959,7 @@ function renderDetail(detail) {
     },
     {
       label: dict.labelRoe,
-      value: formatPercent(detail.financialData.roe, { fromRatio: true }),
+      value: formatPercentFlexible(detail.financialData.roe),
     },
   ]);
 

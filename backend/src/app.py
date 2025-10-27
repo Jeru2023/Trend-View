@@ -234,6 +234,21 @@ class StockListResponse(BaseModel):
     items: List[StockItem]
     industries: List[str] = Field(default_factory=list)
 
+SORTABLE_STOCK_FIELDS: dict[str, str] = {
+    "pctchange1y": "pct_change_1y",
+    "pct_change_1y": "pct_change_1y",
+    "pctchange6m": "pct_change_6m",
+    "pct_change_6m": "pct_change_6m",
+    "pctchange3m": "pct_change_3m",
+    "pct_change_3m": "pct_change_3m",
+    "pctchange1m": "pct_change_1m",
+    "pct_change_1m": "pct_change_1m",
+    "pctchange2w": "pct_change_2w",
+    "pct_change_2w": "pct_change_2w",
+    "pctchange1w": "pct_change_1w",
+    "pct_change_1w": "pct_change_1w",
+}
+
 
 class FavoriteEntry(BaseModel):
     code: str
@@ -1176,8 +1191,8 @@ def list_stocks(
     exchange: Optional[str] = Query(None, description="Filter by exchange"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    volume_spike_min: float = Query(
-        1.8,
+    volume_spike_min: Optional[float] = Query(
+        None,
         alias="volumeSpikeMin",
         ge=0.0,
         description="Minimum volume spike ratio (latest volume / 10-day average).",
@@ -1194,8 +1209,8 @@ def list_stocks(
         ge=0.0,
         description="Maximum market capitalization filter (absolute currency units).",
     ),
-    pe_min: float = Query(
-        0.0,
+    pe_min: Optional[float] = Query(
+        None,
         alias="peMin",
         description="Minimum PE ratio filter.",
     ),
@@ -1204,18 +1219,18 @@ def list_stocks(
         alias="peMax",
         description="Maximum PE ratio filter.",
     ),
-    roe_min: float = Query(
-        3.0,
+    roe_min: Optional[float] = Query(
+        None,
         alias="roeMin",
         description="Minimum ROE filter.",
     ),
-    net_income_qoq_min: float = Query(
-        0.0,
+    net_income_qoq_min: Optional[float] = Query(
+        None,
         alias="netIncomeQoqMin",
         description="Minimum net income QoQ ratio filter (allow negatives for declines).",
     ),
-    net_income_yoy_min: float = Query(
-        0.1,
+    net_income_yoy_min: Optional[float] = Query(
+        None,
         alias="netIncomeYoyMin",
         description="Minimum net income YoY ratio filter (allow negatives for declines).",
     ),
@@ -1232,8 +1247,22 @@ def list_stocks(
             f"Use '{FAVORITE_GROUP_NONE_SENTINEL}' to show ungrouped favorites."
         ),
     ),
+    sort_by: Optional[str] = Query(
+        None,
+        alias="sortBy",
+        description="Optional sort field (pctChange1Y, pctChange6M, pctChange3M, pctChange1M, pctChange2W, pctChange1W).",
+    ),
+    sort_order: Optional[str] = Query(
+        "desc",
+        alias="sortOrder",
+        description="Sort order: asc or desc (default desc).",
+    ),
 ) -> StockListResponse:
     """Return paginated stock fundamentals enriched with latest trading data."""
+    if keyword is not None:
+        stripped_keyword = keyword.strip()
+        keyword = stripped_keyword or None
+
     normalized_group, group_specified = _parse_favorite_group_query(favorite_group)
     effective_favorites_only = favorites_only or group_specified
     result = get_stock_overview(
@@ -1302,10 +1331,50 @@ def list_stocks(
             )
         )
 
-    if effective_favorites_only:
-        filtered_items = result["items"]
+    keyword_only_search = bool(keyword and keyword.strip())
+    filters_at_defaults = (
+        volume_spike_min == 1.8
+        and market_cap_min is None
+        and market_cap_max is None
+        and pe_min == 0.0
+        and pe_max is None
+        and roe_min == 3.0
+        and net_income_qoq_min == 0.0
+        and net_income_yoy_min == 0.1
+        and (market is None or market.lower() == "all")
+        and (industry is None or industry.lower() == "all")
+        and (exchange is None or exchange.lower() == "all")
+    )
+
+    sort_field = None
+    if sort_by:
+        normalized_sort = sort_by.replace("_", "").lower()
+        sort_field = SORTABLE_STOCK_FIELDS.get(normalized_sort)
+    sort_direction = (sort_order or "desc").lower()
+    if sort_direction not in {"asc", "desc"}:
+        sort_direction = "desc"
+
+    if effective_favorites_only or (keyword_only_search and filters_at_defaults):
+        filtered_items = list(result["items"])
     else:
         filtered_items = [item for item in result["items"] if _passes_filters(item)]
+
+    if sort_field:
+        reverse = sort_direction != "asc"
+
+        def _sort_value(payload: dict[str, object]) -> float:
+            value = payload.get(sort_field)
+            if value is None:
+                return float("-inf") if reverse else float("inf")
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                return float("-inf") if reverse else float("inf")
+            if not math.isfinite(numeric):
+                return float("-inf") if reverse else float("inf")
+            return numeric
+
+        filtered_items = sorted(filtered_items, key=_sort_value, reverse=reverse)
 
     start_index = offset if offset >= 0 else 0
     end_index = start_index + limit if limit is not None else None

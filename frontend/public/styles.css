@@ -766,6 +766,33 @@ body {
   white-space: nowrap;
 }
 
+.table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.table-sort:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.table-sort__icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.table-sort--active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 .stock-table tbody tr:hover {
   background: rgba(59, 130, 246, 0.08);
 }

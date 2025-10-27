@@ -58,6 +58,9 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-29 (UPDATE frontend/backend-016): Added industry dropdown, market cap and PE range filters, ROE suffix, and refined filter layout for the Market Intelligence dashboard.
 - 2025-10-29 (UPDATE frontend-013): Watchlist view now offers a toggle to hide or show the search and filter panel for focused portfolio monitoring.
 - 2025-10-29 (UPDATE frontend-014): Refined Portfolio Monitor with hidden search panel, tag-based group selector, updated copy, and streamlined watchlist banner.
+- 2025-10-29 (UPDATE frontend-015): Enabled header search to look up stocks by code/name independently of combination filters on the Market Intelligence dashboard.
+- 2025-10-29 (UPDATE frontend/backend-017): Added multi-period performance sorting to the trading stats tab with API support for ascending/descending order.
+- 2025-10-29 (FIX backend-018): Market Intelligence search now ignores blank keywords so empty input no longer constrains results.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.
