@@ -45,13 +45,28 @@
 
         <section class="page">
           <header class="page__header">
-            <div class="page__title">
-              <h1 data-i18n="pageTitle">Market Intelligence Dashboard</h1>
-              <p data-i18n="pageSubtitle">
-                Blend fundamentals, trading flow, and custom signals for actionable insights.
-              </p>
+          <div class="page__title">
+            <h1 data-i18n="pageTitle">Market Intelligence Dashboard</h1>
+            <p data-i18n="pageSubtitle">
+              Blend fundamentals, trading flow, and custom signals for actionable insights.
+            </p>
+            <div class="favorites-banner hidden" id="favorites-banner">
+              <span data-i18n="favoritesBannerText">Watchlist mode enabled · showing favorite stocks only.</span>
+              <div class="favorites-banner__group hidden" id="favorites-banner-group">
+                <label for="favorites-group-filter" data-i18n="favoritesGroupLabel">Group</label>
+                <select id="favorites-group-filter"></select>
+              </div>
+              <button
+                class="favorites-banner__action"
+                id="favorites-banner-clear"
+                type="button"
+                data-i18n="favoritesBannerClear"
+              >
+                View all stocks
+              </button>
             </div>
-          </header>
+          </div>
+        </header>
 
           <section class="filters">
             <div class="filter-group">

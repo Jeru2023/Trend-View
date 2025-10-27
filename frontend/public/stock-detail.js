@@ -5,6 +5,8 @@ const API_BASE =
     ? "http://localhost:8000"
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 const LANG_STORAGE_KEY = "trend-view-lang";
+const FAVORITES_GROUP_NONE = "__ungrouped__";
+const FAVORITES_GROUP_NEW_OPTION = "__new__";
 
 let currentLang = document.documentElement.getAttribute("data-pref-lang") || getInitialLanguage();
 let candlestickData = [];
@@ -33,7 +35,441 @@ const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
   candlestickContainer: document.getElementById("candlestick-chart"),
   candlestickEmpty: document.getElementById("candlestick-empty"),
+  favoriteToggle: document.getElementById("favorite-toggle"),
 };
+
+const favoriteState = {
+  code: null,
+  isFavorite: false,
+  group: null,
+  busy: false,
+};
+
+const toastState = {
+  container: null,
+};
+
+const favoriteGroupsCache = {
+  items: [],
+  loaded: false,
+  loading: null,
+};
+
+function normalizeCode(value) {
+  return (value || "").trim().toUpperCase();
+}
+
+function ensureToastContainer() {
+  if (toastState.container && document.body.contains(toastState.container)) {
+    return toastState.container;
+  }
+  const container = document.createElement("div");
+  container.className = "toast-container";
+  document.body.appendChild(container);
+  toastState.container = container;
+  return container;
+}
+
+function showToast(message, type = "success", duration = 3200) {
+  const container = ensureToastContainer();
+  const toast = document.createElement("div");
+  toast.className = `toast toast--${type}`;
+
+  const text = document.createElement("span");
+  text.className = "toast__message";
+  text.textContent = message;
+  toast.appendChild(text);
+  container.appendChild(toast);
+
+  const removeToast = () => {
+    toast.classList.add("toast--closing");
+    toast.addEventListener(
+      "transitionend",
+      () => {
+        toast.remove();
+        if (!container.hasChildNodes()) {
+          container.remove();
+          toastState.container = null;
+        }
+      },
+      { once: true }
+    );
+  };
+
+  const timeoutId = setTimeout(removeToast, duration);
+  toast.addEventListener("click", () => {
+    clearTimeout(timeoutId);
+    removeToast();
+  });
+}
+
+function normalizeFavoriteGroupForRequest(value) {
+  if (!value) {
+    return null;
+  }
+  if (value === FAVORITES_GROUP_NONE) {
+    return FAVORITES_GROUP_NONE;
+  }
+  return value;
+}
+
+function formatFavoriteGroupLabel(value) {
+  const dict = translations[currentLang] || {};
+  if (!value || value === FAVORITES_GROUP_NONE) {
+    return dict.favoriteGroupNone || "Ungrouped";
+  }
+  return value;
+}
+
+async function loadFavoriteGroups(force = false) {
+  if (!force && favoriteGroupsCache.loaded) {
+    return favoriteGroupsCache.items;
+  }
+  if (favoriteGroupsCache.loading) {
+    return favoriteGroupsCache.loading;
+  }
+  favoriteGroupsCache.loading = (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/favorites/groups`);
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+      const data = await response.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      favoriteGroupsCache.items = items.map((entry) => {
+        const name = entry?.name ?? null;
+        const value = name === null ? FAVORITES_GROUP_NONE : String(name);
+        const total = Number(entry?.total ?? 0);
+        return { name, value, total };
+      });
+      favoriteGroupsCache.loaded = true;
+      return favoriteGroupsCache.items;
+    } catch (error) {
+      favoriteGroupsCache.loaded = false;
+      favoriteGroupsCache.items = [];
+      throw error;
+    } finally {
+      favoriteGroupsCache.loading = null;
+    }
+  })();
+  return favoriteGroupsCache.loading;
+}
+
+async function openFavoriteGroupDialog(groups, initialGroup = FAVORITES_GROUP_NONE) {
+  return new Promise((resolve) => {
+    const dict = translations[currentLang] || {};
+    const backdrop = document.createElement("div");
+    backdrop.className = "favorite-dialog-backdrop";
+
+    const dialog = document.createElement("div");
+    dialog.className = "favorite-dialog";
+    backdrop.appendChild(dialog);
+
+    const title = document.createElement("h2");
+    title.className = "favorite-dialog__title";
+    title.textContent = dict.favoriteGroupDialogTitle || "Choose a group";
+    dialog.appendChild(title);
+
+    const body = document.createElement("div");
+    body.className = "favorite-dialog__body";
+    dialog.appendChild(body);
+
+    const selectLabel = document.createElement("label");
+    const selectId = "favorite-group-select";
+    selectLabel.setAttribute("for", selectId);
+    selectLabel.textContent = dict.favoriteGroupDialogExistingLabel || "Existing groups";
+    body.appendChild(selectLabel);
+
+    const select = document.createElement("select");
+    select.className = "favorite-dialog__select";
+    select.id = selectId;
+
+    const ungroupedOption = document.createElement("option");
+    ungroupedOption.value = FAVORITES_GROUP_NONE;
+    ungroupedOption.textContent = dict.favoriteGroupNone || "Ungrouped";
+    select.appendChild(ungroupedOption);
+
+    const sortedGroups = (groups || [])
+      .filter((entry) => entry.value !== FAVORITES_GROUP_NONE)
+      .sort((a, b) => a.value.localeCompare(b.value));
+
+    sortedGroups.forEach((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.value;
+      option.textContent = entry.value;
+      select.appendChild(option);
+    });
+
+    if (
+      initialGroup &&
+      initialGroup !== FAVORITES_GROUP_NONE &&
+      !sortedGroups.some((entry) => entry.value === initialGroup)
+    ) {
+      const fallbackOption = document.createElement("option");
+      fallbackOption.value = initialGroup;
+      fallbackOption.textContent = initialGroup;
+      select.appendChild(fallbackOption);
+    }
+
+    const newOption = document.createElement("option");
+    newOption.value = FAVORITES_GROUP_NEW_OPTION;
+    newOption.textContent = dict.favoriteGroupDialogNewOption || "Create new group";
+    select.appendChild(newOption);
+
+    body.appendChild(select);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "favorite-dialog__input";
+    input.placeholder = dict.favoriteGroupDialogNewPlaceholder || "Enter new group name";
+    input.autocomplete = "off";
+    input.style.display = "none";
+    body.appendChild(input);
+
+    const note = document.createElement("div");
+    note.className = "favorite-dialog__note";
+    if (dict.favoriteGroupDialogNote) {
+      note.textContent = dict.favoriteGroupDialogNote;
+      body.appendChild(note);
+    }
+
+    const error = document.createElement("div");
+    error.className = "favorite-dialog__error";
+    error.style.display = "none";
+    body.appendChild(error);
+
+    const actions = document.createElement("div");
+    actions.className = "favorite-dialog__actions";
+    dialog.appendChild(actions);
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "secondary-btn";
+    cancelButton.textContent = dict.favoriteGroupDialogCancel || "Cancel";
+    actions.appendChild(cancelButton);
+
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.className = "primary-btn";
+    confirmButton.textContent = dict.favoriteGroupDialogConfirm || "Save";
+    actions.appendChild(confirmButton);
+
+    function toggleInputVisibility() {
+      if (select.value === FAVORITES_GROUP_NEW_OPTION) {
+        input.style.display = "block";
+        input.focus();
+      } else {
+        input.style.display = "none";
+        input.value = "";
+      }
+      error.style.display = "none";
+      error.textContent = "";
+    }
+
+    function cleanup(result) {
+      document.removeEventListener("keydown", onKeyDown);
+      backdrop.remove();
+      resolve(result);
+    }
+
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        cleanup(undefined);
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        confirmButton.click();
+      }
+    }
+
+    select.addEventListener("change", toggleInputVisibility);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        confirmButton.click();
+      }
+    });
+
+    cancelButton.addEventListener("click", () => cleanup(undefined));
+
+    confirmButton.addEventListener("click", () => {
+      if (select.value === FAVORITES_GROUP_NEW_OPTION) {
+        const newGroupName = input.value.trim();
+        if (!newGroupName) {
+          error.textContent =
+            dict.favoriteGroupDialogErrorRequired || "Please enter a group name.";
+          error.style.display = "block";
+          input.focus();
+          return;
+        }
+        cleanup(newGroupName);
+        return;
+      }
+      const resolvedGroup = select.value === FAVORITES_GROUP_NONE ? null : select.value;
+      cleanup(resolvedGroup);
+    });
+
+    backdrop.addEventListener("mousedown", (event) => {
+      if (event.target === backdrop) {
+        cleanup(undefined);
+      }
+    });
+
+    document.addEventListener("keydown", onKeyDown);
+
+    document.body.appendChild(backdrop);
+    select.value = initialGroup ?? FAVORITES_GROUP_NONE;
+    requestAnimationFrame(() => {
+      toggleInputVisibility();
+      select.focus();
+    });
+  });
+}
+
+async function requestFavoriteGroupSelection() {
+  try {
+    const groups = await loadFavoriteGroups();
+    const initialGroup = favoriteState.group ?? FAVORITES_GROUP_NONE;
+    return await openFavoriteGroupDialog(groups, initialGroup);
+  } catch (error) {
+    console.error("Failed to load favorite groups:", error);
+    const dict = translations[currentLang] || {};
+    const fallback = window.prompt(
+      dict.favoriteGroupDialogFallback || "Enter a group name (leave blank for ungrouped)",
+      favoriteState.group || ""
+    );
+    if (fallback === null) {
+      return undefined;
+    }
+    const trimmed = fallback.trim();
+    return trimmed ? trimmed : null;
+  }
+}
+function setFavoriteBusy(isBusy) {
+  favoriteState.busy = Boolean(isBusy);
+  if (!elements.favoriteToggle) {
+    return;
+  }
+  const shouldDisable = favoriteState.busy || !favoriteState.code;
+  elements.favoriteToggle.disabled = shouldDisable;
+}
+
+function updateFavoriteToggle(isFavorite = favoriteState.isFavorite) {
+  favoriteState.isFavorite = Boolean(isFavorite);
+  if (!elements.favoriteToggle) {
+    return;
+  }
+  const dict = translations[currentLang] || {};
+  const labelKey = favoriteState.isFavorite ? "favoriteToggleLabelRemove" : "favoriteToggleLabelAdd";
+  const tooltipKey = favoriteState.isFavorite ? "favoriteToggleTooltipRemove" : "favoriteToggleTooltipAdd";
+  elements.favoriteToggle.setAttribute("aria-pressed", String(favoriteState.isFavorite));
+  elements.favoriteToggle.classList.toggle("favorite-toggle--active", favoriteState.isFavorite);
+  elements.favoriteToggle.title = dict[tooltipKey] || "";
+  elements.favoriteToggle.dataset.favoriteGroup = favoriteState.group ?? "";
+
+  const srLabel = elements.favoriteToggle.querySelector(".sr-only");
+  if (srLabel) {
+    srLabel.dataset.i18n = labelKey;
+    srLabel.textContent = dict[labelKey] || "";
+  }
+}
+
+async function submitFavoriteState(shouldFavorite, { group = favoriteState.group } = {}) {
+  if (!favoriteState.code) {
+    return;
+  }
+  setFavoriteBusy(true);
+  const requestOptions = {
+    method: shouldFavorite ? "PUT" : "DELETE",
+    headers: {},
+  };
+  if (shouldFavorite) {
+    requestOptions.headers["Content-Type"] = "application/json";
+    requestOptions.body = JSON.stringify({
+      group: normalizeFavoriteGroupForRequest(group),
+    });
+  }
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/favorites/${encodeURIComponent(favoriteState.code)}`,
+      requestOptions
+    );
+    if (!response.ok) {
+      throw new Error(`Favorite toggle failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    const nextIsFavorite = Boolean(payload?.isFavorite ?? shouldFavorite);
+    const nextGroup = payload?.group ?? (shouldFavorite ? group ?? null : null);
+
+    favoriteState.isFavorite = nextIsFavorite;
+    favoriteState.group = nextGroup ?? null;
+    updateFavoriteToggle(nextIsFavorite);
+
+    if (currentDetail) {
+      currentDetail.isFavorite = nextIsFavorite;
+      currentDetail.favoriteGroup = favoriteState.group;
+      if (currentDetail.profile) {
+        currentDetail.profile.isFavorite = nextIsFavorite;
+        currentDetail.profile.favoriteGroup = favoriteState.group;
+      }
+    }
+
+    const dict = translations[currentLang] || {};
+    if (nextIsFavorite) {
+      const messageTemplate = dict.favoriteToastAdded || "Added to watchlist ({group})";
+      const message = messageTemplate.replace(
+        "{group}",
+        formatFavoriteGroupLabel(favoriteState.group)
+      );
+      showToast(message, "success");
+    } else {
+      const message = dict.favoriteToastRemoved || "Removed from watchlist";
+      showToast(message, "info");
+    }
+
+    favoriteGroupsCache.loaded = false;
+  } catch (error) {
+    console.error("Failed to toggle favorite:", error);
+    const dict = translations[currentLang] || {};
+    showToast(
+      dict.favoriteToggleError || "Unable to update watchlist. Please try again.",
+      "error"
+    );
+  } finally {
+    setFavoriteBusy(false);
+  }
+}
+
+async function handleFavoriteToggle() {
+  if (favoriteState.busy || !favoriteState.code) {
+    return;
+  }
+  if (favoriteState.isFavorite) {
+    await submitFavoriteState(false);
+    return;
+  }
+  try {
+    const selectedGroup = await requestFavoriteGroupSelection();
+    if (selectedGroup === undefined) {
+      return;
+    }
+    await submitFavoriteState(true, { group: selectedGroup });
+  } catch (error) {
+    console.error("Favorite toggle request failed:", error);
+  }
+}
+
+function initFavoriteToggle() {
+  if (!elements.favoriteToggle) {
+    return;
+  }
+  elements.favoriteToggle.addEventListener("click", () => {
+    handleFavoriteToggle();
+  });
+  setFavoriteBusy(true);
+  updateFavoriteToggle(false);
+}
 
 function getInitialLanguage() {
   try {
@@ -71,6 +507,7 @@ function applyTranslations() {
       el.textContent = value;
     }
   });
+  updateFavoriteToggle(favoriteState.isFavorite);
 }
 
 function formatNumber(value, options = {}) {
@@ -372,6 +809,23 @@ function resizeCandlestickChart() {
 function renderDetail(detail) {
   currentDetail = detail;
   const dict = translations[currentLang];
+  favoriteState.code = normalizeCode(detail.profile.code);
+  favoriteState.group =
+    detail.favoriteGroup ??
+    detail.profile?.favoriteGroup ??
+    favoriteState.group ??
+    null;
+  const isFavorite = Boolean(
+    detail.isFavorite ?? detail.profile?.isFavorite ?? favoriteState.isFavorite
+  );
+  updateFavoriteToggle(isFavorite);
+  setFavoriteBusy(false);
+  currentDetail.isFavorite = isFavorite;
+  if (currentDetail.profile) {
+    currentDetail.profile.isFavorite = isFavorite;
+    currentDetail.profile.favoriteGroup = favoriteState.group;
+  }
+  currentDetail.favoriteGroup = favoriteState.group;
   elements.title.textContent = detail.profile.name ?? detail.profile.code;
   elements.subtitle.textContent = detail.profile.code;
   document.title = `${detail.profile.code} · ${dict.pageTitle}`;
@@ -582,6 +1036,10 @@ function setStatus(messageKey, isError = false) {
   elements.status.classList.remove("hidden");
   elements.hero.classList.add("hidden");
   elements.grid.classList.add("hidden");
+  favoriteState.code = null;
+  favoriteState.group = null;
+  updateFavoriteToggle(false);
+  setFavoriteBusy(true);
   if (candlestickChartInstance) {
     candlestickChartInstance.clear();
   }
@@ -656,6 +1114,7 @@ function initLanguageButtons() {
 function initialize() {
   applyTranslations();
   initLanguageButtons();
+  initFavoriteToggle();
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
   if (!code) {

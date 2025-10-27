@@ -224,6 +224,22 @@ class StockBasicDAO(PostgresDAOBase):
         ]
         return {"total": total, "items": items}
 
+    def exists(self, code: str) -> bool:
+        """Return True when the provided stock code exists in stock_basic."""
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL(
+                        "SELECT 1 FROM {schema}.{table} WHERE ts_code = %s"
+                    ).format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self.config.stock_table),
+                    ),
+                    (code,),
+                )
+                return cur.fetchone() is not None
+
 
 __all__ = [
     "StockBasicDAO",

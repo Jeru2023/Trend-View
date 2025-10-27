@@ -14,6 +14,10 @@ const API_BASE =
 const PAGE_SIZE = 20;
 const LANG_STORAGE_KEY = "trend-view-lang";
 const EMPTY_VALUE = "--";
+const FAVORITES_QUERY_PARAM = "favoritesOnly";
+const FAVORITES_GROUP_QUERY_KEY = "favoriteGroup";
+const FAVORITES_GROUP_ALL = "all";
+const FAVORITES_GROUP_NONE = "__ungrouped__";
 const DEFAULT_FILTERS = {
   keyword: "",
   market: "all",
@@ -70,6 +74,8 @@ let currentLang = getInitialLanguage();
 let activeTab = "tradingData";
 
 const state = {
+  favoritesOnly: false,
+  favoriteGroup: FAVORITES_GROUP_ALL,
   trading: {
     page: 1,
     total: 0,
@@ -82,6 +88,12 @@ const state = {
     items: [],
     filters: createDefaultFilterState(),
   },
+};
+
+const favoriteGroupsState = {
+  items: [],
+  loaded: false,
+  loading: null,
 };
 
 const elements = {
@@ -101,6 +113,10 @@ const elements = {
   prevPage: document.getElementById("prev-page"),
   nextPage: document.getElementById("next-page"),
   pageInfo: document.getElementById("page-info"),
+  favoritesBanner: document.getElementById("favorites-banner"),
+  favoritesBannerGroup: document.getElementById("favorites-banner-group"),
+  favoritesGroupSelect: document.getElementById("favorites-group-filter"),
+  favoritesBannerClear: document.getElementById("favorites-banner-clear"),
 };
 
 const tabRegistry = TAB_MODULES.reduce((registry, module) => {
@@ -137,6 +153,256 @@ function setNumericFilterInputs(filters) {
   }
 }
 
+function parseFavoritesFlag(value) {
+  if (!value) {
+    return false;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return ["1", "true", "yes", "y"].includes(normalized);
+}
+
+function parseFavoriteGroupParam(value) {
+  if (value === null || value === undefined) {
+    return { value: FAVORITES_GROUP_ALL, specified: false };
+  }
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    return { value: FAVORITES_GROUP_NONE, specified: true };
+  }
+  if (trimmed === FAVORITES_GROUP_ALL) {
+    return { value: FAVORITES_GROUP_ALL, specified: true };
+  }
+  if (trimmed === FAVORITES_GROUP_NONE) {
+    return { value: FAVORITES_GROUP_NONE, specified: true };
+  }
+  return { value: trimmed, specified: true };
+}
+
+function normalizeFavoriteGroupForRequest(value) {
+  if (!value || value === FAVORITES_GROUP_ALL) {
+    return null;
+  }
+  if (value === FAVORITES_GROUP_NONE) {
+    return FAVORITES_GROUP_NONE;
+  }
+  return value;
+}
+
+function getFavoriteGroupLabel(value) {
+  const dict = translations[currentLang] || {};
+  if (
+    value === FAVORITES_GROUP_NONE ||
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return dict.favoriteGroupNone || "Ungrouped";
+  }
+  if (value === FAVORITES_GROUP_ALL) {
+    return dict.favoriteGroupAll || "All groups";
+  }
+  return value;
+}
+
+async function ensureFavoriteGroupsLoaded(force = false) {
+  if (!force && favoriteGroupsState.loaded) {
+    return false;
+  }
+  if (favoriteGroupsState.loading) {
+    return favoriteGroupsState.loading;
+  }
+  favoriteGroupsState.loading = (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/favorites/groups`);
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+      const data = await response.json();
+      const rawItems = Array.isArray(data?.items) ? data.items : [];
+      favoriteGroupsState.items = rawItems.map((entry) => {
+        const name = entry?.name ?? null;
+        const value = name === null ? FAVORITES_GROUP_NONE : String(name);
+        const total = Number(entry?.total ?? 0);
+        return { name, value, total };
+      });
+      favoriteGroupsState.loaded = true;
+      const availableValues = new Set(
+        favoriteGroupsState.items.map((entry) => entry.value)
+      );
+      let stateChanged = false;
+      if (
+        state.favoriteGroup !== FAVORITES_GROUP_ALL &&
+        !availableValues.has(state.favoriteGroup)
+      ) {
+        state.favoriteGroup = FAVORITES_GROUP_ALL;
+        stateChanged = true;
+      }
+      renderFavoriteGroupOptions();
+      updateFavoritesUI();
+      return stateChanged;
+    } catch (error) {
+      console.error("Failed to load favorite groups:", error);
+      favoriteGroupsState.loaded = false;
+      favoriteGroupsState.items = [];
+      renderFavoriteGroupOptions();
+      updateFavoritesUI();
+      return false;
+    } finally {
+      favoriteGroupsState.loading = null;
+    }
+  })();
+  return favoriteGroupsState.loading;
+}
+
+function renderFavoriteGroupOptions() {
+  if (!elements.favoritesGroupSelect) {
+    return;
+  }
+  const select = elements.favoritesGroupSelect;
+  const dict = translations[currentLang] || {};
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  const formatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+
+  const valueMap = new Map();
+  (favoriteGroupsState.items || []).forEach((entry) => {
+    valueMap.set(entry.value, entry);
+  });
+  if (
+    state.favoriteGroup !== FAVORITES_GROUP_ALL &&
+    !valueMap.has(state.favoriteGroup)
+  ) {
+    valueMap.set(state.favoriteGroup, {
+      value: state.favoriteGroup,
+      name: state.favoriteGroup === FAVORITES_GROUP_NONE ? null : state.favoriteGroup,
+      total: 0,
+    });
+  }
+
+  const options = [];
+  options.push({
+    value: FAVORITES_GROUP_ALL,
+    label: dict.favoriteGroupAll || "All groups",
+  });
+
+  const groupedValues = Array.from(valueMap.values());
+  const ungroupedEntry = groupedValues.find(
+    (entry) => entry.value === FAVORITES_GROUP_NONE
+  );
+  if (ungroupedEntry) {
+    const baseLabel = dict.favoriteGroupNone || "Ungrouped";
+    options.push({
+      value: FAVORITES_GROUP_NONE,
+      label: `${baseLabel} (${formatter.format(ungroupedEntry.total || 0)})`,
+    });
+  }
+
+  groupedValues
+    .filter((entry) => entry.value !== FAVORITES_GROUP_NONE)
+    .sort((a, b) => a.value.localeCompare(b.value))
+    .forEach((entry) => {
+      const label = `${entry.value} (${formatter.format(entry.total || 0)})`;
+      options.push({
+        value: entry.value,
+        label,
+      });
+    });
+
+  select.innerHTML = "";
+  options.forEach((option) => {
+    const node = document.createElement("option");
+    node.value = option.value;
+    node.textContent = option.label;
+    select.appendChild(node);
+  });
+
+  if (!options.some((option) => option.value === state.favoriteGroup)) {
+    state.favoriteGroup = FAVORITES_GROUP_ALL;
+  }
+  select.value = state.favoriteGroup;
+}
+
+function persistFavoritesQueryParam() {
+  const url = new URL(window.location.href);
+  if (state.favoritesOnly) {
+    url.searchParams.set(FAVORITES_QUERY_PARAM, "1");
+    const groupParam = normalizeFavoriteGroupForRequest(state.favoriteGroup);
+    if (groupParam) {
+      url.searchParams.set(FAVORITES_GROUP_QUERY_KEY, groupParam);
+    } else {
+      url.searchParams.delete(FAVORITES_GROUP_QUERY_KEY);
+    }
+  } else {
+    url.searchParams.delete(FAVORITES_QUERY_PARAM);
+    url.searchParams.delete(FAVORITES_GROUP_QUERY_KEY);
+  }
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function updateFavoritesUI() {
+  const shouldShowBanner = state.favoritesOnly;
+  if (elements.favoritesBanner) {
+    elements.favoritesBanner.classList.toggle("hidden", !shouldShowBanner);
+  }
+  if (elements.favoritesBannerClear) {
+    elements.favoritesBannerClear.disabled = !shouldShowBanner;
+  }
+  if (elements.favoritesBannerGroup) {
+    elements.favoritesBannerGroup.classList.toggle("hidden", !shouldShowBanner);
+  }
+  if (elements.favoritesGroupSelect) {
+    const select = elements.favoritesGroupSelect;
+    const hasMatchingOption = Array.from(select.options || []).some(
+      (option) => option.value === state.favoriteGroup
+    );
+    const effectiveValue = hasMatchingOption ? state.favoriteGroup : FAVORITES_GROUP_ALL;
+    if (select.value !== effectiveValue) {
+      select.value = effectiveValue;
+    }
+    select.disabled = !shouldShowBanner || !favoriteGroupsState.loaded;
+  }
+  const activeNavKey = state.favoritesOnly ? "portfolio" : "market-intelligence";
+  if (document.body) {
+    document.body.setAttribute("data-active-nav", activeNavKey);
+  }
+  const sidebarRoot = document.querySelector("[data-sidebar-container] .sidebar");
+  if (sidebarRoot) {
+    sidebarRoot.querySelectorAll(".nav__item").forEach((item) => {
+      const key = item.dataset.navKey;
+      item.classList.toggle("nav__item--active", key === activeNavKey);
+    });
+  }
+}
+
+function determineInitialFavoritesMode() {
+  const params = new URLSearchParams(window.location.search);
+  const favoritesFlag = parseFavoritesFlag(params.get(FAVORITES_QUERY_PARAM));
+  const { value: initialGroup, specified } = parseFavoriteGroupParam(
+    params.get(FAVORITES_GROUP_QUERY_KEY)
+  );
+  state.favoriteGroup = initialGroup;
+  state.favoritesOnly = favoritesFlag || specified;
+  renderFavoriteGroupOptions();
+  updateFavoritesUI();
+  persistFavoritesQueryParam();
+}
+
+function setFavoritesMode(enabled) {
+  const previous = state.favoritesOnly;
+  const next = Boolean(enabled);
+  if (previous === next) {
+    return;
+  }
+  state.favoritesOnly = next;
+  if (!next) {
+    state.favoriteGroup = FAVORITES_GROUP_ALL;
+  } else if (!previous) {
+    favoriteGroupsState.loaded = false;
+  }
+  renderFavoriteGroupOptions();
+  updateFavoritesUI();
+  persistFavoritesQueryParam();
+}
+
 function parseNumericInput(element, fallback) {
   if (!element) {
     return fallback;
@@ -157,6 +423,7 @@ initialize().catch((error) => console.error("Failed to initialize basic info pag
 async function initialize() {
   bindEvents();
   setNumericFilterInputs(state.trading.filters);
+  determineInitialFavoritesMode();
   await updateLanguage(currentLang);
   await setActiveTab(activeTab, { force: true });
   await loadTradingData(1);
@@ -225,6 +492,34 @@ function bindEvents() {
         }
         loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
       }
+    });
+  }
+
+  if (elements.favoritesBannerClear) {
+    elements.favoritesBannerClear.addEventListener("click", () => {
+      if (!state.favoritesOnly) {
+        return;
+      }
+      setFavoritesMode(false);
+      loadTradingData(1).catch((error) => console.error("Failed to reload trading data:", error));
+    });
+  }
+
+  if (elements.favoritesGroupSelect) {
+    elements.favoritesGroupSelect.addEventListener("change", (event) => {
+      const selectedValue = event.target.value || FAVORITES_GROUP_ALL;
+      if (!state.favoritesOnly) {
+        setFavoritesMode(true);
+      }
+      if (state.favoriteGroup === selectedValue) {
+        return;
+      }
+      state.favoriteGroup = selectedValue;
+      updateFavoritesUI();
+      persistFavoritesQueryParam();
+      loadTradingData(1).catch((error) =>
+        console.error("Failed to reload trading data:", error)
+      );
     });
   }
 }
@@ -298,6 +593,12 @@ function createTabContext(tab) {
     renderEmptyRow,
     getMarketLabel,
     getExchangeLabel,
+    favoriteLabel: translations[currentLang]?.favoritesBadgeLabel ?? "",
+    isFavoritesMode: state.favoritesOnly,
+    getFavoriteGroupLabel,
+    favoritesGroupNone: FAVORITES_GROUP_NONE,
+    favoritesGroupAll: FAVORITES_GROUP_ALL,
+    currentFavoriteGroup: state.favoriteGroup,
   };
 }
 
@@ -360,7 +661,20 @@ function getActiveDataState() {
 }
 
 async function loadTradingData(page = 1) {
-  state.trading.page = page;
+  let targetPage = page;
+  if (state.favoritesOnly) {
+    try {
+      const groupsChanged = await ensureFavoriteGroupsLoaded();
+      if (groupsChanged) {
+        targetPage = 1;
+        persistFavoritesQueryParam();
+      }
+    } catch (error) {
+      console.error("Failed to refresh favorite groups:", error);
+    }
+  }
+
+  state.trading.page = targetPage;
   state.trading.filters = collectFilters();
 
   const params = new URLSearchParams();
@@ -376,6 +690,13 @@ async function loadTradingData(page = 1) {
   params.set("roeMin", filters.roeMin.toString());
   params.set("netIncomeQoqMin", filters.netIncomeQoqMin.toString());
   params.set("netIncomeYoyMin", filters.netIncomeYoyMin.toString());
+  if (state.favoritesOnly) {
+    params.set("favoritesOnly", "true");
+    const groupParam = normalizeFavoriteGroupForRequest(state.favoriteGroup);
+    if (groupParam) {
+      params.set("favoriteGroup", groupParam);
+    }
+  }
 
   try {
     const response = await fetch(`${API_BASE}/stocks?${params.toString()}`);
@@ -432,6 +753,9 @@ async function loadTradingData(page = 1) {
         revenueQoqLatest: item.revenueQoqLatest,
         roeYoyLatest: item.roeYoyLatest,
         roeQoqLatest: item.roeQoqLatest,
+        favorite_group: item.favoriteGroup,
+        favoriteGroup: item.favoriteGroup,
+        isFavorite: Boolean(item.isFavorite),
       }));
     syncMetricsFromTrading();
   } catch (error) {
@@ -541,6 +865,9 @@ function applyTranslations() {
       el.placeholder = placeholder;
     }
   });
+
+  renderFavoriteGroupOptions();
+  updateFavoritesUI();
 }
 
 function formatNumber(value) {

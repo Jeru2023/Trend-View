@@ -19,6 +19,7 @@ from ..dao import (
     FinancialIndicatorDAO,
     FundamentalMetricsDAO,
     IncomeStatementDAO,
+    FavoriteStockDAO,
     StockBasicDAO,
 )
 
@@ -86,6 +87,9 @@ def get_stock_overview(
     limit: Optional[int] = 50,
     offset: int = 0,
     codes: Optional[Sequence[str]] = None,
+    favorites_only: bool = False,
+    favorite_group: Optional[str] = None,
+    favorite_group_specified: bool = False,
     settings_path: str | None = None,
 ) -> dict[str, object]:
     """
@@ -93,7 +97,36 @@ def get_stock_overview(
     """
     settings = load_settings(settings_path)
     stock_dao = StockBasicDAO(settings.postgres)
+    favorites_dao = FavoriteStockDAO(settings.postgres)
     runtime_config = load_runtime_config()
+    favorite_entries = favorites_dao.list_entries()
+    favorite_code_map: Dict[str, Optional[str]] = {
+        entry["code"]: entry.get("group") for entry in favorite_entries
+    }
+    favorite_code_set = set(favorite_code_map.keys())
+    favorite_codes_filter: Optional[Sequence[str]] = None
+
+    if codes is None:
+        if favorite_group_specified:
+            if favorite_group is None:
+                filtered_codes = [
+                    code for code, group in favorite_code_map.items() if not group
+                ]
+            else:
+                filtered_codes = [
+                    code
+                    for code, group in favorite_code_map.items()
+                    if group == favorite_group
+                ]
+            if favorites_only or favorite_group_specified:
+                if not filtered_codes:
+                    return {"total": 0, "items": []}
+                favorite_codes_filter = filtered_codes
+        elif favorites_only:
+            if not favorite_code_set:
+                return {"total": 0, "items": []}
+            favorite_codes_filter = list(favorite_code_set)
+
     result = stock_dao.query_fundamentals(
         keyword=keyword,
         market=market,
@@ -102,7 +135,7 @@ def get_stock_overview(
         include_delisted=runtime_config.include_delisted,
         limit=limit,
         offset=offset,
-        codes=codes,
+        codes=codes or favorite_codes_filter,
     )
 
     codes = [item["code"] for item in result["items"]]
@@ -186,6 +219,8 @@ def get_stock_overview(
         item["revenue_qoq_latest"] = _safe_float(fundamental.get("revenue_qoq_latest"))
         item["roe_yoy_latest"] = _safe_float(fundamental.get("roe_yoy_latest"))
         item["roe_qoq_latest"] = _safe_float(fundamental.get("roe_qoq_latest"))
+        item["is_favorite"] = item["code"] in favorite_code_set
+        item["favorite_group"] = favorite_code_map.get(item["code"])
 
     return result
 
@@ -221,6 +256,10 @@ def get_stock_detail(
 
     settings = load_settings(settings_path)
     daily_trade_dao = DailyTradeDAO(settings.postgres)
+    favorites_dao = FavoriteStockDAO(settings.postgres)
+    favorite_entry = favorites_dao.get_entry(code)
+    is_favorite = favorite_entry is not None
+    favorite_group = favorite_entry.get("group") if favorite_entry else None
     history_rows = daily_trade_dao.fetch_price_history(code, limit=history_limit)
     candles: list[dict[str, object]] = []
     for row in history_rows:
@@ -312,6 +351,8 @@ def get_stock_detail(
         "peRatio": item.get("pe_ratio"),
         "turnoverRate": item.get("turnover_rate"),
         "volumeSpike": item.get("volume_spike"),
+        "isFavorite": is_favorite,
+        "favoriteGroup": favorite_group,
     }
 
     return {
@@ -321,6 +362,8 @@ def get_stock_detail(
         "tradingStats": trading_stats,
         "financialStats": financial_stats,
         "dailyTradeHistory": candles,
+        "isFavorite": is_favorite,
+        "favoriteGroup": favorite_group,
     }
 
 

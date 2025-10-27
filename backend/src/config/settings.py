@@ -48,6 +48,7 @@ class PostgresSettings:
     financial_indicator_table: str
     finance_breakfast_table: str
     fundamental_metrics_table: str
+    favorites_table: str
     connect_timeout: int = 3
     application_name: str = DEFAULT_APPLICATION_NAME
     statement_timeout_ms: Optional[int] = None
@@ -170,6 +171,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             fundamental_metrics_table=str(
                 postgres_config.get("fundamental_metrics_table", "fundamental_metrics")
+            ),
+            favorites_table=str(
+                postgres_config.get("favorites_table", "stock_favorites")
             ),
             connect_timeout=int(postgres_config.get("connect_timeout", 3)),
             application_name=str(application_name).strip() if isinstance(application_name, str) and application_name.strip() else DEFAULT_APPLICATION_NAME,

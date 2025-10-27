@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from zoneinfo import ZoneInfo
@@ -32,8 +32,12 @@ from .dao import (
 from .services import (
     get_stock_detail,
     get_stock_overview,
+    get_favorite_status,
+    list_favorite_entries,
+    list_favorite_groups,
     list_finance_breakfast,
     list_fundamental_metrics,
+    set_favorite_state,
     sync_daily_indicator,
     sync_financial_indicators,
     sync_finance_breakfast,
@@ -47,6 +51,41 @@ from .state import monitor
 
 scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Shanghai"))
 logger = logging.getLogger(__name__)
+
+FAVORITE_GROUP_NONE_SENTINEL = "__ungrouped__"
+MAX_FAVORITE_GROUP_LENGTH = 64
+
+
+def _validate_favorite_group_name(value: Optional[str]) -> Optional[str]:
+    """Validate favorite group names from query params or payloads."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) > MAX_FAVORITE_GROUP_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Favorite group name must be at most {MAX_FAVORITE_GROUP_LENGTH} characters.",
+        )
+    if any(ord(char) < 32 for char in normalized):
+        raise HTTPException(
+            status_code=400,
+            detail="Favorite group name contains invalid control characters.",
+        )
+    return normalized
+
+
+def _parse_favorite_group_query(value: Optional[str]) -> tuple[Optional[str], bool]:
+    """Normalize favorite group query parameter."""
+    if value is None:
+        return None, False
+    if value == FAVORITE_GROUP_NONE_SENTINEL:
+        return None, True
+    normalized = value.strip()
+    if not normalized:
+        return None, True
+    return _validate_favorite_group_name(normalized), True
 
 
 class StockItem(BaseModel):
@@ -157,9 +196,12 @@ class StockFinancialStats(BaseModel):
     revenue_qoq_latest: Optional[float] = Field(None, alias="revenueQoqLatest")
     roe_yoy_latest: Optional[float] = Field(None, alias="roeYoyLatest")
     roe_qoq_latest: Optional[float] = Field(None, alias="roeQoqLatest")
+    is_favorite: bool = Field(False, alias="isFavorite")
+    favorite_group: Optional[str] = Field(None, alias="favoriteGroup")
 
     class Config:
         allow_population_by_field_name = True
+        allow_population_by_alias = True
 
 
 class DailyTradeBar(BaseModel):
@@ -178,6 +220,8 @@ class StockDetailResponse(BaseModel):
     trading_stats: StockTradingStats = Field(..., alias="tradingStats")
     financial_stats: StockFinancialStats = Field(..., alias="financialStats")
     daily_trade_history: List[DailyTradeBar] = Field(..., alias="dailyTradeHistory")
+    is_favorite: bool = Field(False, alias="isFavorite")
+    favorite_group: Optional[str] = Field(None, alias="favoriteGroup")
 
     class Config:
         allow_population_by_field_name = True
@@ -187,6 +231,50 @@ class StockDetailResponse(BaseModel):
 class StockListResponse(BaseModel):
     total: int
     items: List[StockItem]
+
+
+class FavoriteEntry(BaseModel):
+    code: str
+    group: Optional[str] = Field(None, alias="group")
+    created_at: Optional[datetime] = Field(None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class FavoriteListResponse(BaseModel):
+    total: int
+    items: List[FavoriteEntry]
+
+
+class FavoriteStatusResponse(BaseModel):
+    code: str
+    is_favorite: bool = Field(False, alias="isFavorite")
+    group: Optional[str] = Field(None, alias="group")
+    total: int = 0
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class FavoriteGroupItem(BaseModel):
+    name: Optional[str] = Field(None, alias="name")
+    total: int = 0
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class FavoriteGroupListResponse(BaseModel):
+    items: List[FavoriteGroupItem]
+
+
+class FavoriteUpsertRequest(BaseModel):
+    group: Optional[str] = Field(None, alias="group")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class FundamentalMetricItem(BaseModel):
@@ -1101,21 +1189,39 @@ def list_stocks(
     net_income_qoq_min: float = Query(
         0.0,
         alias="netIncomeQoqMin",
-        description="Minimum net income QoQ ratio filter.",
+        description="Minimum net income QoQ ratio filter (allow negatives for declines).",
     ),
     net_income_yoy_min: float = Query(
         0.1,
         alias="netIncomeYoyMin",
-        description="Minimum net income YoY ratio filter.",
+        description="Minimum net income YoY ratio filter (allow negatives for declines).",
+    ),
+    favorites_only: bool = Query(
+        False,
+        alias="favoritesOnly",
+        description="When true, limit the response to favorite stocks only.",
+    ),
+    favorite_group: Optional[str] = Query(
+        None,
+        alias="favoriteGroup",
+        description=(
+            "Optional favorite group filter. "
+            f"Use '{FAVORITE_GROUP_NONE_SENTINEL}' to show ungrouped favorites."
+        ),
     ),
 ) -> StockListResponse:
     """Return paginated stock fundamentals enriched with latest trading data."""
+    normalized_group, group_specified = _parse_favorite_group_query(favorite_group)
+    effective_favorites_only = favorites_only or group_specified
     result = get_stock_overview(
         keyword=keyword,
         market=market,
         exchange=exchange,
         limit=None,
         offset=0,
+        favorites_only=effective_favorites_only,
+        favorite_group=normalized_group,
+        favorite_group_specified=group_specified,
     )
 
     def _passes_filters(payload: dict[str, object]) -> bool:
@@ -1139,7 +1245,10 @@ def list_stocks(
             )
         )
 
-    filtered_items = [item for item in result["items"] if _passes_filters(item)]
+    if effective_favorites_only:
+        filtered_items = result["items"]
+    else:
+        filtered_items = [item for item in result["items"] if _passes_filters(item)]
 
     start_index = offset if offset >= 0 else 0
     end_index = start_index + limit if limit is not None else None
@@ -1186,6 +1295,8 @@ def list_stocks(
             revenueQoqLatest=item.get("revenue_qoq_latest"),
             roeYoyLatest=item.get("roe_yoy_latest"),
             roeQoqLatest=item.get("roe_qoq_latest"),
+            favoriteGroup=item.get("favorite_group"),
+            isFavorite=bool(item.get("is_favorite")),
         )
         for item in paged_items
     ]
@@ -1205,6 +1316,86 @@ def get_stock_detail_api(
     if not detail:
         raise HTTPException(status_code=404, detail=f"Stock '{code}' not found")
     return StockDetailResponse(**detail)
+
+
+@app.get("/favorites", response_model=FavoriteListResponse)
+def list_favorites_api(
+    group: Optional[str] = Query(
+        None,
+        alias="group",
+        description=(
+            "Optional favorite group filter. "
+            f"Use '{FAVORITE_GROUP_NONE_SENTINEL}' to show ungrouped favorites."
+        ),
+    )
+) -> FavoriteListResponse:
+    """Return the persisted favorites list."""
+    normalized_group, group_specified = _parse_favorite_group_query(group)
+    if group_specified:
+        if group == FAVORITE_GROUP_NONE_SENTINEL or (
+            group is not None and not group.strip()
+        ):
+            entries = list_favorite_entries(group=FAVORITE_GROUP_NONE_SENTINEL)
+        else:
+            entries = list_favorite_entries(group=normalized_group)
+    else:
+        entries = list_favorite_entries()
+    items = [
+        FavoriteEntry(
+            code=entry["code"],
+            group=entry.get("group"),
+            created_at=entry.get("created_at"),
+            updated_at=entry.get("updated_at"),
+        )
+        for entry in entries
+    ]
+    return FavoriteListResponse(total=len(items), items=items)
+
+
+@app.get("/favorites/groups", response_model=FavoriteGroupListResponse)
+def list_favorite_groups_api() -> FavoriteGroupListResponse:
+    """Return all available favorite groups."""
+    groups = list_favorite_groups()
+    items = [
+        FavoriteGroupItem(name=entry.get("name"), total=int(entry.get("total") or 0))
+        for entry in groups
+    ]
+    return FavoriteGroupListResponse(items=items)
+
+
+@app.get("/favorites/{code}", response_model=FavoriteStatusResponse)
+def get_favorite_status_api(code: str) -> FavoriteStatusResponse:
+    """Return favorite status for a specific stock code."""
+    try:
+        result = get_favorite_status(code)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FavoriteStatusResponse(**result)
+
+
+@app.put("/favorites/{code}", response_model=FavoriteStatusResponse)
+def add_favorite_api(
+    code: str,
+    payload: FavoriteUpsertRequest | None = Body(default=None),
+) -> FavoriteStatusResponse:
+    """Mark a stock as favorite."""
+    group_value = payload.group if payload else None
+    normalized_group, _ = _parse_favorite_group_query(group_value)
+    try:
+        result = set_favorite_state(code, favorite=True, group=normalized_group)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FavoriteStatusResponse(**result)
+
+
+@app.delete("/favorites/{code}", response_model=FavoriteStatusResponse)
+def remove_favorite_api(code: str) -> FavoriteStatusResponse:
+    """Remove a stock from favorites."""
+    try:
+        result = set_favorite_state(code, favorite=False)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FavoriteStatusResponse(**result)
 
 @app.get("/fundamental-metrics", response_model=FundamentalMetricsListResponse)
 def list_fundamental_metrics_api(

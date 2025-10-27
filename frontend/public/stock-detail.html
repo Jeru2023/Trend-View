@@ -18,7 +18,26 @@
         <header class="content__header detail-header">
           <div class="detail-header__info">
             <a class="detail-back-link" href="index.html" data-i18n="back">Back</a>
-            <h1 class="detail-title" id="detail-title"></h1>
+            <div class="detail-title-group">
+              <h1 class="detail-title" id="detail-title"></h1>
+              <button
+                class="favorite-toggle"
+                id="favorite-toggle"
+                type="button"
+                aria-pressed="false"
+                title=""
+              >
+                <span class="sr-only" data-i18n="favoriteToggleLabelAdd">Add to watchlist</span>
+                <svg
+                  class="favorite-toggle__icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 6 4 4 6.5 4c1.74 0 3.41 1.01 4.07 2.57C11.23 5.01 12.9 4 14.64 4 17.14 4 19.14 6 19.14 8.5c0 3.78-3.4 6.86-8.55 11.54z" />
+                </svg>
+              </button>
+            </div>
             <p class="detail-subtitle" id="detail-subtitle"></p>
           </div>
           <div class="language-switcher">
