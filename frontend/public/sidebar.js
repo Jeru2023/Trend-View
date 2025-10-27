@@ -1,4 +1,4 @@
-const SIDEBAR_VERSION = "20251027";
+const SIDEBAR_VERSION = "20251109";
 
 function highlightActiveNav(root) {
   if (!root) {

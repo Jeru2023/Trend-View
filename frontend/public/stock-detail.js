@@ -28,7 +28,6 @@ const elements = {
   heroVolume: document.getElementById("hero-volume"),
   heroPe: document.getElementById("hero-pe"),
   heroTurnover: document.getElementById("hero-turnover"),
-  profileList: document.getElementById("profile-list"),
   financialList: document.getElementById("financial-list"),
   statsList: document.getElementById("stats-list"),
   fundamentalsList: document.getElementById("fundamentals-list"),
@@ -57,6 +56,17 @@ const favoriteGroupsCache = {
 
 function normalizeCode(value) {
   return (value || "").trim().toUpperCase();
+}
+
+function normalizeFavoriteGroupValue(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  return value;
 }
 
 function ensureToastContainer() {
@@ -104,21 +114,23 @@ function showToast(message, type = "success", duration = 3200) {
 }
 
 function normalizeFavoriteGroupForRequest(value) {
-  if (!value) {
+  const normalized = normalizeFavoriteGroupValue(value);
+  if (!normalized) {
     return null;
   }
-  if (value === FAVORITES_GROUP_NONE) {
+  if (normalized === FAVORITES_GROUP_NONE) {
     return FAVORITES_GROUP_NONE;
   }
-  return value;
+  return normalized;
 }
 
 function formatFavoriteGroupLabel(value) {
   const dict = translations[currentLang] || {};
-  if (!value || value === FAVORITES_GROUP_NONE) {
+  const normalized = normalizeFavoriteGroupValue(value);
+  if (!normalized || normalized === FAVORITES_GROUP_NONE) {
     return dict.favoriteGroupNone || "Ungrouped";
   }
-  return value;
+  return normalized;
 }
 
 async function loadFavoriteGroups(force = false) {
@@ -137,10 +149,11 @@ async function loadFavoriteGroups(force = false) {
       const data = await response.json();
       const items = Array.isArray(data?.items) ? data.items : [];
       favoriteGroupsCache.items = items.map((entry) => {
-        const name = entry?.name ?? null;
-        const value = name === null ? FAVORITES_GROUP_NONE : String(name);
+        const normalizedName = normalizeFavoriteGroupValue(entry?.name ?? null);
+        const value =
+          normalizedName === null ? FAVORITES_GROUP_NONE : String(normalizedName);
         const total = Number(entry?.total ?? 0);
-        return { name, value, total };
+        return { name: normalizedName, value, total };
       });
       favoriteGroupsCache.loaded = true;
       return favoriteGroupsCache.items;
@@ -403,7 +416,7 @@ async function submitFavoriteState(shouldFavorite, { group = favoriteState.group
     const nextGroup = payload?.group ?? (shouldFavorite ? group ?? null : null);
 
     favoriteState.isFavorite = nextIsFavorite;
-    favoriteState.group = nextGroup ?? null;
+    favoriteState.group = normalizeFavoriteGroupValue(nextGroup);
     updateFavoriteToggle(nextIsFavorite);
 
     if (currentDetail) {
@@ -712,8 +725,8 @@ function renderCandlestickChart() {
         backgroundColor: "rgba(17,23,39,0.9)",
       },
       grid: [
-        { left: 40, right: 16, top: 16, height: "60%" },
-        { left: 40, right: 16, top: "70%", height: "24%" },
+        { left: 40, right: 16, top: 16, height: "56%" },
+        { left: 40, right: 16, top: "76%", height: "18%" },
       ],
       xAxis: [
         {
@@ -810,11 +823,12 @@ function renderDetail(detail) {
   currentDetail = detail;
   const dict = translations[currentLang];
   favoriteState.code = normalizeCode(detail.profile.code);
-  favoriteState.group =
+  favoriteState.group = normalizeFavoriteGroupValue(
     detail.favoriteGroup ??
-    detail.profile?.favoriteGroup ??
-    favoriteState.group ??
-    null;
+      detail.profile?.favoriteGroup ??
+      favoriteState.group ??
+      null
+  );
   const isFavorite = Boolean(
     detail.isFavorite ?? detail.profile?.isFavorite ?? favoriteState.isFavorite
   );
@@ -883,19 +897,6 @@ function renderDetail(detail) {
   elements.heroTurnover.textContent = formatPercent(
     detail.tradingData.turnoverRate ?? detail.profile.turnoverRate
   );
-
-  renderList(elements.profileList, [
-    { label: dict.labelCode, value: detail.profile.code },
-    { label: dict.labelName, value: detail.profile.name ?? "--" },
-    { label: dict.labelIndustry, value: detail.profile.industry ?? "--" },
-    { label: dict.labelMarket, value: detail.profile.market ?? "--" },
-    { label: dict.labelExchange, value: detail.profile.exchange ?? "--" },
-    { label: dict.labelStatus, value: detail.profile.status ?? "--" },
-    {
-      label: dict.labelTradeDate,
-      value: formatDate(detail.profile.tradeDate),
-    },
-  ]);
 
   renderList(elements.financialList, [
     {

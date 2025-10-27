@@ -23,6 +23,13 @@ class FavoriteStockDAO(PostgresDAOBase):
         super().__init__(config=config)
         self._schema_sql_template = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
 
+    @staticmethod
+    def _normalize_group_value(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
     def _qualified_table(self) -> sql.Composed:
         return sql.SQL("{schema}.{table}").format(
             schema=sql.Identifier(self.config.schema),
@@ -55,11 +62,12 @@ class FavoriteStockDAO(PostgresDAOBase):
             ]
             params: List[Any] = []
             if group is not None:
-                if group == "":
+                normalized_group = self._normalize_group_value(group)
+                if normalized_group is None:
                     query.append(sql.SQL(" WHERE group_name IS NULL"))
                 else:
                     query.append(sql.SQL(" WHERE group_name = %s"))
-                    params.append(group)
+                    params.append(normalized_group)
             query.append(sql.SQL(" ORDER BY updated_at DESC"))
             with conn.cursor() as cur:
                 cur.execute(sql.Composed(query), params)
@@ -67,7 +75,7 @@ class FavoriteStockDAO(PostgresDAOBase):
         return [
             {
                 "code": row[0],
-                "group": row[1],
+                "group": self._normalize_group_value(row[1]),
                 "created_at": row[2],
                 "updated_at": row[3],
             }
@@ -94,7 +102,7 @@ class FavoriteStockDAO(PostgresDAOBase):
             return None
         return {
             "code": row[0],
-            "group": row[1],
+            "group": self._normalize_group_value(row[1]),
             "created_at": row[2],
             "updated_at": row[3],
         }
@@ -124,7 +132,7 @@ class FavoriteStockDAO(PostgresDAOBase):
                 row = cur.fetchone()
         return {
             "code": row[0],
-            "group": row[1],
+            "group": self._normalize_group_value(row[1]),
             "created_at": row[2],
             "updated_at": row[3],
         }
@@ -149,7 +157,7 @@ class FavoriteStockDAO(PostgresDAOBase):
             return None
         return {
             "code": row[0],
-            "group": row[1],
+            "group": self._normalize_group_value(row[1]),
             "created_at": row[2],
             "updated_at": row[3],
         }
@@ -185,13 +193,15 @@ class FavoriteStockDAO(PostgresDAOBase):
                     ).format(table=self._qualified_table())
                 )
                 rows = cur.fetchall()
-        return [
-            {
-                "name": row[0],
-                "total": int(row[1] or 0),
-            }
-            for row in rows
-        ]
+        totals: Dict[Optional[str], int] = {}
+        order: List[Optional[str]] = []
+        for raw_name, count in rows:
+            normalized_name = self._normalize_group_value(raw_name)
+            if normalized_name not in totals:
+                totals[normalized_name] = 0
+                order.append(normalized_name)
+            totals[normalized_name] += int(count or 0)
+        return [{"name": name, "total": totals[name]} for name in order]
 
 
 __all__ = ["FavoriteStockDAO"]

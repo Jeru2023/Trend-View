@@ -1,7 +1,7 @@
 export const tradingDataTab = {
   id: "tradingData",
   template: "tabs/trading-data.html",
-  columnCount: 12,
+  columnCount: 11,
   dataSource: "trading",
   render(items, ctx) {
     const { body } = ctx;
@@ -31,17 +31,11 @@ export const tradingDataTab = {
         item.name !== null && item.name !== undefined && item.name !== ""
           ? `<a class="table-link" href="${detailUrl}">${item.name}</a>`
           : ctx.emptyValue;
-      const rawGroup = item.favoriteGroup ?? item.favorite_group ?? null;
-      const groupCell =
-        isFavorite || ctx.isFavoritesMode
-          ? ctx.getFavoriteGroupLabel(rawGroup)
-          : ctx.emptyValue;
 
       const row = document.createElement("tr");
       row.innerHTML = `
         <td>${codeCell}</td>
         <td>${nameCell}</td>
-        <td>${groupCell}</td>
         <td>${item.industry ?? ctx.emptyValue}</td>
         <td>${marketLabel ?? ctx.emptyValue}</td>
         <td>${exchangeLabel ?? ctx.emptyValue}</td>

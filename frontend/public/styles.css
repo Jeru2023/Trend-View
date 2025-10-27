@@ -383,14 +383,24 @@ body {
 }
 
 .detail-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     color: var(--primary);
     text-decoration: none;
     font-weight: 600;
     font-size: 0.95rem;
+    line-height: 1;
 }
 
 .detail-back-link:hover {
-    text-decoration: underline;
+    color: #1e40af;
+}
+
+.detail-back-link__icon {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
 }
 
 .detail-title {
@@ -516,7 +526,13 @@ body {
 .detail-grid {
     display: grid;
     gap: 24px;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+}
+
+@media (min-width: 1440px) {
+    .detail-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 
 .detail-card {

@@ -29,6 +29,17 @@ const DEFAULT_FILTERS = {
   netIncomeYoyMinPercent: 10,
 };
 
+function normalizeFavoriteGroupValue(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  return value;
+}
+
 const exchangeLabels = {
   en: { SSE: "SSE", SZSE: "SZSE", BSE: "BSE" },
   zh: {
@@ -179,29 +190,32 @@ function parseFavoriteGroupParam(value) {
 }
 
 function normalizeFavoriteGroupForRequest(value) {
-  if (!value || value === FAVORITES_GROUP_ALL) {
+  const normalized = normalizeFavoriteGroupValue(value);
+  if (!normalized || normalized === FAVORITES_GROUP_ALL) {
     return null;
   }
-  if (value === FAVORITES_GROUP_NONE) {
+  if (normalized === FAVORITES_GROUP_NONE) {
     return FAVORITES_GROUP_NONE;
   }
-  return value;
+  return normalized;
 }
 
 function getFavoriteGroupLabel(value) {
   const dict = translations[currentLang] || {};
+  const normalized =
+    typeof value === "string" ? value.trim() : value;
   if (
-    value === FAVORITES_GROUP_NONE ||
-    value === null ||
-    value === undefined ||
-    value === ""
+    normalized === FAVORITES_GROUP_NONE ||
+    normalized === null ||
+    normalized === undefined ||
+    normalized === ""
   ) {
     return dict.favoriteGroupNone || "Ungrouped";
   }
-  if (value === FAVORITES_GROUP_ALL) {
+  if (normalized === FAVORITES_GROUP_ALL) {
     return dict.favoriteGroupAll || "All groups";
   }
-  return value;
+  return normalized;
 }
 
 async function ensureFavoriteGroupsLoaded(force = false) {
@@ -220,10 +234,11 @@ async function ensureFavoriteGroupsLoaded(force = false) {
       const data = await response.json();
       const rawItems = Array.isArray(data?.items) ? data.items : [];
       favoriteGroupsState.items = rawItems.map((entry) => {
-        const name = entry?.name ?? null;
-        const value = name === null ? FAVORITES_GROUP_NONE : String(name);
+        const normalizedName = normalizeFavoriteGroupValue(entry?.name ?? null);
+        const value =
+          normalizedName === null ? FAVORITES_GROUP_NONE : String(normalizedName);
         const total = Number(entry?.total ?? 0);
-        return { name, value, total };
+        return { name: normalizedName, value, total };
       });
       favoriteGroupsState.loaded = true;
       const availableValues = new Set(
@@ -705,7 +720,11 @@ async function loadTradingData(page = 1) {
     }
     const data = await response.json();
     state.trading.total = data.total;
-    state.trading.items = data.items.map((item) => ({
+    state.trading.items = data.items.map((item) => {
+      const favoriteGroup = normalizeFavoriteGroupValue(
+        item.favoriteGroup ?? item.favorite_group ?? null
+      );
+      return {
       code: item.code,
       name: item.name,
       industry: item.industry,
@@ -753,10 +772,11 @@ async function loadTradingData(page = 1) {
         revenueQoqLatest: item.revenueQoqLatest,
         roeYoyLatest: item.roeYoyLatest,
         roeQoqLatest: item.roeQoqLatest,
-        favorite_group: item.favoriteGroup,
-        favoriteGroup: item.favoriteGroup,
+        favorite_group: favoriteGroup,
+        favoriteGroup: favoriteGroup,
         isFavorite: Boolean(item.isFavorite),
-      }));
+      };
+    });
     syncMetricsFromTrading();
   } catch (error) {
     console.error("Failed to fetch stock data:", error);

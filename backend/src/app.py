@@ -296,9 +296,12 @@ class FundamentalMetricItem(BaseModel):
     revenue_qoq_latest: Optional[float] = Field(None, alias="revenueQoqLatest")
     roe_yoy_latest: Optional[float] = Field(None, alias="roeYoyLatest")
     roe_qoq_latest: Optional[float] = Field(None, alias="roeQoqLatest")
+    is_favorite: bool = Field(False, alias="isFavorite")
+    favorite_group: Optional[str] = Field(None, alias="favoriteGroup")
 
     class Config:
         allow_population_by_field_name = True
+        allow_population_by_alias = True
 
 
 class FundamentalMetricsListResponse(BaseModel):

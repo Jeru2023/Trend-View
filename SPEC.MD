@@ -45,6 +45,15 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-26 (FEATURE frontend-005): Centralised sidebar markup/script, introduced Configuration Center page, and ensured navigation stays consistent across app pages.
 - 2025-10-27 (FEATURE backend-011): Added derived daily trade metrics pipeline (schema/DAO/service), scheduled 19:00 job, control panel card, and exposed metrics via `/stocks` for technical stats.
 - 2025-10-27 (FEATURE frontend-006): Extended market intelligence dashboard with technical and fundamental tabs, added finance summary columns (EPS/revenue/profit/ROE), and introduced shared sidebar/config center components.
+- 2025-10-27 (FEATURE backend-012): Derived fundamental metrics (net profit/revenue/ROE YoY & QoQ) pipeline with new DAO/service, scheduler, control panel trigger, and API endpoint.
+- 2025-10-27 (FEATURE frontend-007): Added fundamental metrics control card and extended fundamentals tab to display YoY/QoQ KPIs with new columns.
+- 2025-10-28 (FEATURE frontend-008): Renamed the Market Intelligence dashboard (formerly Basic Info), refreshed menu/title copy, set `index.html` as the canonical entry, and updated documentation references.
+- 2025-10-28 (FEATURE frontend/backend-013): Added volume spike metric (latest volume ÷ 10-day average) to daily trade metrics sync and surfaced the column on the Market Intelligence trading stats tab.
+- 2025-10-29 (FEATURE frontend/backend-014): Added stock favorites watchlist with detail-page star toggle, REST endpoints, and Market Intelligence watchlist mode filtered via navigation.
+- 2025-10-29 (UPDATE frontend-010): Simplified stock detail layout (removed profile card) and retitled fundamentals widget to “Financial Stats”.
+- 2025-10-29 (FIX backend/frontend-014a): Normalised favorite group values end-to-end and exposed them on stock list responses so watchlist filters display the assigned group name instead of defaulting to “Ungrouped”.
+- 2025-10-29 (UPDATE frontend-011): Removed the favorites group column from the Market Intelligence stock table to declutter the layout.
+- 2025-10-29 (FEATURE frontend/backend-015): Enhanced favorites with grouped watchlist support, detail-page heart toggle + toast, and Market Intelligence portfolio mode with group filter/banner integration.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.
@@ -58,20 +67,3 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-21: Downgraded the trend Conda environment to Python 3.10.18 to match the pinned dependency wheel availability and reinstalled packages from `requirements.txt`.
 - 2025-10-21: Reinstalled `pydantic==1.10.15`, added `numpy==1.23.5` for compatibility with pinned pandas, and added `greenlet==3.2.4` to satisfy SQLAlchemy runtime requirements.
 - 2025-10-24: Installed `akshare==1.11.98` to ingest Eastmoney finance breakfast summaries.
-
-
-
-
-
-
-
-
-
-
-
-- 2025-10-27 (FEATURE backend-012): Derived fundamental metrics (net profit/revenue/ROE YoY & QoQ) pipeline with new DAO/service, scheduler, control panel trigger, and API endpoint.
-- 2025-10-27 (FEATURE frontend-007): Added fundamental metrics control card and extended fundamentals tab to display YoY/QoQ KPIs with new columns.
-- 2025-10-28 (FEATURE frontend-008): Renamed the Market Intelligence dashboard (formerly Basic Info), refreshed menu/title copy, set `index.html` as the canonical entry, and updated documentation references.
-- 2025-10-28 (FEATURE frontend/backend-013): Added volume spike metric (latest volume ÷ 10-day average) to daily trade metrics sync and surfaced the column on the Market Intelligence trading stats tab.
-- 2025-10-29 (FEATURE frontend/backend-014): Added stock favorites watchlist with detail-page star toggle, REST endpoints, and Market Intelligence watchlist mode filtered via navigation.
-- 2025-10-29 (FEATURE frontend/backend-015): Enhanced favorites with grouped watchlist support, detail-page heart toggle + toast, and Market Intelligence portfolio mode with group filter/banner integration.
