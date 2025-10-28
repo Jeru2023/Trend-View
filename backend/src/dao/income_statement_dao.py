@@ -10,6 +10,7 @@ from typing import Dict, Optional, Sequence
 
 import pandas as pd
 from psycopg2 import sql
+from psycopg2.extensions import connection as PGConnection
 
 from ..config.settings import PostgresSettings
 from .base import PostgresDAOBase
@@ -58,22 +59,33 @@ class IncomeStatementDAO(PostgresDAOBase):
             table=self._table_name,
         )
 
-    def upsert(self, dataframe: pd.DataFrame) -> int:
+    def upsert(self, dataframe: pd.DataFrame, *, conn: Optional[PGConnection] = None) -> int:
         if dataframe.empty:
             return 0
 
-        with self.connect() as conn:
-            self.ensure_table(conn)
-            affected = self._upsert_dataframe(
-                conn,
-                schema=self.config.schema,
-                table=self._table_name,
-                dataframe=dataframe,
-                columns=INCOME_STATEMENT_FIELDS,
-                conflict_keys=self._conflict_keys,
-                date_columns=("ann_date", "f_ann_date", "end_date"),
-            )
-        return affected
+        if conn is None:
+            with self.connect() as owned_conn:
+                self.ensure_table(owned_conn)
+                return self._upsert_dataframe(
+                    owned_conn,
+                    schema=self.config.schema,
+                    table=self._table_name,
+                    dataframe=dataframe,
+                    columns=INCOME_STATEMENT_FIELDS,
+                    conflict_keys=self._conflict_keys,
+                    date_columns=("ann_date", "f_ann_date", "end_date"),
+                )
+
+        self.ensure_table(conn)
+        return self._upsert_dataframe(
+            conn,
+            schema=self.config.schema,
+            table=self._table_name,
+            dataframe=dataframe,
+            columns=INCOME_STATEMENT_FIELDS,
+            conflict_keys=self._conflict_keys,
+            date_columns=("ann_date", "f_ann_date", "end_date"),
+        )
 
     def stats(self) -> dict[str, Optional[datetime]]:
         with self.connect() as conn:
@@ -185,6 +197,52 @@ class IncomeStatementDAO(PostgresDAOBase):
                 "n_income": n_income,
             }
         return statements
+
+    def latest_ann_dates(
+        self,
+        codes: Sequence[str] | None = None,
+        *,
+        conn: Optional[PGConnection] = None,
+    ) -> Dict[str, Optional[date]]:
+        """
+        Return the latest announcement date for each provided ``ts_code``.
+
+        When ``codes`` is ``None``, results for all known codes are returned.
+        """
+        base_query = sql.SQL(
+            """
+            SELECT ts_code, MAX(ann_date) AS latest_ann_date
+            FROM {schema}.{table}
+            {where_clause}
+            GROUP BY ts_code
+            """
+        )
+
+        where_clause = sql.SQL("")
+        params: Sequence[object] = ()
+        if codes:
+            where_clause = sql.SQL("WHERE ts_code = ANY(%s)")
+            params = (list(codes),)
+
+        query = base_query.format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+            where_clause=where_clause,
+        )
+
+        if conn is None:
+            with self.connect() as owned_conn:
+                self.ensure_table(owned_conn)
+                with owned_conn.cursor() as cur:
+                    cur.execute(query, params)
+                    rows = cur.fetchall()
+        else:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall()
+
+        return {ts_code: ann_date for ts_code, ann_date in rows}
 
 
 __all__ = [

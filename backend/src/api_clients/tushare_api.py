@@ -239,6 +239,8 @@ def get_income_statements(
     *,
     ts_code: str,
     limit: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Fetch income statements for the provided security using ``pro.income``.
@@ -253,6 +255,10 @@ def get_income_statements(
     }
     if limit is not None:
         params["limit"] = limit
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
 
     df = pro.income(**params)
     if df is None or df.empty:

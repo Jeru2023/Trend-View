@@ -31,6 +31,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-20 (FEATURE backend-002): Added daily trade ingestion pipeline covering API client helper, reusable DAO for daily trade data, batching service with duration reporting, and schema template for `daily_trade`.
 - 2025-10-20 (FEATURE backend-003): Delivered FastAPI entrypoint exposing health, stock listing, and sync endpoints backed by existing services.
 - 2025-10-20 (FEATURE frontend-001): Delivered multilingual stock list page with filter controls, fundamentals/statistics tabs, and responsive layout based on project mock-up.
+- 2025-10-28 (REQUIREMENT backend-010): Income statement sync must perform per-code incremental updates (timestamp anchored), retry safely on rate limit errors, and avoid bulk downloads for already-seeded securities.
 - 2025-10-21 (FEATURE backend-004): Sync endpoints now capture database statistics and runtime durations so the control panel job cards can display last update information immediately.
 - 2025-10-22 (FEATURE backend-005): Replaced market-cap sync with daily indicator ingestion (daily_basic), including new DAO/service, scheduled + manual triggers, and UI columns for market cap, PE ratio, and turnover rate.
 - 2025-10-22 (FEATURE backend-006): Added financial report sync (income API) with period-based fetching, persistence, scheduler, and control panel integration.
