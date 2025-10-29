@@ -26,6 +26,8 @@ FINANCE_BREAKFAST_FIELDS: Sequence[str] = (
     "url",
 )
 
+EMPTY_CONTENT_SENTINEL: str = "EMPTY"
+
 
 class FinanceBreakfastDAO(PostgresDAOBase):
     """Handles persistence for finance breakfast summaries."""
@@ -266,6 +268,7 @@ class FinanceBreakfastDAO(PostgresDAOBase):
                     "FROM {schema}.{table} "
                     "WHERE content IS NOT NULL "
                     "AND TRIM(content) <> '' "
+                    "AND content <> %s "
                     "AND (ai_extract_summary IS NULL OR ai_extract_detail IS NULL) "
                     "ORDER BY published_at DESC NULLS LAST"
                 ).format(
@@ -275,9 +278,9 @@ class FinanceBreakfastDAO(PostgresDAOBase):
 
                 if limit is not None and limit > 0:
                     query = sql.SQL("{} LIMIT %s").format(base_sql)
-                    cur.execute(query, (limit,))
+                    cur.execute(query, (EMPTY_CONTENT_SENTINEL, limit))
                 else:
-                    cur.execute(base_sql)
+                    cur.execute(base_sql, (EMPTY_CONTENT_SENTINEL,))
                 rows = cur.fetchall()
 
         results: list[dict[str, object]] = []

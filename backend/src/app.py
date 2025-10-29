@@ -534,10 +534,15 @@ async def _run_stock_basic_job(list_statuses: Optional[List[str]], market: Optio
 
     def job() -> None:
         started = time.perf_counter()
-        monitor.update(
-            "fundamental_metrics",
-            last_market=f"PER:{request.per_code}" if request.per_code is not None else "PER:AUTO",
-        )
+        context_parts: List[str] = []
+        if market:
+            context_parts.append(f"MARKET:{market}")
+        if list_statuses:
+            context_parts.append(f"STATUS:{','.join(list_statuses)}")
+        if context_parts:
+            monitor.update("stock_basic", last_market=" ".join(context_parts))
+        else:
+            monitor.update("stock_basic", last_market="AUTO")
         try:
             rows = sync_stock_basic(
                 list_statuses=tuple(list_statuses or ["L", "D", "P"]),
@@ -1862,25 +1867,3 @@ def trigger_finance_breakfast_sync(payload: SyncFinanceBreakfastRequest) -> Sync
 
 
 __all__ = ["app"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

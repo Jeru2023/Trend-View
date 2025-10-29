@@ -19,7 +19,7 @@ from ..dao import IncomeStatementDAO, StockBasicDAO
 logger = logging.getLogger(__name__)
 
 INITIAL_PERIOD_COUNT = 8
-RATE_LIMIT_PER_MINUTE = 500
+RATE_LIMIT_PER_MINUTE = 200
 MAX_FETCH_RETRIES = 3
 DB_MAX_RETRIES = 2
 MIN_RETRY_SLEEP_SECONDS = 1.0
