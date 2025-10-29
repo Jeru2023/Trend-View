@@ -62,13 +62,27 @@
 
           <section class="filters">
             <div class="filter-group">
-              <label for="market" data-i18n="filterMarket">Market</label>
-              <select id="market">
-                <option value="all" data-i18n="filterAll">All</option>
-                <option value="主板" data-i18n="filterMainboard">Main Board</option>
-                <option value="创业板" data-i18n="filterChiNext">ChiNext</option>
-                <option value="科创板" data-i18n="filterStar">STAR Market</option>
-              </select>
+              <label for="pct-change-min" data-i18n="filterPctChangeRange">Daily Change Range</label>
+              <div class="filter-range filter-range--with-unit">
+                <input
+                  id="pct-change-min"
+                  type="number"
+                  step="0.1"
+                  value="2"
+                  data-placeholder-en="Min"
+                  data-placeholder-zh="最小值"
+                />
+                <span class="filter-range__separator">-</span>
+                <input
+                  id="pct-change-max"
+                  type="number"
+                  step="0.1"
+                  value="5"
+                  data-placeholder-en="Max"
+                  data-placeholder-zh="最大值"
+                />
+                <span class="filter-range__unit">%</span>
+              </div>
             </div>
             <div class="filter-group">
               <label for="industry" data-i18n="filterIndustry">Industry</label>
@@ -220,7 +234,6 @@
     <script type="module" src="market-intelligence.js?v=20251114"></script>
   </body>
 </html>
-
 
 
 

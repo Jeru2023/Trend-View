@@ -28,6 +28,8 @@ from .dao import (
     FinanceBreakfastDAO,
     IncomeStatementDAO,
     FundamentalMetricsDAO,
+    PerformanceExpressDAO,
+    PerformanceForecastDAO,
     StockBasicDAO,
 )
 from .services import (
@@ -38,6 +40,8 @@ from .services import (
     list_favorite_groups,
     list_finance_breakfast,
     list_fundamental_metrics,
+    list_performance_express,
+    list_performance_forecast,
     set_favorite_state,
     sync_daily_indicator,
     sync_financial_indicators,
@@ -46,6 +50,8 @@ from .services import (
     sync_daily_trade,
     sync_daily_trade_metrics,
     sync_fundamental_metrics,
+    sync_performance_express,
+    sync_performance_forecast,
     sync_stock_basic,
 )
 from .state import monitor
@@ -454,6 +460,106 @@ class SyncFinanceBreakfastRequest(BaseModel):
 
     class Config:
         extra = "forbid"
+
+
+class SyncPerformanceExpressRequest(BaseModel):
+    codes: Optional[List[str]] = Field(
+        None, description="Optional list of ts_code identifiers to refresh."
+    )
+    lookback_days: int = Field(365, ge=1, le=3650, alias="lookbackDays")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncPerformanceExpressResponse(BaseModel):
+    rows: int
+    codes: List[str]
+    code_count: int = Field(..., alias="codeCount")
+    total_codes: int = Field(..., alias="totalCodes")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncPerformanceForecastRequest(BaseModel):
+    codes: Optional[List[str]] = Field(
+        None, description="Optional list of ts_code identifiers to refresh."
+    )
+    lookback_days: int = Field(365, ge=1, le=3650, alias="lookbackDays")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncPerformanceForecastResponse(BaseModel):
+    rows: int
+    codes: List[str]
+    code_count: int = Field(..., alias="codeCount")
+    total_codes: int = Field(..., alias="totalCodes")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class PerformanceExpressRecord(BaseModel):
+    ts_code: str = Field(..., alias="tsCode")
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    ann_date: Optional[date] = Field(None, alias="annDate")
+    end_date: Optional[date] = Field(None, alias="endDate")
+    revenue: Optional[float] = None
+    operate_profit: Optional[float] = Field(None, alias="operateProfit")
+    total_profit: Optional[float] = Field(None, alias="totalProfit")
+    n_income: Optional[float] = Field(None, alias="netIncome")
+    total_assets: Optional[float] = Field(None, alias="totalAssets")
+    total_hldr_eqy_exc_min_int: Optional[float] = Field(None, alias="totalHldrEqyExcMinInt")
+    diluted_eps: Optional[float] = Field(None, alias="dilutedEps")
+    diluted_roe: Optional[float] = Field(None, alias="dilutedRoe")
+    yoy_net_profit: Optional[float] = Field(None, alias="yoyNetProfit")
+    bps: Optional[float] = None
+    perf_summary: Optional[str] = Field(None, alias="perfSummary")
+    update_flag: Optional[str] = Field(None, alias="updateFlag")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class PerformanceExpressListResponse(BaseModel):
+    total: int
+    items: List[PerformanceExpressRecord]
+
+
+class PerformanceForecastRecord(BaseModel):
+    ts_code: str = Field(..., alias="tsCode")
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    ann_date: Optional[date] = Field(None, alias="annDate")
+    end_date: Optional[date] = Field(None, alias="endDate")
+    type: Optional[str] = None
+    p_change_min: Optional[float] = Field(None, alias="pctChangeMin")
+    p_change_max: Optional[float] = Field(None, alias="pctChangeMax")
+    net_profit_min: Optional[float] = Field(None, alias="netProfitMin")
+    net_profit_max: Optional[float] = Field(None, alias="netProfitMax")
+    last_parent_net: Optional[float] = Field(None, alias="lastParentNet")
+    first_ann_date: Optional[date] = Field(None, alias="firstAnnDate")
+    summary: Optional[str] = None
+    change_reason: Optional[str] = Field(None, alias="changeReason")
+    update_flag: Optional[str] = Field(None, alias="updateFlag")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class PerformanceForecastListResponse(BaseModel):
+    total: int
+    items: List[PerformanceForecastRecord]
 
 
 class SyncFinanceBreakfastResponse(BaseModel):
@@ -999,6 +1105,102 @@ async def _run_finance_breakfast_job(request: SyncFinanceBreakfastRequest) -> No
     await loop.run_in_executor(None, job)
 
 
+
+async def _run_performance_express_job(request: SyncPerformanceExpressRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "performance_express",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("performance_express", message="Collecting performance express data")
+        try:
+            result = sync_performance_express(
+                codes=request.codes,
+                lookback_days=request.lookback_days,
+                progress_callback=progress_callback,
+            )
+            stats = PerformanceExpressDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            message_text = f"Synced {result.get('rows', 0)} performance express rows"
+            monitor.finish(
+                "performance_express",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "performance_express",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_performance_forecast_job(request: SyncPerformanceForecastRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "performance_forecast",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("performance_forecast", message="Collecting performance forecast data")
+        try:
+            result = sync_performance_forecast(
+                codes=request.codes,
+                lookback_days=request.lookback_days,
+                progress_callback=progress_callback,
+            )
+            stats = PerformanceForecastDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            message_text = f"Synced {result.get('rows', 0)} performance forecast rows"
+            monitor.finish(
+                "performance_forecast",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "performance_forecast",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+
 def _job_running(job: str) -> bool:
     return monitor.snapshot()[job]["status"] == "running"
 
@@ -1057,6 +1259,24 @@ async def start_fundamental_metrics_job(payload: SyncFundamentalMetricsRequest) 
     monitor.start("fundamental_metrics", message="Syncing fundamental metrics")
     monitor.update("fundamental_metrics", progress=0.0)
     asyncio.create_task(_run_fundamental_metrics_job(payload))
+
+
+
+
+async def start_performance_express_job(payload: SyncPerformanceExpressRequest) -> None:
+    if _job_running("performance_express"):
+        raise HTTPException(status_code=409, detail="Performance express sync already running")
+    monitor.start("performance_express", message="Syncing performance express data")
+    monitor.update("performance_express", progress=0.0)
+    asyncio.create_task(_run_performance_express_job(payload))
+
+
+async def start_performance_forecast_job(payload: SyncPerformanceForecastRequest) -> None:
+    if _job_running("performance_forecast"):
+        raise HTTPException(status_code=409, detail="Performance forecast sync already running")
+    monitor.start("performance_forecast", message="Syncing performance forecast data")
+    monitor.update("performance_forecast", progress=0.0)
+    asyncio.create_task(_run_performance_forecast_job(payload))
 
 
 async def start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> None:
@@ -1122,6 +1342,22 @@ async def safe_start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest)
         logger.info("Finance breakfast sync skipped: %s", exc.detail)
 
 
+
+async def safe_start_performance_express_job(payload: SyncPerformanceExpressRequest) -> None:
+    try:
+        await start_performance_express_job(payload)
+    except HTTPException as exc:
+        logger.info("Performance express sync skipped: %s", exc.detail)
+
+
+async def safe_start_performance_forecast_job(payload: SyncPerformanceForecastRequest) -> None:
+    try:
+        await start_performance_forecast_job(payload)
+    except HTTPException as exc:
+        logger.info("Performance forecast sync skipped: %s", exc.detail)
+
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
     if not scheduler.running:
@@ -1176,6 +1412,24 @@ async def startup_event() -> None:
         )
 
 
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_performance_express_job(SyncPerformanceExpressRequest())
+            ),
+            CronTrigger(hour=19, minute=20),
+            id="performance_express_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_performance_forecast_job(SyncPerformanceForecastRequest())
+            ),
+            CronTrigger(hour=19, minute=40),
+            id="performance_forecast_daily",
+            replace_existing=True,
+        )
+
+
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     if scheduler.running:
@@ -1191,11 +1445,20 @@ def health_check() -> dict[str, str]:
 @app.get("/stocks", response_model=StockListResponse)
 def list_stocks(
     keyword: Optional[str] = Query(None, description="Keyword to search code/name/industry"),
-    market: Optional[str] = Query(None, description="Filter by market"),
     industry: Optional[str] = Query(None, description="Filter by industry"),
     exchange: Optional[str] = Query(None, description="Filter by exchange"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    pct_change_min: Optional[float] = Query(
+        2.0,
+        alias="pctChangeMin",
+        description="Minimum daily percentage change filter.",
+    ),
+    pct_change_max: Optional[float] = Query(
+        5.0,
+        alias="pctChangeMax",
+        description="Maximum daily percentage change filter.",
+    ),
     volume_spike_min: Optional[float] = Query(
         None,
         alias="volumeSpikeMin",
@@ -1272,7 +1535,6 @@ def list_stocks(
     effective_favorites_only = favorites_only or group_specified
     result = get_stock_overview(
         keyword=keyword,
-        market=market,
         industry=industry,
         exchange=exchange,
         limit=None,
@@ -1327,6 +1589,7 @@ def list_stocks(
 
         return all(
             (
+                _range("pct_change", minimum=pct_change_min, maximum=pct_change_max),
                 _gt("volume_spike", volume_spike_min),
                 _range("pe_ratio", minimum=pe_min, maximum=pe_max),
                 _range("market_cap", minimum=market_cap_min, maximum=market_cap_max),
@@ -1338,7 +1601,9 @@ def list_stocks(
 
     keyword_only_search = bool(keyword and keyword.strip())
     filters_at_defaults = (
-        volume_spike_min == 1.8
+        pct_change_min == 2.0
+        and pct_change_max == 5.0
+        and volume_spike_min == 1.8
         and market_cap_min is None
         and market_cap_max is None
         and pe_min == 0.0
@@ -1346,7 +1611,6 @@ def list_stocks(
         and roe_min == 3.0
         and net_income_qoq_min == 0.0
         and net_income_yoy_min == 0.1
-        and (market is None or market.lower() == "all")
         and (industry is None or industry.lower() == "all")
         and (exchange is None or exchange.lower() == "all")
     )
@@ -1570,6 +1834,90 @@ def list_fundamental_metrics_api(
     return FundamentalMetricsListResponse(total=result["total"], items=items)
 
 
+@app.get("/performance/express", response_model=PerformanceExpressListResponse)
+def list_performance_express_entries(
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+    start_date: Optional[str] = Query(None, alias="startDate"),
+    end_date: Optional[str] = Query(None, alias="endDate"),
+    keyword: Optional[str] = Query(None, description="Optional keyword filtering ts_code or stock name."),
+) -> PerformanceExpressListResponse:
+    normalized_keyword = keyword.strip() if keyword else None
+    result = list_performance_express(
+        limit=limit,
+        offset=offset,
+        start_date=start_date,
+        end_date=end_date,
+        keyword=normalized_keyword,
+    )
+    items = [
+        PerformanceExpressRecord(
+            ts_code=entry.get("ts_code"),
+            name=entry.get("name"),
+            industry=entry.get("industry"),
+            market=entry.get("market"),
+            ann_date=entry.get("ann_date"),
+            end_date=entry.get("end_date"),
+            revenue=entry.get("revenue"),
+            operate_profit=entry.get("operate_profit"),
+            total_profit=entry.get("total_profit"),
+            n_income=entry.get("n_income"),
+            total_assets=entry.get("total_assets"),
+            total_hldr_eqy_exc_min_int=entry.get("total_hldr_eqy_exc_min_int"),
+            diluted_eps=entry.get("diluted_eps"),
+            diluted_roe=entry.get("diluted_roe"),
+            yoy_net_profit=entry.get("yoy_net_profit"),
+            bps=entry.get("bps"),
+            perf_summary=entry.get("perf_summary"),
+            update_flag=entry.get("update_flag"),
+            updated_at=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return PerformanceExpressListResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.get("/performance/forecast", response_model=PerformanceForecastListResponse)
+def list_performance_forecast_entries(
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+    start_date: Optional[str] = Query(None, alias="startDate"),
+    end_date: Optional[str] = Query(None, alias="endDate"),
+    keyword: Optional[str] = Query(None, description="Optional keyword filtering ts_code or stock name."),
+) -> PerformanceForecastListResponse:
+    normalized_keyword = keyword.strip() if keyword else None
+    result = list_performance_forecast(
+        limit=limit,
+        offset=offset,
+        start_date=start_date,
+        end_date=end_date,
+        keyword=normalized_keyword,
+    )
+    items = [
+        PerformanceForecastRecord(
+            ts_code=entry.get("ts_code"),
+            name=entry.get("name"),
+            industry=entry.get("industry"),
+            market=entry.get("market"),
+            ann_date=entry.get("ann_date"),
+            end_date=entry.get("end_date"),
+            type=entry.get("type"),
+            p_change_min=entry.get("p_change_min"),
+            p_change_max=entry.get("p_change_max"),
+            net_profit_min=entry.get("net_profit_min"),
+            net_profit_max=entry.get("net_profit_max"),
+            last_parent_net=entry.get("last_parent_net"),
+            first_ann_date=entry.get("first_ann_date"),
+            summary=entry.get("summary"),
+            change_reason=entry.get("change_reason"),
+            update_flag=entry.get("update_flag"),
+            updated_at=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return PerformanceForecastListResponse(total=int(result.get("total", 0)), items=items)
+
+
 @app.get("/finance-breakfast", response_model=List[FinanceBreakfastItem])
 async def list_finance_breakfast_entries(
     limit: int = Query(50, ge=1, le=200, description="Maximum number of entries to return."),
@@ -1642,6 +1990,16 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect financial_indicator stats: %s", exc)
         stats_map["financial_indicator"] = {}
+    try:
+        stats_map["performance_express"] = PerformanceExpressDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect performance_express stats: %s", exc)
+        stats_map["performance_express"] = {}
+    try:
+        stats_map["performance_forecast"] = PerformanceForecastDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect performance_forecast stats: %s", exc)
+        stats_map["performance_forecast"] = {}
     try:
         stats_map["finance_breakfast"] = FinanceBreakfastDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -1736,6 +2094,18 @@ async def control_sync_income_statements(payload: SyncIncomeStatementRequest) ->
 async def control_sync_financial_indicators(payload: SyncFinancialIndicatorRequest) -> dict[str, str]:
     await start_financial_indicator_job(payload)
     return {"status": "started"}
+
+
+@app.post("/control/sync/performance-express")
+async def control_sync_performance_express(payload: SyncPerformanceExpressRequest) -> dict[str, str]:
+    await start_performance_express_job(payload)
+    return {"status": "accepted"}
+
+
+@app.post("/control/sync/performance-forecast")
+async def control_sync_performance_forecast(payload: SyncPerformanceForecastRequest) -> dict[str, str]:
+    await start_performance_forecast_job(payload)
+    return {"status": "accepted"}
 
 
 @app.post("/control/sync/finance-breakfast")

@@ -20,8 +20,9 @@ const FAVORITES_GROUP_QUERY_KEY = "favoriteGroup";
 const FAVORITES_GROUP_ALL = "all";
 const FAVORITES_GROUP_NONE = "__ungrouped__";
 const DEFAULT_FILTERS = {
-  market: "all",
   industry: "all",
+  pctChangeMin: 2,
+  pctChangeMax: 5,
   marketCapMin: null,
   marketCapMax: null,
   volumeSpikeMin: 1.8,
@@ -33,8 +34,9 @@ const DEFAULT_FILTERS = {
 };
 
 const RESET_FILTERS = {
-  market: "all",
   industry: "all",
+  pctChangeMin: 2,
+  pctChangeMax: 5,
   marketCapMin: null,
   marketCapMax: null,
   volumeSpikeMin: null,
@@ -96,8 +98,9 @@ const marketLabels = {
 function createDefaultFilterState() {
   const netIncomeYoyPercent = DEFAULT_FILTERS.netIncomeYoyMinPercent;
   return {
-    market: DEFAULT_FILTERS.market,
     industry: DEFAULT_FILTERS.industry,
+    pctChangeMin: DEFAULT_FILTERS.pctChangeMin,
+    pctChangeMax: DEFAULT_FILTERS.pctChangeMax,
     marketCapMin: DEFAULT_FILTERS.marketCapMin,
     marketCapMax: DEFAULT_FILTERS.marketCapMax,
     volumeSpikeMin: DEFAULT_FILTERS.volumeSpikeMin,
@@ -113,8 +116,9 @@ function createDefaultFilterState() {
 function createClearedFilterState() {
   const netIncomeYoyPercent = RESET_FILTERS.netIncomeYoyMinPercent;
   return {
-    market: RESET_FILTERS.market,
     industry: RESET_FILTERS.industry,
+    pctChangeMin: RESET_FILTERS.pctChangeMin,
+    pctChangeMax: RESET_FILTERS.pctChangeMax,
     marketCapMin: RESET_FILTERS.marketCapMin,
     marketCapMax: RESET_FILTERS.marketCapMax,
     volumeSpikeMin: RESET_FILTERS.volumeSpikeMin,
@@ -176,8 +180,9 @@ const elements = {
   filtersSection: document.querySelector(".filters"),
   pageTitle: document.querySelector("[data-page-title]") || document.querySelector("[data-i18n='pageTitle']"),
   pageSubtitle: document.querySelector("[data-page-subtitle]") || document.querySelector("[data-i18n='pageSubtitle']"),
-  marketSelect: document.getElementById("market"),
   industrySelect: document.getElementById("industry"),
+  pctChangeMinInput: document.getElementById("pct-change-min"),
+  pctChangeMaxInput: document.getElementById("pct-change-max"),
   marketCapMinInput: document.getElementById("market-cap-min"),
   marketCapMaxInput: document.getElementById("market-cap-max"),
   volumeSpikeInput: document.getElementById("volume-spike-min"),
@@ -209,6 +214,20 @@ const tabRegistry = TAB_MODULES.reduce((registry, module) => {
 }, {});
 
 function setNumericFilterInputs(filters) {
+  if (elements.pctChangeMinInput) {
+    if (filters.pctChangeMin !== null && filters.pctChangeMin !== undefined) {
+      elements.pctChangeMinInput.value = formatNumberForInput(filters.pctChangeMin, 2);
+    } else {
+      elements.pctChangeMinInput.value = "";
+    }
+  }
+  if (elements.pctChangeMaxInput) {
+    if (filters.pctChangeMax !== null && filters.pctChangeMax !== undefined) {
+      elements.pctChangeMaxInput.value = formatNumberForInput(filters.pctChangeMax, 2);
+    } else {
+      elements.pctChangeMaxInput.value = "";
+    }
+  }
   if (elements.marketCapMinInput) {
     if (filters.marketCapMin !== null && filters.marketCapMin !== undefined) {
       elements.marketCapMinInput.value = formatNumberForInput(
@@ -1064,8 +1083,11 @@ async function loadTradingData(page = 1) {
     }
   } else {
     const filters = state.trading.filters;
-    if (filters.market && filters.market !== "all") {
-      params.set("market", filters.market);
+    if (filters.pctChangeMin !== null && filters.pctChangeMin !== undefined && Number.isFinite(filters.pctChangeMin)) {
+      params.set("pctChangeMin", filters.pctChangeMin.toString());
+    }
+    if (filters.pctChangeMax !== null && filters.pctChangeMax !== undefined && Number.isFinite(filters.pctChangeMax)) {
+      params.set("pctChangeMax", filters.pctChangeMax.toString());
     }
     if (filters.industry && filters.industry !== "all") {
       params.set("industry", filters.industry);
@@ -1193,8 +1215,15 @@ async function loadFinancialStats() {
 }
 
 function collectFilters() {
-  const market = elements.marketSelect?.value || "all";
   const industry = elements.industrySelect?.value || "all";
+
+  let pctChangeMin = parseOptionalNumericInput(elements.pctChangeMinInput);
+  let pctChangeMax = parseOptionalNumericInput(elements.pctChangeMaxInput);
+  if (pctChangeMax !== null && pctChangeMin !== null && pctChangeMax < pctChangeMin) {
+    const temp = pctChangeMin;
+    pctChangeMin = pctChangeMax;
+    pctChangeMax = temp;
+  }
 
   let marketCapMin = parseOptionalNumericInput(elements.marketCapMinInput);
   let marketCapMax = parseOptionalNumericInput(elements.marketCapMaxInput);
@@ -1225,8 +1254,9 @@ function collectFilters() {
   const netIncomeYoyPercent = parseOptionalNumericInput(elements.netIncomeYoyInput);
 
   return {
-    market,
     industry,
+    pctChangeMin,
+    pctChangeMax,
     marketCapMin,
     marketCapMax,
     volumeSpikeMin: volumeSpikeMinRaw,
@@ -1241,9 +1271,6 @@ function collectFilters() {
 
 function resetFilters() {
   const cleared = createClearedFilterState();
-  if (elements.marketSelect) {
-    elements.marketSelect.value = cleared.market;
-  }
   if (elements.industrySelect) {
     elements.industrySelect.value = cleared.industry;
   }
@@ -1418,5 +1445,3 @@ function persistLanguage(lang) {
 }
 
 window.applyTranslations = applyTranslations;
-
-

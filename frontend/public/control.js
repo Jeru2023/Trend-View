@@ -101,6 +101,24 @@ const elements = {
     progress: document.getElementById("income-statement-progress"),
     button: document.getElementById("run-income-statement"),
   },
+  performanceExpress: {
+    status: document.getElementById("performance-express-status"),
+    updated: document.getElementById("performance-express-updated"),
+    duration: document.getElementById("performance-express-duration"),
+    rows: document.getElementById("performance-express-rows"),
+    message: document.getElementById("performance-express-message"),
+    progress: document.getElementById("performance-express-progress"),
+    button: document.getElementById("run-performance-express"),
+  },
+  performanceForecast: {
+    status: document.getElementById("performance-forecast-status"),
+    updated: document.getElementById("performance-forecast-updated"),
+    duration: document.getElementById("performance-forecast-duration"),
+    rows: document.getElementById("performance-forecast-rows"),
+    message: document.getElementById("performance-forecast-message"),
+    progress: document.getElementById("performance-forecast-progress"),
+    button: document.getElementById("run-performance-forecast"),
+  },
   financialIndicator: {
     status: document.getElementById("financial-indicator-status"),
     updated: document.getElementById("financial-indicator-updated"),
@@ -264,6 +282,14 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const expressSnapshot = jobs.performance_express || {
+      status: "idle",
+      progress: 0,
+    };
+    const forecastSnapshot = jobs.performance_forecast || {
+      status: "idle",
+      progress: 0,
+    };
     const breakfastSnapshot = jobs.finance_breakfast || {
       status: "idle",
       progress: 0,
@@ -276,6 +302,8 @@ async function loadStatus() {
     updateJobCard(elements.fundamentalMetrics, fundamentalSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
+    updateJobCard(elements.performanceExpress, expressSnapshot);
+    updateJobCard(elements.performanceForecast, forecastSnapshot);
     updateJobCard(elements.financeBreakfast, breakfastSnapshot);
 
     if (data.config) {
@@ -296,6 +324,8 @@ async function loadStatus() {
       fundamentalSnapshot,
       incomeSnapshot,
       financialSnapshot,
+      expressSnapshot,
+      forecastSnapshot,
       breakfastSnapshot,
     ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
@@ -358,6 +388,12 @@ function initActions() {
   elements.financialIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/financial-indicators", {})
   );
+  elements.performanceExpress.button.addEventListener("click", () =>
+    triggerJob("/control/sync/performance-express", {})
+  );
+  elements.performanceForecast.button.addEventListener("click", () =>
+    triggerJob("/control/sync/performance-forecast", {})
+  );
   elements.financeBreakfast.button.addEventListener("click", () =>
     triggerJob("/control/sync/finance-breakfast", {})
   );
@@ -368,9 +404,6 @@ initLanguageSwitch();
 initActions();
 setLang(currentLang);
 loadStatus();
-
-
-
 
 
 

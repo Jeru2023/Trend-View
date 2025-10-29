@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS {schema}.{table} (
+    ts_code TEXT NOT NULL,
+    ann_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    revenue NUMERIC,
+    operate_profit NUMERIC,
+    total_profit NUMERIC,
+    n_income NUMERIC,
+    total_assets NUMERIC,
+    total_hldr_eqy_exc_min_int NUMERIC,
+    diluted_eps NUMERIC,
+    diluted_roe NUMERIC,
+    yoy_net_profit NUMERIC,
+    bps NUMERIC,
+    perf_summary TEXT,
+    update_flag TEXT,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (ts_code, end_date, ann_date)
+);

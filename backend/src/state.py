@@ -44,6 +44,8 @@ class SyncMonitor:
             "financial_indicator": JobProgress(),
             "finance_breakfast": JobProgress(),
             "fundamental_metrics": JobProgress(),
+            "performance_express": JobProgress(),
+            "performance_forecast": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():

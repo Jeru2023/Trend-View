@@ -49,6 +49,8 @@ class PostgresSettings:
     finance_breakfast_table: str
     fundamental_metrics_table: str
     favorites_table: str
+    performance_express_table: str
+    performance_forecast_table: str
     connect_timeout: int = 3
     application_name: str = DEFAULT_APPLICATION_NAME
     statement_timeout_ms: Optional[int] = None
@@ -174,6 +176,12 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             favorites_table=str(
                 postgres_config.get("favorites_table", "stock_favorites")
+            ),
+            performance_express_table=str(
+                postgres_config.get("performance_express_table", "performance_express")
+            ),
+            performance_forecast_table=str(
+                postgres_config.get("performance_forecast_table", "performance_forecast")
             ),
             connect_timeout=int(postgres_config.get("connect_timeout", 3)),
             application_name=str(application_name).strip() if isinstance(application_name, str) and application_name.strip() else DEFAULT_APPLICATION_NAME,

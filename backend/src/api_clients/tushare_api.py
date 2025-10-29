@@ -121,6 +121,40 @@ FINANCIAL_INDICATOR_FIELDS: Sequence[str] = (
     "q_profit_qoq",
 )
 
+PERFORMANCE_EXPRESS_FIELDS: Sequence[str] = (
+    "ts_code",
+    "ann_date",
+    "end_date",
+    "revenue",
+    "operate_profit",
+    "total_profit",
+    "n_income",
+    "total_assets",
+    "total_hldr_eqy_exc_min_int",
+    "diluted_eps",
+    "diluted_roe",
+    "yoy_net_profit",
+    "bps",
+    "perf_summary",
+    "update_flag",
+)
+
+PERFORMANCE_FORECAST_FIELDS: Sequence[str] = (
+    "ts_code",
+    "ann_date",
+    "end_date",
+    "type",
+    "p_change_min",
+    "p_change_max",
+    "net_profit_min",
+    "net_profit_max",
+    "last_parent_net",
+    "first_ann_date",
+    "summary",
+    "change_reason",
+    "update_flag",
+)
+
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
     list_statuses: Sequence[str],
@@ -179,6 +213,48 @@ def fetch_stock_basic(
         return pd.DataFrame(columns=STOCK_BASIC_FIELDS)
 
     return pd.concat(frames, ignore_index=True).drop_duplicates(subset=["ts_code"])
+
+
+def get_performance_express(
+    pro: ts.pro_api,
+    ts_code: str,
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """Fetch performance express records for a single security."""
+    params = {"ts_code": ts_code}
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
+
+    frame = pro.express(**params)
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=PERFORMANCE_EXPRESS_FIELDS)
+
+    return frame.loc[:, [col for col in PERFORMANCE_EXPRESS_FIELDS if col in frame.columns]]
+
+
+def get_performance_forecast(
+    pro: ts.pro_api,
+    ts_code: str,
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """Fetch performance forecast records for a single security."""
+    params = {"ts_code": ts_code}
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
+
+    frame = pro.forecast(**params)
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=PERFORMANCE_FORECAST_FIELDS)
+
+    return frame.loc[:, [col for col in PERFORMANCE_FORECAST_FIELDS if col in frame.columns]]
 
 
 def get_daily_trade(
