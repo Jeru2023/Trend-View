@@ -9,20 +9,11 @@ const STATE = {
   page: 1,
   limit: 20,
   total: 0,
-  filters: {
-    keyword: "",
-    startDate: null,
-    endDate: null,
-  },
+  items: [],
 };
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
-  keywordInput: document.getElementById("express-keyword"),
-  startInput: document.getElementById("express-start"),
-  endInput: document.getElementById("express-end"),
-  applyButton: document.getElementById("express-apply"),
-  resetButton: document.getElementById("express-reset"),
   tableBody: document.getElementById("express-tbody"),
   pageInfo: document.getElementById("express-page-info"),
   prevButton: document.getElementById("express-prev"),
@@ -62,6 +53,18 @@ function persistLanguage(lang) {
   document.documentElement.setAttribute("data-pref-lang", lang);
 }
 
+function escapeHTML(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function formatNumber(value, fractionDigits = 2) {
   if (value === null || value === undefined) {
     return "--";
@@ -75,6 +78,51 @@ function formatNumber(value, fractionDigits = 2) {
     minimumFractionDigits: 0,
     maximumFractionDigits: fractionDigits,
   }).format(numeric);
+}
+
+function formatCompactNumber(value) {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  try {
+    return new Intl.NumberFormat(locale, {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(numeric);
+  } catch (error) {
+    return formatNumber(numeric, 1);
+  }
+}
+
+function formatPercent(value, fractionDigits = 1, withSign = true) {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+  const formatted = numeric.toFixed(fractionDigits);
+  return withSign && numeric > 0 ? `+${formatted}%` : `${formatted}%`;
+}
+
+function renderTrendChip(value) {
+  if (value === null || value === undefined) {
+    return `<span class="chip chip--neutral">--</span>`;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return `<span class="chip chip--neutral">--</span>`;
+  }
+  const cls = numeric > 0 ? "chip chip--positive" : numeric < 0 ? "chip chip--negative" : "chip chip--neutral";
+  const fractionDigits = Math.abs(numeric) >= 100 ? 0 : 1;
+  const formatted = formatPercent(numeric, fractionDigits, true);
+  return `<span class="${cls}">${formatted}</span>`;
 }
 
 function formatDate(value) {
@@ -114,41 +162,12 @@ function applyTranslations() {
       el.textContent = value;
     }
   });
-
-  if (elements.keywordInput) {
-    const placeholderKey = currentLang === "zh" ? "data-placeholder-zh" : "data-placeholder-en";
-    const placeholder = elements.keywordInput.getAttribute(placeholderKey);
-    if (placeholder) {
-      elements.keywordInput.setAttribute("placeholder", placeholder);
-    }
-  }
-}
-
-function updateFiltersFromInputs() {
-  STATE.filters.keyword = (elements.keywordInput.value || "").trim();
-  STATE.filters.startDate = elements.startInput.value || null;
-  STATE.filters.endDate = elements.endInput.value || null;
-}
-
-function setInputsFromFilters() {
-  elements.keywordInput.value = STATE.filters.keyword;
-  elements.startInput.value = STATE.filters.startDate || "";
-  elements.endInput.value = STATE.filters.endDate || "";
 }
 
 function buildQueryParams() {
   const params = new URLSearchParams();
   params.set("limit", String(STATE.limit));
   params.set("offset", String((STATE.page - 1) * STATE.limit));
-  if (STATE.filters.keyword) {
-    params.set("keyword", STATE.filters.keyword);
-  }
-  if (STATE.filters.startDate) {
-    params.set("startDate", STATE.filters.startDate.replace(/-/g, ""));
-  }
-  if (STATE.filters.endDate) {
-    params.set("endDate", STATE.filters.endDate.replace(/-/g, ""));
-  }
   return params;
 }
 
@@ -158,7 +177,7 @@ function renderTable(items) {
   if (!items || items.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 12;
+    cell.colSpan = 4;
     const emptyText = tbody.dataset[`empty${currentLang === "zh" ? "Zh" : "En"}`] || "--";
     cell.textContent = emptyText;
     row.appendChild(cell);
@@ -166,21 +185,106 @@ function renderTable(items) {
     return;
   }
 
+  const dict = translations[currentLang];
+
   items.forEach((item) => {
+    const code = item.tsCode || item.ts_code || "--";
+    const name = item.name || "--";
+    const industry = item.industry ? `<span class="badge">${item.industry}</span>` : "";
+    const market = item.market ? `<span class="badge badge--muted">${item.market}</span>` : "";
+    const annDate = formatDate(item.annDate || item.ann_date || item.announcement_date);
+    const period = formatDate(item.endDate || item.end_date || item.reportPeriod || item.report_period);
+    const revenue = Number(item.revenue ?? item.operateRevenue);
+    const revenueYoY = Number(
+      item.revenue_yoy ?? item.revenueYoy ?? item.revenueYearlyGrowth
+    );
+    const revenueQoQ = Number(
+      item.revenue_qoq ?? item.revenueQoq ?? item.revenueQuarterlyGrowth
+    );
+    const netProfit = Number(item.net_profit ?? item.netProfit ?? item.n_income);
+    const netProfitYoY = Number(
+      item.net_profit_yoy ??
+        item.yoy_net_profit ??
+        item.yoyNetProfit ??
+        item.netProfitYearlyGrowth
+    );
+    const netProfitQoQ = Number(
+      item.net_profit_qoq ?? item.netProfitQoq ?? item.netProfitQuarterlyGrowth
+    );
+    const eps = Number(item.eps ?? item.diluted_eps ?? item.dilutedEps);
+    const roe = Number(
+      item.return_on_equity ?? item.returnOnEquity ?? item.diluted_roe ?? item.dilutedRoe
+    );
+
+    const detailUrl = code ? `stock-detail.html?code=${encodeURIComponent(code)}` : "#";
+
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${item.tsCode || item.ts_code || "--"}</td>
-      <td>${item.name || "--"}</td>
-      <td>${item.industry || "--"}</td>
-      <td>${formatDate(item.annDate || item.ann_date)}</td>
-      <td>${formatDate(item.endDate || item.end_date)}</td>
-      <td class="text-right">${formatNumber(item.revenue, 0)}</td>
-      <td class="text-right">${formatNumber(item.operateProfit || item.operate_profit, 0)}</td>
-      <td class="text-right">${formatNumber(item.netIncome || item.n_income, 0)}</td>
-      <td class="text-right">${formatNumber(item.dilutedEps || item.diluted_eps, 2)}</td>
-      <td class="text-right">${formatNumber(item.dilutedRoe || item.diluted_roe, 2)}</td>
-      <td class="text-right">${formatNumber(item.yoyNetProfit || item.yoy_net_profit, 2)}</td>
-      <td>${item.perfSummary || item.perf_summary || "--"}</td>
+      <td>
+        <div class="cell-primary">
+          <span class="cell-code">${
+            code && detailUrl !== "#" ? `<a class="table-link" href="${detailUrl}">${escapeHTML(code)}</a>` : "--"
+          }</span>
+          <span class="cell-name">${
+            name && detailUrl !== "#" ? `<a class="table-link" href="${detailUrl}">${escapeHTML(name)}</a>` : "--"
+          }</span>
+        </div>
+        <div class="cell-meta">
+          ${industry}${market}
+        </div>
+      </td>
+      <td>
+        <div class="metric-stack">
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelAnnouncement}</span>
+            <span class="metric-row__value">${annDate}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelPeriod}</span>
+            <span class="metric-row__value">${period}</span>
+          </div>
+        </div>
+      </td>
+      <td>
+        <div class="metric-stack">
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelRevenue}</span>
+            <span class="metric-row__value metric-row__value--accent">${formatCompactNumber(revenue)}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelRevenueYoY}</span>
+            <span>${renderTrendChip(revenueYoY)}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelRevenueQoQ}</span>
+            <span>${renderTrendChip(revenueQoQ)}</span>
+          </div>
+        </div>
+      </td>
+      <td>
+        <div class="metric-stack">
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelNetProfit}</span>
+            <span class="metric-row__value metric-row__value--accent">${formatCompactNumber(netProfit)}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelNetProfitYoY}</span>
+            <span>${renderTrendChip(netProfitYoY)}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelNetProfitQoQ}</span>
+            <span>${renderTrendChip(netProfitQoQ)}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelEps}</span>
+            <span class="metric-row__value">${formatNumber(eps, 2)}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelRoe}</span>
+            <span>${renderTrendChip(roe)}</span>
+          </div>
+        </div>
+      </td>
     `;
     tbody.appendChild(row);
   });
@@ -198,7 +302,6 @@ function updatePagination() {
 }
 
 async function loadData() {
-  updateFiltersFromInputs();
   const params = buildQueryParams();
   try {
     const response = await fetch(`${API_BASE}/performance/express?${params.toString()}`);
@@ -207,23 +310,16 @@ async function loadData() {
     }
     const data = await response.json();
     STATE.total = Number(data.total) || 0;
-    renderTable(data.items || []);
+    STATE.items = Array.isArray(data.items) ? data.items : [];
+    renderTable(STATE.items);
     updatePagination();
   } catch (error) {
     console.error("Failed to load performance express data", error);
-    renderTable([]);
+    STATE.items = [];
     STATE.total = 0;
+    renderTable([]);
     updatePagination();
   }
-}
-
-function resetFilters() {
-  STATE.filters.keyword = "";
-  STATE.filters.startDate = null;
-  STATE.filters.endDate = null;
-  STATE.page = 1;
-  setInputsFromFilters();
-  loadData();
 }
 
 function initEvents() {
@@ -233,23 +329,9 @@ function initEvents() {
       persistLanguage(lang);
       currentLang = lang;
       applyTranslations();
-      setInputsFromFilters();
       loadData();
     })
   );
-
-  elements.applyButton.addEventListener("click", () => {
-    STATE.page = 1;
-    loadData();
-  });
-  elements.resetButton.addEventListener("click", resetFilters);
-
-  elements.keywordInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      STATE.page = 1;
-      loadData();
-    }
-  });
 
   elements.prevButton.addEventListener("click", () => {
     if (STATE.page > 1) {
@@ -267,11 +349,10 @@ function initEvents() {
   });
 }
 
-function bootstrap() {
+function init() {
   applyTranslations();
-  setInputsFromFilters();
   initEvents();
   loadData();
 }
 
-bootstrap();
+document.addEventListener("DOMContentLoaded", init);

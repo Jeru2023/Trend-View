@@ -464,9 +464,21 @@ class SyncFinanceBreakfastRequest(BaseModel):
 
 class SyncPerformanceExpressRequest(BaseModel):
     codes: Optional[List[str]] = Field(
-        None, description="Optional list of ts_code identifiers to refresh."
+        None,
+        description="Optional list of securities to refresh (accepts ts_code or symbol).",
     )
-    lookback_days: int = Field(365, ge=1, le=3650, alias="lookbackDays")
+    report_period: Optional[str] = Field(
+        None,
+        alias="reportPeriod",
+        description="Optional report period override (YYYYMMDD or YYYY-MM-DD).",
+    )
+    lookback_days: Optional[int] = Field(
+        None,
+        ge=1,
+        le=3650,
+        alias="lookbackDays",
+        description="Legacy parameter retained for compatibility; ignored.",
+    )
 
     class Config:
         allow_population_by_field_name = True
@@ -478,6 +490,7 @@ class SyncPerformanceExpressResponse(BaseModel):
     code_count: int = Field(..., alias="codeCount")
     total_codes: int = Field(..., alias="totalCodes")
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    report_period: Optional[str] = Field(None, alias="reportPeriod")
 
     class Config:
         allow_population_by_field_name = True
@@ -485,9 +498,21 @@ class SyncPerformanceExpressResponse(BaseModel):
 
 class SyncPerformanceForecastRequest(BaseModel):
     codes: Optional[List[str]] = Field(
-        None, description="Optional list of ts_code identifiers to refresh."
+        None,
+        description="Optional list of securities to refresh (accepts ts_code or symbol).",
     )
-    lookback_days: int = Field(365, ge=1, le=3650, alias="lookbackDays")
+    report_period: Optional[str] = Field(
+        None,
+        alias="reportPeriod",
+        description="Optional report period override (YYYYMMDD or YYYY-MM-DD).",
+    )
+    lookback_days: Optional[int] = Field(
+        None,
+        ge=1,
+        le=3650,
+        alias="lookbackDays",
+        description="Legacy parameter retained for compatibility; ignored.",
+    )
 
     class Config:
         allow_population_by_field_name = True
@@ -499,30 +524,39 @@ class SyncPerformanceForecastResponse(BaseModel):
     code_count: int = Field(..., alias="codeCount")
     total_codes: int = Field(..., alias="totalCodes")
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    report_period: Optional[str] = Field(None, alias="reportPeriod")
 
     class Config:
         allow_population_by_field_name = True
 
 
 class PerformanceExpressRecord(BaseModel):
-    ts_code: str = Field(..., alias="tsCode")
+    symbol: str
+    ts_code: Optional[str] = Field(None, alias="tsCode")
     name: Optional[str] = None
     industry: Optional[str] = None
     market: Optional[str] = None
     ann_date: Optional[date] = Field(None, alias="annDate")
     end_date: Optional[date] = Field(None, alias="endDate")
+    report_period: Optional[date] = Field(None, alias="reportPeriod")
+    announcement_date: Optional[date] = Field(None, alias="announcementDate")
+    eps: Optional[float] = None
     revenue: Optional[float] = None
-    operate_profit: Optional[float] = Field(None, alias="operateProfit")
-    total_profit: Optional[float] = Field(None, alias="totalProfit")
+    revenue_prev: Optional[float] = Field(None, alias="revenuePrev")
+    revenue_yoy: Optional[float] = Field(None, alias="revenueYearlyGrowth")
+    revenue_qoq: Optional[float] = Field(None, alias="revenueQuarterlyGrowth")
+    net_profit: Optional[float] = Field(None, alias="netProfit")
+    net_profit_prev: Optional[float] = Field(None, alias="netProfitPrev")
+    net_profit_yoy: Optional[float] = Field(None, alias="netProfitYearlyGrowth")
+    net_profit_qoq: Optional[float] = Field(None, alias="netProfitQuarterlyGrowth")
+    net_assets_per_share: Optional[float] = Field(None, alias="netAssetsPerShare")
+    return_on_equity: Optional[float] = Field(None, alias="returnOnEquity")
+    row_number: Optional[int] = Field(None, alias="rowNumber")
     n_income: Optional[float] = Field(None, alias="netIncome")
-    total_assets: Optional[float] = Field(None, alias="totalAssets")
-    total_hldr_eqy_exc_min_int: Optional[float] = Field(None, alias="totalHldrEqyExcMinInt")
     diluted_eps: Optional[float] = Field(None, alias="dilutedEps")
     diluted_roe: Optional[float] = Field(None, alias="dilutedRoe")
     yoy_net_profit: Optional[float] = Field(None, alias="yoyNetProfit")
-    bps: Optional[float] = None
     perf_summary: Optional[str] = Field(None, alias="perfSummary")
-    update_flag: Optional[str] = Field(None, alias="updateFlag")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     class Config:
@@ -535,22 +569,30 @@ class PerformanceExpressListResponse(BaseModel):
 
 
 class PerformanceForecastRecord(BaseModel):
-    ts_code: str = Field(..., alias="tsCode")
+    symbol: str
+    ts_code: Optional[str] = Field(None, alias="tsCode")
     name: Optional[str] = None
     industry: Optional[str] = None
     market: Optional[str] = None
     ann_date: Optional[date] = Field(None, alias="annDate")
     end_date: Optional[date] = Field(None, alias="endDate")
-    type: Optional[str] = None
+    report_period: Optional[date] = Field(None, alias="reportPeriod")
+    announcement_date: Optional[date] = Field(None, alias="announcementDate")
+    forecast_metric: Optional[str] = Field(None, alias="forecastMetric")
+    change_description: Optional[str] = Field(None, alias="changeDescription")
+    forecast_value: Optional[float] = Field(None, alias="forecastValue")
+    change_rate: Optional[float] = Field(None, alias="changeRate")
+    change_reason: Optional[str] = Field(None, alias="changeReason")
+    forecast_type: Optional[str] = Field(None, alias="forecastType")
+    last_year_value: Optional[float] = Field(None, alias="lastYearValue")
+    row_number: Optional[int] = Field(None, alias="rowNumber")
+    type: Optional[str] = Field(None, alias="type")
+    summary: Optional[str] = None
     p_change_min: Optional[float] = Field(None, alias="pctChangeMin")
     p_change_max: Optional[float] = Field(None, alias="pctChangeMax")
     net_profit_min: Optional[float] = Field(None, alias="netProfitMin")
     net_profit_max: Optional[float] = Field(None, alias="netProfitMax")
     last_parent_net: Optional[float] = Field(None, alias="lastParentNet")
-    first_ann_date: Optional[date] = Field(None, alias="firstAnnDate")
-    summary: Optional[str] = None
-    change_reason: Optional[str] = Field(None, alias="changeReason")
-    update_flag: Optional[str] = Field(None, alias="updateFlag")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     class Config:
@@ -1124,6 +1166,7 @@ async def _run_performance_express_job(request: SyncPerformanceExpressRequest) -
             result = sync_performance_express(
                 codes=request.codes,
                 lookback_days=request.lookback_days,
+                report_period=request.report_period,
                 progress_callback=progress_callback,
             )
             stats = PerformanceExpressDAO(load_settings().postgres).stats()
@@ -1171,6 +1214,7 @@ async def _run_performance_forecast_job(request: SyncPerformanceForecastRequest)
             result = sync_performance_forecast(
                 codes=request.codes,
                 lookback_days=request.lookback_days,
+                report_period=request.report_period,
                 progress_callback=progress_callback,
             )
             stats = PerformanceForecastDAO(load_settings().postgres).stats()
@@ -1852,24 +1896,31 @@ def list_performance_express_entries(
     )
     items = [
         PerformanceExpressRecord(
+            symbol=entry.get("symbol"),
             ts_code=entry.get("ts_code"),
             name=entry.get("name"),
             industry=entry.get("industry"),
             market=entry.get("market"),
-            ann_date=entry.get("ann_date"),
-            end_date=entry.get("end_date"),
+            ann_date=entry.get("announcement_date"),
+            end_date=entry.get("report_period"),
+            report_period=entry.get("report_period"),
+            announcement_date=entry.get("announcement_date"),
+            eps=entry.get("eps"),
             revenue=entry.get("revenue"),
-            operate_profit=entry.get("operate_profit"),
-            total_profit=entry.get("total_profit"),
-            n_income=entry.get("n_income"),
-            total_assets=entry.get("total_assets"),
-            total_hldr_eqy_exc_min_int=entry.get("total_hldr_eqy_exc_min_int"),
-            diluted_eps=entry.get("diluted_eps"),
-            diluted_roe=entry.get("diluted_roe"),
-            yoy_net_profit=entry.get("yoy_net_profit"),
-            bps=entry.get("bps"),
-            perf_summary=entry.get("perf_summary"),
-            update_flag=entry.get("update_flag"),
+            revenue_prev=entry.get("revenue_prev"),
+            revenue_yoy=entry.get("revenue_yoy"),
+            revenue_qoq=entry.get("revenue_qoq"),
+            net_profit=entry.get("net_profit"),
+            net_profit_prev=entry.get("net_profit_prev"),
+            net_profit_yoy=entry.get("net_profit_yoy"),
+            net_profit_qoq=entry.get("net_profit_qoq"),
+            net_assets_per_share=entry.get("net_assets_per_share"),
+            return_on_equity=entry.get("return_on_equity"),
+            row_number=entry.get("row_number"),
+            n_income=entry.get("net_profit"),
+            diluted_eps=entry.get("eps"),
+            diluted_roe=entry.get("return_on_equity"),
+            yoy_net_profit=entry.get("net_profit_yoy"),
             updated_at=entry.get("updated_at"),
         )
         for entry in result.get("items", [])
@@ -1895,22 +1946,28 @@ def list_performance_forecast_entries(
     )
     items = [
         PerformanceForecastRecord(
+            symbol=entry.get("symbol"),
             ts_code=entry.get("ts_code"),
             name=entry.get("name"),
             industry=entry.get("industry"),
             market=entry.get("market"),
-            ann_date=entry.get("ann_date"),
-            end_date=entry.get("end_date"),
-            type=entry.get("type"),
-            p_change_min=entry.get("p_change_min"),
-            p_change_max=entry.get("p_change_max"),
-            net_profit_min=entry.get("net_profit_min"),
-            net_profit_max=entry.get("net_profit_max"),
-            last_parent_net=entry.get("last_parent_net"),
-            first_ann_date=entry.get("first_ann_date"),
-            summary=entry.get("summary"),
+            ann_date=entry.get("announcement_date"),
+            end_date=entry.get("report_period"),
+            report_period=entry.get("report_period"),
+            announcement_date=entry.get("announcement_date"),
+            forecast_metric=entry.get("forecast_metric"),
+            change_description=entry.get("change_description"),
+            forecast_value=entry.get("forecast_value"),
+            change_rate=entry.get("change_rate"),
             change_reason=entry.get("change_reason"),
-            update_flag=entry.get("update_flag"),
+            forecast_type=entry.get("forecast_type"),
+            last_year_value=entry.get("last_year_value"),
+            row_number=entry.get("row_number"),
+            type=entry.get("forecast_type"),
+            p_change_min=entry.get("change_rate"),
+            p_change_max=entry.get("change_rate"),
+            net_profit_min=entry.get("forecast_value"),
+            net_profit_max=entry.get("forecast_value"),
             updated_at=entry.get("updated_at"),
         )
         for entry in result.get("items", [])

@@ -23,6 +23,39 @@ FINANCE_BREAKFAST_COLUMNS: Final[dict[str, str]] = {
     "链接": "url",
 }
 
+PERFORMANCE_EXPRESS_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "row_number",
+    "股票代码": "symbol",
+    "股票简称": "stock_name",
+    "每股收益": "eps",
+    "营业收入-营业收入": "revenue",
+    "营业收入-去年同期": "revenue_prev",
+    "营业收入-同比增长": "revenue_yoy",
+    "营业收入-季度环比增长": "revenue_qoq",
+    "净利润-净利润": "net_profit",
+    "净利润-去年同期": "net_profit_prev",
+    "净利润-同比增长": "net_profit_yoy",
+    "净利润-季度环比增长": "net_profit_qoq",
+    "每股净资产": "net_assets_per_share",
+    "净资产收益率": "return_on_equity",
+    "所处行业": "industry",
+    "公告日期": "announcement_date",
+}
+
+PERFORMANCE_FORECAST_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "row_number",
+    "股票代码": "symbol",
+    "股票简称": "stock_name",
+    "预测指标": "forecast_metric",
+    "业绩变动": "change_description",
+    "预测数值": "forecast_value",
+    "业绩变动幅度": "change_rate",
+    "业绩变动原因": "change_reason",
+    "预告类型": "forecast_type",
+    "上年同期值": "last_year_value",
+    "公告日期": "announcement_date",
+}
+
 _FINANCE_BREAKFAST_TIMEOUT_SECONDS: Final[float] = 12.0
 
 
@@ -130,4 +163,69 @@ def fetch_finance_breakfast(timeout: float = _FINANCE_BREAKFAST_TIMEOUT_SECONDS)
     return subset
 
 
-__all__ = ["FINANCE_BREAKFAST_COLUMNS", "fetch_finance_breakfast"]
+def _empty_performance_express_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(PERFORMANCE_EXPRESS_COLUMN_MAP.values()))
+
+
+def fetch_performance_express_em(period: str) -> pd.DataFrame:
+    """
+    Fetch performance express (业绩快报) data for the given report period.
+    """
+    if not period or not str(period).strip():
+        raise ValueError("period is required for performance express fetch.")
+
+    try:
+        dataframe = ak.stock_yjkb_em(date=str(period))
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch performance express data via AkShare: %s", exc)
+        return _empty_performance_express_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no performance express data for %s", period)
+        return _empty_performance_express_frame()
+
+    renamed = dataframe.rename(columns=PERFORMANCE_EXPRESS_COLUMN_MAP)
+    for column in PERFORMANCE_EXPRESS_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(PERFORMANCE_EXPRESS_COLUMN_MAP.values())]
+
+
+def _empty_performance_forecast_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(PERFORMANCE_FORECAST_COLUMN_MAP.values()))
+
+
+def fetch_performance_forecast_em(period: str) -> pd.DataFrame:
+    """
+    Fetch performance forecast (业绩预告) data for the given report period.
+    """
+    if not period or not str(period).strip():
+        raise ValueError("period is required for performance forecast fetch.")
+
+    try:
+        dataframe = ak.stock_yjyg_em(date=str(period))
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch performance forecast data via AkShare: %s", exc)
+        return _empty_performance_forecast_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no performance forecast data for %s", period)
+        return _empty_performance_forecast_frame()
+
+    renamed = dataframe.rename(columns=PERFORMANCE_FORECAST_COLUMN_MAP)
+    for column in PERFORMANCE_FORECAST_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(PERFORMANCE_FORECAST_COLUMN_MAP.values())]
+
+
+__all__ = [
+    "FINANCE_BREAKFAST_COLUMNS",
+    "PERFORMANCE_EXPRESS_COLUMN_MAP",
+    "PERFORMANCE_FORECAST_COLUMN_MAP",
+    "fetch_finance_breakfast",
+    "fetch_performance_express_em",
+    "fetch_performance_forecast_em",
+]

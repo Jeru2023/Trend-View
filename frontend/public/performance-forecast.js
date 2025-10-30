@@ -9,20 +9,13 @@ const STATE = {
   page: 1,
   limit: 20,
   total: 0,
-  filters: {
-    keyword: "",
-    startDate: null,
-    endDate: null,
-  },
+  items: [],
+  filterType: "all",
 };
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
-  keywordInput: document.getElementById("forecast-keyword"),
-  startInput: document.getElementById("forecast-start"),
-  endInput: document.getElementById("forecast-end"),
-  applyButton: document.getElementById("forecast-apply"),
-  resetButton: document.getElementById("forecast-reset"),
+  filterButtons: document.querySelectorAll(".chip-btn[data-filter]"),
   tableBody: document.getElementById("forecast-tbody"),
   pageInfo: document.getElementById("forecast-page-info"),
   prevButton: document.getElementById("forecast-prev"),
@@ -62,6 +55,18 @@ function persistLanguage(lang) {
   document.documentElement.setAttribute("data-pref-lang", lang);
 }
 
+function escapeHTML(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function formatNumber(value, fractionDigits = 2) {
   if (value === null || value === undefined) {
     return "--";
@@ -75,6 +80,34 @@ function formatNumber(value, fractionDigits = 2) {
     minimumFractionDigits: 0,
     maximumFractionDigits: fractionDigits,
   }).format(numeric);
+}
+
+function formatCurrency(value) {
+  return formatNumber(value, 0);
+}
+
+function formatPercent(value, fractionDigits = 1) {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+  const formatted = numeric.toFixed(fractionDigits);
+  return numeric > 0 ? `+${formatted}%` : `${formatted}%`;
+}
+
+function renderPercent(value) {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+  const cls = numeric > 0 ? "text-up" : numeric < 0 ? "text-down" : "";
+  return `<span class="${cls}">${formatPercent(numeric, Math.abs(numeric) >= 100 ? 0 : 1)}</span>`;
 }
 
 function formatDate(value) {
@@ -114,42 +147,42 @@ function applyTranslations() {
       el.textContent = value;
     }
   });
-
-  if (elements.keywordInput) {
-    const placeholderKey = currentLang === "zh" ? "data-placeholder-zh" : "data-placeholder-en";
-    const placeholder = elements.keywordInput.getAttribute(placeholderKey);
-    if (placeholder) {
-      elements.keywordInput.setAttribute("placeholder", placeholder);
-    }
-  }
-}
-
-function updateFiltersFromInputs() {
-  STATE.filters.keyword = (elements.keywordInput.value || "").trim();
-  STATE.filters.startDate = elements.startInput.value || null;
-  STATE.filters.endDate = elements.endInput.value || null;
-}
-
-function setInputsFromFilters() {
-  elements.keywordInput.value = STATE.filters.keyword;
-  elements.startInput.value = STATE.filters.startDate || "";
-  elements.endInput.value = STATE.filters.endDate || "";
 }
 
 function buildQueryParams() {
   const params = new URLSearchParams();
   params.set("limit", String(STATE.limit));
   params.set("offset", String((STATE.page - 1) * STATE.limit));
-  if (STATE.filters.keyword) {
-    params.set("keyword", STATE.filters.keyword);
-  }
-  if (STATE.filters.startDate) {
-    params.set("startDate", STATE.filters.startDate.replace(/-/g, ""));
-  }
-  if (STATE.filters.endDate) {
-    params.set("endDate", STATE.filters.endDate.replace(/-/g, ""));
-  }
   return params;
+}
+
+function truncatedTextWithTooltip(text, limit = 100) {
+  if (!text) {
+    return { summary: "--", tooltip: "" };
+  }
+  const normalized = String(text).trim();
+  if (normalized.length <= limit) {
+    const escaped = escapeHTML(normalized);
+    return { summary: escaped, tooltip: escaped };
+  }
+  const summary = escapeHTML(normalized.slice(0, limit)) + "…";
+  return { summary, tooltip: escapeHTML(normalized) };
+}
+
+function filterByType(items, filterType) {
+  if (filterType === "positive") {
+    return items.filter((item) => {
+      const type = String(item.forecast_type || item.type || "").trim();
+      return type.includes("增") || type.includes("盈");
+    });
+  }
+  if (filterType === "negative") {
+    return items.filter((item) => {
+      const type = String(item.forecast_type || item.type || "").trim();
+      return type.includes("减") || type.includes("亏");
+    });
+  }
+  return items;
 }
 
 function renderTable(items) {
@@ -158,7 +191,7 @@ function renderTable(items) {
   if (!items || items.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 11;
+    cell.colSpan = 4;
     const emptyText = tbody.dataset[`empty${currentLang === "zh" ? "Zh" : "En"}`] || "--";
     cell.textContent = emptyText;
     row.appendChild(cell);
@@ -166,25 +199,102 @@ function renderTable(items) {
     return;
   }
 
+  const dict = translations[currentLang];
+
   items.forEach((item) => {
-    const pctMin = item.pctChangeMin ?? item.p_change_min;
-    const pctMax = item.pctChangeMax ?? item.p_change_max;
-    const netMin = item.netProfitMin ?? item.net_profit_min;
-    const netMax = item.netProfitMax ?? item.net_profit_max;
+    const code = item.tsCode || item.ts_code || "";
+    const name = item.name || "";
+    const detailUrl = code ? `stock-detail.html?code=${encodeURIComponent(code)}` : "#";
+    const industry = item.industry ? `<span class="badge">${escapeHTML(item.industry)}</span>` : "";
+    const market = item.market ? `<span class="badge badge--muted">${escapeHTML(item.market)}</span>` : "";
+
+    const forecastMetricRaw = item.forecast_metric || item.forecastMetric || "--";
+    const forecastMetric = String(forecastMetricRaw).trim() || "--";
+    const changeDescriptionRaw = item.change_description || item.changeDescription || "";
+    const changeDescriptionText = String(changeDescriptionRaw).trim();
+    const changeDescription = changeDescriptionText ? escapeHTML(changeDescriptionText) : "--";
+    const forecastValue = formatCurrency(item.forecast_value ?? item.forecastValue);
+    const changeRate = renderPercent(item.change_rate ?? item.changeRate);
+    const changeReasonData = truncatedTextWithTooltip(item.change_reason || item.changeReason);
+    const forecastTypeRaw = item.forecast_type || item.type || "--";
+    const forecastType = String(forecastTypeRaw).trim() || "--";
+    const lastYearValue = formatCurrency(item.last_year_value ?? item.lastYearValue);
+    const announcement = formatDate(item.annDate || item.ann_date || item.announcement_date);
+    const period = formatDate(item.endDate || item.end_date || item.reportPeriod || item.report_period);
+    const announcementDisplay = escapeHTML(announcement);
+    const periodDisplay = escapeHTML(period);
+
+    const changeReasonValue = changeReasonData.tooltip
+      ? `<span class="metric-row__value metric-row__value--wrap" title="${changeReasonData.tooltip}">${changeReasonData.summary}</span>`
+      : `<span class="metric-row__value metric-row__value--wrap">${changeReasonData.summary}</span>`;
 
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${item.tsCode || item.ts_code || "--"}</td>
-      <td>${item.name || "--"}</td>
-      <td>${item.industry || "--"}</td>
-      <td>${formatDate(item.annDate || item.ann_date)}</td>
-      <td>${formatDate(item.endDate || item.end_date)}</td>
-      <td>${item.type || "--"}</td>
-      <td class="text-right">${formatNumber(pctMin, 2)} ~ ${formatNumber(pctMax, 2)}</td>
-      <td class="text-right">${formatNumber(netMin, 0)} ~ ${formatNumber(netMax, 0)}</td>
-      <td class="text-right">${formatNumber(item.lastParentNet || item.last_parent_net, 0)}</td>
-      <td>${formatDate(item.firstAnnDate || item.first_ann_date)}</td>
-      <td>${item.summary || "--"}</td>
+      <td>
+        <div class="cell-primary">
+          <span class="cell-code">${
+            code && detailUrl !== "#"
+              ? `<a class="table-link" href="${detailUrl}">${escapeHTML(code)}</a>`
+              : "--"
+          }</span>
+          <span class="cell-name">${
+            name && detailUrl !== "#"
+              ? `<a class="table-link" href="${detailUrl}">${escapeHTML(name)}</a>`
+              : "--"
+          }</span>
+        </div>
+        <div class="cell-meta">
+          ${industry}${market}
+        </div>
+      </td>
+      <td>
+        <div class="metric-stack">
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelAnnouncement}</span>
+            <span class="metric-row__value">${announcementDisplay}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelPeriod}</span>
+            <span class="metric-row__value">${periodDisplay}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelForecastType}</span>
+            <span class="metric-row__value">${escapeHTML(forecastType)}</span>
+          </div>
+        </div>
+      </td>
+      <td>
+        <div class="metric-stack">
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelForecastMetric}</span>
+            <span class="metric-row__value metric-row__value--accent">${escapeHTML(forecastMetric)}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelForecastValue}</span>
+            <span class="metric-row__value">${forecastValue}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelLastYearValue}</span>
+            <span class="metric-row__value">${lastYearValue}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelChangeRate}</span>
+            <span>${changeRate}</span>
+          </div>
+        </div>
+      </td>
+      <td>
+        <div class="metric-stack">
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelChangeDescription}</span>
+            <span class="metric-row__value metric-row__value--wrap">${changeDescription}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-row__label">${dict.labelChangeReason}</span>
+            ${changeReasonValue}
+          </div>
+        </div>
+      </td>
     `;
     tbody.appendChild(row);
   });
@@ -202,7 +312,6 @@ function updatePagination() {
 }
 
 async function loadData() {
-  updateFiltersFromInputs();
   const params = buildQueryParams();
   try {
     const response = await fetch(`${API_BASE}/performance/forecast?${params.toString()}`);
@@ -210,24 +319,30 @@ async function loadData() {
       throw new Error(`Request failed with status ${response.status}`);
     }
     const data = await response.json();
-    STATE.total = Number(data.total) || 0;
-    renderTable(data.items || []);
+    const incoming = Array.isArray(data.items) ? data.items : [];
+    const filtered = filterByType(incoming, STATE.filterType);
+    STATE.items = filtered;
+    const total = Number(data.total);
+    STATE.total = Number.isFinite(total) && total >= 0 ? total : filtered.length;
+    renderTable(filtered);
     updatePagination();
   } catch (error) {
     console.error("Failed to load performance forecast data", error);
-    renderTable([]);
+    STATE.items = [];
     STATE.total = 0;
+    renderTable([]);
     updatePagination();
   }
 }
 
-function resetFilters() {
-  STATE.filters.keyword = "";
-  STATE.filters.startDate = null;
-  STATE.filters.endDate = null;
-  STATE.page = 1;
-  setInputsFromFilters();
-  loadData();
+function setActiveFilterButton(value) {
+  elements.filterButtons.forEach((button) => {
+    if (button.dataset.filter === value) {
+      button.classList.add("chip-btn--active");
+    } else {
+      button.classList.remove("chip-btn--active");
+    }
+  });
 }
 
 function initEvents() {
@@ -237,22 +352,21 @@ function initEvents() {
       persistLanguage(lang);
       currentLang = lang;
       applyTranslations();
-      setInputsFromFilters();
       loadData();
     })
   );
 
-  elements.applyButton.addEventListener("click", () => {
-    STATE.page = 1;
-    loadData();
-  });
-  elements.resetButton.addEventListener("click", resetFilters);
-  elements.keywordInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      STATE.page = 1;
-      loadData();
-    }
-  });
+  elements.filterButtons.forEach((button) =>
+    button.addEventListener("click", () => {
+      const value = button.dataset.filter || "all";
+      if (STATE.filterType !== value) {
+        STATE.filterType = value;
+        setActiveFilterButton(value);
+        STATE.page = 1;
+        loadData();
+      }
+    })
+  );
 
   elements.prevButton.addEventListener("click", () => {
     if (STATE.page > 1) {
@@ -270,11 +384,11 @@ function initEvents() {
   });
 }
 
-function bootstrap() {
+function init() {
   applyTranslations();
-  setInputsFromFilters();
+  setActiveFilterButton(STATE.filterType);
   initEvents();
   loadData();
 }
 
-bootstrap();
+document.addEventListener("DOMContentLoaded", init);

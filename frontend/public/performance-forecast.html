@@ -43,48 +43,33 @@
         </header>
 
         <section class="page">
-          <div class="filters filters--inline">
-            <div class="filter-group filter-group--keyword">
-              <label for="forecast-keyword" data-i18n="filterKeyword">Keyword</label>
-              <input
-                type="search"
-                id="forecast-keyword"
-                data-placeholder-en="Code or name"
-                data-placeholder-zh="代码或名称"
-              />
-            </div>
-            <div class="filter-group">
-              <label for="forecast-start" data-i18n="filterStartDate">Start Date</label>
-              <input type="date" id="forecast-start" />
-            </div>
-            <div class="filter-group">
-              <label for="forecast-end" data-i18n="filterEndDate">End Date</label>
-              <input type="date" id="forecast-end" />
-            </div>
-            <div class="filters__actions">
-              <button class="secondary-btn" id="forecast-reset" data-i18n="reset">Reset</button>
-              <button class="primary-btn" id="forecast-apply" data-i18n="apply">Apply</button>
-            </div>
+          <div class="filter-chip-bar" role="group" aria-label="Forecast type filter">
+            <button class="chip-btn chip-btn--active" data-filter="all" id="forecast-filter-all" data-i18n="filterAll">
+              All
+            </button>
+            <button class="chip-btn" data-filter="positive" id="forecast-filter-positive" data-i18n="filterPositive">
+              Positive
+            </button>
+            <button class="chip-btn" data-filter="negative" id="forecast-filter-negative" data-i18n="filterNegative">
+              Negative
+            </button>
           </div>
 
           <div class="table-wrapper">
-            <table class="table table--striped">
+            <table class="data-table forecast-table">
               <thead>
                 <tr>
-                  <th data-i18n="colCode">Code</th>
-                  <th data-i18n="colName">Name</th>
-                  <th data-i18n="colIndustry">Industry</th>
-                  <th data-i18n="colAnnDate">Announcement</th>
-                  <th data-i18n="colEndDate">Period</th>
-                  <th data-i18n="colForecastType">Type</th>
-                  <th data-i18n="colForecastPct">Change (%)</th>
-                  <th data-i18n="colForecastProfit">Net Profit (Min/Max)</th>
-                  <th data-i18n="colLastParentNet">Last Parent Net</th>
-                  <th data-i18n="colFirstAnnDate">First Announcement</th>
-                  <th data-i18n="colSummary">Summary</th>
+                  <th data-i18n="colCompany">Company</th>
+                  <th data-i18n="colReporting">Reporting</th>
+                  <th data-i18n="colForecastMetrics">Forecast Metrics</th>
+                  <th data-i18n="colChangeDetails">Change Details</th>
                 </tr>
               </thead>
-              <tbody id="forecast-tbody" data-empty-en="No performance forecast records." data-empty-zh="暂无业绩预告数据。">
+              <tbody
+                id="forecast-tbody"
+                data-empty-en="No performance forecast records."
+                data-empty-zh="暂无业绩预告数据。"
+              >
                 <!-- rows inserted dynamically -->
               </tbody>
             </table>
@@ -101,6 +86,6 @@
 
     <script src="i18n.js?v=20251024"></script>
     <script src="sidebar.js?v=20251110"></script>
-    <script type="module" src="performance-forecast.js?v=20251110"></script>
+    <script type="module" src="performance-forecast.js?v=20251116"></script>
   </body>
 </html>

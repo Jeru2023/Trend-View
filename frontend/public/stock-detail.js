@@ -13,6 +13,10 @@ let candlestickData = [];
 let currentDetail = null;
 let candlestickChartInstance = null;
 let candlestickRenderTimeout = null;
+let performanceData = {
+  express: null,
+  forecast: null,
+};
 
 const elements = {
   status: document.getElementById("detail-status"),
@@ -35,6 +39,9 @@ const elements = {
   candlestickContainer: document.getElementById("candlestick-chart"),
   candlestickEmpty: document.getElementById("candlestick-empty"),
   favoriteToggle: document.getElementById("favorite-toggle"),
+  performanceCard: document.getElementById("performance-card"),
+  performanceExpressTile: document.getElementById("performance-express-tile"),
+  performanceForecastTile: document.getElementById("performance-forecast-tile"),
 };
 
 const favoriteState = {
@@ -55,7 +62,39 @@ const favoriteGroupsCache = {
 };
 
 function normalizeCode(value) {
-  return (value || "").trim().toUpperCase();
+  const raw = (value || "").trim().toUpperCase();
+  if (!raw) {
+    return "";
+  }
+
+  if (raw.includes(".")) {
+    const [symbolPart, suffixPart] = raw.split(".", 2);
+    const normalizedSymbol = /^\d+$/.test(symbolPart) ? symbolPart.padStart(6, "0") : symbolPart;
+    return suffixPart ? `${normalizedSymbol}.${suffixPart}` : normalizedSymbol;
+  }
+
+  const exchangeMatch = raw.match(/^(SH|SZ|BJ)(\d{5,6})$/);
+  if (exchangeMatch) {
+    const [, prefix, digits] = exchangeMatch;
+    return `${digits.padStart(6, "0")}.${prefix}`;
+  }
+
+  const plainDigits = raw.match(/^(\d{6})$/);
+  if (plainDigits) {
+    const digits = plainDigits[1];
+    const first = digits[0];
+    let suffix = "";
+    if (digits.startsWith("43") || digits.startsWith("83") || digits.startsWith("87") || first === "4" || first === "8") {
+      suffix = "BJ";
+    } else if (first === "6" || first === "9" || first === "5") {
+      suffix = "SH";
+    } else if (first === "0" || first === "2" || first === "3") {
+      suffix = "SZ";
+    }
+    return suffix ? `${digits}.${suffix}` : digits;
+  }
+
+  return raw;
 }
 
 function normalizeFavoriteGroupValue(value) {
@@ -563,6 +602,43 @@ function formatPercentFlexible(value) {
   return `${(ratio * 100).toFixed(2)}%`;
 }
 
+function escapeHTML(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function truncateWithTooltip(text, limit = 120) {
+  if (!text) {
+    return { summary: "--", tooltip: "" };
+  }
+  const normalized = String(text).trim();
+  if (normalized.length <= limit) {
+    const escaped = escapeHTML(normalized);
+    return { summary: escaped, tooltip: escaped };
+  }
+  const summary = escapeHTML(normalized.slice(0, limit)) + "…";
+  return { summary, tooltip: escapeHTML(normalized) };
+}
+
+function renderTrendBadge(value) {
+  if (value === null || value === undefined) {
+    return `<span class="chip chip--neutral">--</span>`;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return `<span class="chip chip--neutral">--</span>`;
+  }
+  const cls = numeric > 0 ? "chip chip--positive" : numeric < 0 ? "chip chip--negative" : "chip chip--neutral";
+  return `<span class="${cls}">${formatPercentFlexible(numeric)}</span>`;
+}
+
 function formatDate(value) {
   if (!value) {
     return "--";
@@ -586,6 +662,315 @@ function renderList(container, rows) {
     `;
     })
     .join("");
+}
+
+function normalizeTsCode(value) {
+  return (value || "").trim().toUpperCase();
+}
+
+function selectLatestRecord(items, code) {
+  if (!Array.isArray(items) || !items.length) {
+    return null;
+  }
+  const normalizedCode = normalizeTsCode(code);
+  const normalizedSymbol = normalizedCode.split(".")[0];
+  const enriched = items.map((entry) => {
+    const tsCode = normalizeTsCode(entry.ts_code || entry.tsCode || "");
+    const symbol = normalizeTsCode(entry.symbol || "");
+    const announcement = parseTradeDate(
+      entry.announcement_date || entry.ann_date || entry.announcementDate
+    );
+    const timestamp = announcement ? announcement.getTime() : 0;
+    return { entry, tsCode, symbol, timestamp };
+  });
+
+  const filtered = enriched.filter(
+    ({ tsCode, symbol }) =>
+      tsCode === normalizedCode ||
+      symbol === normalizedSymbol ||
+      tsCode === normalizedSymbol
+  );
+
+  const target = filtered.length ? filtered : enriched;
+  target.sort((a, b) => b.timestamp - a.timestamp);
+  return target[0]?.entry ?? null;
+}
+
+function renderPerformanceHighlights({ express, forecast }) {
+  if (!elements.performanceCard) {
+    return;
+  }
+
+  const dict = translations[currentLang];
+  const expressTile = elements.performanceExpressTile;
+  const forecastTile = elements.performanceForecastTile;
+
+  if (!express && !forecast) {
+    elements.performanceCard.classList.remove("hidden");
+    if (expressTile) {
+      expressTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
+        dict.performanceExpressEmpty || "--"
+      )}</p>`;
+      expressTile.classList.add("performance-tile--empty");
+    }
+    if (forecastTile) {
+      forecastTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
+        dict.performanceForecastEmpty || "--"
+      )}</p>`;
+      forecastTile.classList.add("performance-tile--empty");
+    }
+    return;
+  }
+
+  elements.performanceCard.classList.remove("hidden");
+
+  if (expressTile) {
+    if (!express) {
+      expressTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
+        dict.performanceExpressEmpty || "--"
+      )}</p>`;
+      expressTile.classList.add("performance-tile--empty");
+    } else {
+      expressTile.classList.remove("performance-tile--empty");
+      const announcement = formatDate(
+        express.announcement_date || express.ann_date || express.announcementDate
+      );
+      const period = formatDate(express.report_period || express.reportPeriod || express.end_date);
+      const revenue = formatCompactNumber(express.revenue);
+      const revenueYoyBadge = renderTrendBadge(
+        express.revenue_yoy ?? express.revenueYearlyGrowth
+      );
+      const revenueQoqBadge = renderTrendBadge(
+        express.revenue_qoq ?? express.revenueQuarterlyGrowth
+      );
+      const netProfit = formatCompactNumber(
+        express.net_profit ?? express.netProfit ?? express.n_income
+      );
+      const netProfitYoyBadge = renderTrendBadge(
+        express.net_profit_yoy ?? express.netProfitYearlyGrowth ?? express.yoy_net_profit
+      );
+      const netProfitQoqBadge = renderTrendBadge(
+        express.net_profit_qoq ?? express.netProfitQuarterlyGrowth
+      );
+      const eps = formatNumber(express.eps ?? express.diluted_eps ?? express.dilutedEps, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const roeBadge = renderTrendBadge(
+        express.return_on_equity ?? express.returnOnEquity ?? express.diluted_roe
+      );
+
+      expressTile.innerHTML = `
+        <div class="performance-tile__header">
+          <h3 class="performance-tile__title">${escapeHTML(
+            dict.performanceExpressHeading || "Performance Express"
+          )}</h3>
+          <span class="performance-tile__meta">${escapeHTML(
+            dict.performancePanelAnnouncement || "Announcement"
+          )} · ${announcement}</span>
+        </div>
+        <div class="performance-tile__metrics">
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceExpressRevenue || dict.labelRevenue || "Revenue"
+            )}</span>
+            <span class="performance-metric__value">${revenue}</span>
+            <span class="performance-metric__delta">${revenueYoyBadge}</span>
+          </div>
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceExpressRevenueQoq || dict.labelRevenueQoqLatest || "Revenue QoQ"
+            )}</span>
+            <span class="performance-metric__delta">${revenueQoqBadge}</span>
+          </div>
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceExpressNetProfit || dict.labelNetIncome || "Net Profit"
+            )}</span>
+            <span class="performance-metric__value">${netProfit}</span>
+            <span class="performance-metric__delta">${netProfitYoyBadge}</span>
+          </div>
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceExpressNetProfitQoq || dict.labelNetIncomeQoqLatest || "Net Profit QoQ"
+            )}</span>
+            <span class="performance-metric__delta">${netProfitQoqBadge}</span>
+          </div>
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceExpressEps || dict.labelBasicEps || "EPS"
+            )}</span>
+            <span class="performance-metric__value">${eps}</span>
+          </div>
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceExpressRoe || dict.labelRoe || "ROE"
+            )}</span>
+            <span class="performance-metric__delta">${roeBadge}</span>
+          </div>
+        </div>
+        <div class="performance-tile__meta">${escapeHTML(
+          dict.performancePanelPeriod || "Reporting Period"
+        )} · ${period}</div>
+      `;
+    }
+  }
+
+  if (forecastTile) {
+    if (!forecast) {
+      forecastTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
+        dict.performanceForecastEmpty || "--"
+      )}</p>`;
+      forecastTile.classList.add("performance-tile--empty");
+    } else {
+      forecastTile.classList.remove("performance-tile--empty");
+      const announcement = formatDate(
+        forecast.announcement_date || forecast.ann_date || forecast.announcementDate
+      );
+      const period = formatDate(forecast.report_period || forecast.reportPeriod || forecast.end_date);
+      const metric = escapeHTML(forecast.forecast_metric || forecast.forecastMetric || "--");
+      const type = escapeHTML(forecast.forecast_type || forecast.type || "--");
+      const forecastValue = formatCompactNumber(forecast.forecast_value ?? forecast.forecastValue);
+      const lastYear = formatCompactNumber(forecast.last_year_value ?? forecast.lastYearValue);
+      const changeBadge = renderTrendBadge(forecast.change_rate ?? forecast.changeRate);
+      const rawDescription = forecast.change_description ?? forecast.changeDescription ?? "";
+      const rawReason = forecast.change_reason ?? forecast.changeReason ?? "";
+      const descriptionText =
+        rawDescription && String(rawDescription).trim()
+          ? escapeHTML(String(rawDescription).trim())
+          : "--";
+      const reasonText =
+        rawReason && String(rawReason).trim()
+          ? escapeHTML(String(rawReason).trim())
+          : "--";
+
+      forecastTile.innerHTML = `
+        <div class="performance-tile__header">
+          <h3 class="performance-tile__title">${escapeHTML(
+            dict.performanceForecastHeading || "Performance Forecast"
+          )}</h3>
+          <span class="performance-tile__meta">${escapeHTML(
+            dict.performancePanelAnnouncement || "Announcement"
+          )} · ${announcement}</span>
+        </div>
+        <div class="performance-tile__metrics">
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceForecastMetric || "Metric"
+            )}</span>
+            <span class="performance-metric__value">${metric}</span>
+          </div>
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceForecastType || "Type"
+            )}</span>
+            <span class="performance-metric__value">${type}</span>
+            <span class="performance-metric__delta">${changeBadge}</span>
+          </div>
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceForecastValue || "Forecast"
+            )}</span>
+            <span class="performance-metric__value">${forecastValue}</span>
+          </div>
+          <div class="performance-metric">
+            <span class="performance-metric__label">${escapeHTML(
+              dict.performanceForecastLastYear || "Last Year"
+            )}</span>
+            <span class="performance-metric__value">${lastYear}</span>
+          </div>
+        </div>
+        <p class="performance-tile__description">${descriptionText}</p>
+        <p class="performance-tile__description">${reasonText}</p>
+        <div class="performance-tile__meta">${escapeHTML(
+          dict.performancePanelPeriod || "Reporting Period"
+        )} · ${period}</div>
+      `;
+    }
+  }
+}
+
+async function loadPerformanceData(code) {
+  if (!elements.performanceCard) {
+    return;
+  }
+  const dict = translations[currentLang];
+  elements.performanceCard.classList.remove("hidden");
+  if (elements.performanceExpressTile) {
+    elements.performanceExpressTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
+      dict.loading || "Loading..."
+    )}</p>`;
+    elements.performanceExpressTile.classList.add("performance-tile--empty");
+  }
+  if (elements.performanceForecastTile) {
+    elements.performanceForecastTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
+      dict.loading || "Loading..."
+    )}</p>`;
+    elements.performanceForecastTile.classList.add("performance-tile--empty");
+  }
+
+  try {
+    const normalizedCode = normalizeCode(code);
+    const rawCode = (code || "").trim().toUpperCase();
+    const tokens = [];
+    const addToken = (token) => {
+      const candidate = (token || "").trim();
+      if (candidate && !tokens.includes(candidate)) {
+        tokens.push(candidate);
+      }
+    };
+
+    addToken(normalizedCode);
+
+    const normalizedSymbol = normalizedCode.includes(".")
+      ? normalizedCode.split(".")[0]
+      : normalizedCode.replace(/^(SH|SZ|BJ)/, "");
+    addToken(normalizedSymbol);
+    addToken(rawCode);
+
+    if (/^\d{6}$/.test(normalizedSymbol)) {
+      addToken(`${normalizedSymbol}.SH`);
+      addToken(`${normalizedSymbol}.SZ`);
+      addToken(`${normalizedSymbol}.BJ`);
+    }
+
+    let expressJson = { items: [] };
+    let forecastJson = { items: [] };
+
+    for (const token of tokens) {
+      const encoded = encodeURIComponent(token);
+      const [expressRes, forecastRes] = await Promise.all([
+        fetch(`${API_BASE}/performance/express?limit=20&keyword=${encoded}`),
+        fetch(`${API_BASE}/performance/forecast?limit=20&keyword=${encoded}`),
+      ]);
+
+      expressJson = expressRes.ok ? await expressRes.json() : { items: [] };
+      forecastJson = forecastRes.ok ? await forecastRes.json() : { items: [] };
+
+      const hasExpress = Array.isArray(expressJson.items) && expressJson.items.length > 0;
+      const hasForecast = Array.isArray(forecastJson.items) && forecastJson.items.length > 0;
+
+      if (hasExpress || hasForecast) {
+        break;
+      }
+    }
+
+    const selectionTarget =
+      normalizedCode ||
+      tokens.find((token) => token.includes(".")) ||
+      tokens[0] ||
+      "";
+
+    const expressRecord = selectLatestRecord(expressJson.items || [], selectionTarget);
+    const forecastRecord = selectLatestRecord(forecastJson.items || [], selectionTarget);
+
+    performanceData = { express: expressRecord, forecast: forecastRecord };
+  } catch (error) {
+    console.error("Failed to load performance highlights:", error);
+    performanceData = { express: null, forecast: null };
+  }
+
+  renderPerformanceHighlights(performanceData);
 }
 
 function parseTradeDate(value) {
@@ -1041,6 +1426,8 @@ function renderDetail(detail) {
 
   candlestickData = limitCandlestickRange(detail.dailyTradeHistory || []);
   renderCandlestickChart();
+
+  renderPerformanceHighlights(performanceData);
 }
 
 function setStatus(messageKey, isError = false) {
@@ -1050,6 +1437,10 @@ function setStatus(messageKey, isError = false) {
   elements.status.classList.remove("hidden");
   elements.hero.classList.add("hidden");
   elements.grid.classList.add("hidden");
+  if (elements.performanceCard) {
+    elements.performanceCard.classList.add("hidden");
+  }
+  performanceData = { express: null, forecast: null };
   favoriteState.code = null;
   favoriteState.group = null;
   updateFavoriteToggle(false);
@@ -1093,7 +1484,9 @@ async function fetchDetail(code) {
       throw new Error(`HTTP ${response.status}`);
     }
     const data = await response.json();
+    performanceData = { express: null, forecast: null };
     renderDetail(data);
+    loadPerformanceData(data.profile.code);
     showDetail();
   } catch (error) {
     console.error("Failed to load stock detail:", error);
@@ -1115,6 +1508,7 @@ function handleLanguageSwitch(lang) {
     renderDetail(currentDetail);
     showDetail();
   }
+  renderPerformanceHighlights(performanceData);
   renderCandlestickChart();
 }
 
@@ -1141,7 +1535,3 @@ function initialize() {
 }
 
 document.addEventListener("DOMContentLoaded", initialize);
-
-
-
-
