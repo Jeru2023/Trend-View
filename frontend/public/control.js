@@ -6,6 +6,7 @@ const API_BASE =
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 
 const LANG_STORAGE_KEY = "trend-view-lang";
+const INDUSTRY_FUND_FLOW_SYMBOLS = ["即时", "3日排行", "5日排行", "10日排行", "20日排行"];
 
 function getInitialLanguage() {
   try {
@@ -118,6 +119,24 @@ const elements = {
     message: document.getElementById("performance-forecast-message"),
     progress: document.getElementById("performance-forecast-progress"),
     button: document.getElementById("run-performance-forecast"),
+  },
+  industryFundFlow: {
+    status: document.getElementById("industry-fund-flow-status"),
+    updated: document.getElementById("industry-fund-flow-updated"),
+    duration: document.getElementById("industry-fund-flow-duration"),
+    rows: document.getElementById("industry-fund-flow-rows"),
+    message: document.getElementById("industry-fund-flow-message"),
+    progress: document.getElementById("industry-fund-flow-progress"),
+    button: document.getElementById("run-industry-fund-flow"),
+  },
+  conceptFundFlow: {
+    status: document.getElementById("concept-fund-flow-status"),
+    updated: document.getElementById("concept-fund-flow-updated"),
+    duration: document.getElementById("concept-fund-flow-duration"),
+    rows: document.getElementById("concept-fund-flow-rows"),
+    message: document.getElementById("concept-fund-flow-message"),
+    progress: document.getElementById("concept-fund-flow-progress"),
+    button: document.getElementById("run-concept-fund-flow"),
   },
   financialIndicator: {
     status: document.getElementById("financial-indicator-status"),
@@ -290,6 +309,14 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const industryFundFlowSnapshot = jobs.industry_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
+    const conceptFundFlowSnapshot = jobs.concept_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
     const breakfastSnapshot = jobs.finance_breakfast || {
       status: "idle",
       progress: 0,
@@ -304,6 +331,8 @@ async function loadStatus() {
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.performanceExpress, expressSnapshot);
     updateJobCard(elements.performanceForecast, forecastSnapshot);
+    updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
+    updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
     updateJobCard(elements.financeBreakfast, breakfastSnapshot);
 
     if (data.config) {
@@ -326,6 +355,8 @@ async function loadStatus() {
       financialSnapshot,
       expressSnapshot,
       forecastSnapshot,
+      industryFundFlowSnapshot,
+      conceptFundFlowSnapshot,
       breakfastSnapshot,
     ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
@@ -341,11 +372,14 @@ async function loadStatus() {
 
 async function triggerJob(endpoint, payload) {
   try {
-    await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
     setTimeout(loadStatus, 500);
     if (!pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
@@ -394,6 +428,20 @@ function initActions() {
   elements.performanceForecast.button.addEventListener("click", () =>
     triggerJob("/control/sync/performance-forecast", {})
   );
+  if (elements.industryFundFlow.button) {
+    elements.industryFundFlow.button.addEventListener("click", () =>
+      triggerJob("/control/sync/industry-fund-flow", {
+        symbols: INDUSTRY_FUND_FLOW_SYMBOLS,
+      })
+    );
+  }
+  if (elements.conceptFundFlow.button) {
+    elements.conceptFundFlow.button.addEventListener("click", () =>
+      triggerJob("/control/sync/concept-fund-flow", {
+        symbols: INDUSTRY_FUND_FLOW_SYMBOLS,
+      })
+    );
+  }
   elements.financeBreakfast.button.addEventListener("click", () =>
     triggerJob("/control/sync/finance-breakfast", {})
   );
@@ -404,13 +452,6 @@ initLanguageSwitch();
 initActions();
 setLang(currentLang);
 loadStatus();
-
-
-
-
-
-
-
 
 
 

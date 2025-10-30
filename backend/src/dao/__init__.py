@@ -12,6 +12,8 @@ from .stock_basic_dao import StockBasicDAO
 from .favorite_stock_dao import FavoriteStockDAO
 from .performance_express_dao import PerformanceExpressDAO
 from .performance_forecast_dao import PerformanceForecastDAO
+from .industry_fund_flow_dao import IndustryFundFlowDAO
+from .concept_fund_flow_dao import ConceptFundFlowDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -26,4 +28,6 @@ __all__ = [
     "FavoriteStockDAO",
     "PerformanceExpressDAO",
     "PerformanceForecastDAO",
+    "IndustryFundFlowDAO",
+    "ConceptFundFlowDAO",
 ]

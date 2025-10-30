@@ -1,4 +1,4 @@
-const SIDEBAR_VERSION = "20251110";
+const SIDEBAR_VERSION = "20251118";
 
 function highlightActiveNav(root) {
   if (!root) {
@@ -52,4 +52,3 @@ window.addEventListener("DOMContentLoaded", () => {
     window.__SIDEBAR_TRANSLATE_PENDING = false;
   }
 });
-

@@ -10,6 +10,8 @@ from .daily_trade_service import sync_daily_trade
 from .daily_trade_metrics_service import sync_daily_trade_metrics
 from .stock_basic_service import get_stock_overview, get_stock_detail, sync_stock_basic
 from .fundamental_metrics_service import list_fundamental_metrics, sync_fundamental_metrics
+from .industry_fund_flow_service import list_industry_fund_flow, sync_industry_fund_flow
+from .concept_fund_flow_service import list_concept_fund_flow, sync_concept_fund_flow
 from .favorite_stock_service import (
     add_stock_to_favorites,
     remove_stock_from_favorites,
@@ -31,11 +33,15 @@ __all__ = [
     "list_finance_breakfast",
     "list_performance_express",
     "list_performance_forecast",
+    "list_industry_fund_flow",
+    "list_concept_fund_flow",
     "sync_finance_breakfast",
     "sync_daily_trade",
     "sync_daily_trade_metrics",
     "sync_stock_basic",
     "sync_fundamental_metrics",
+    "sync_industry_fund_flow",
+    "sync_concept_fund_flow",
     "list_fundamental_metrics",
     "get_stock_detail",
     "add_stock_to_favorites",

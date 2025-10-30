@@ -17,6 +17,139 @@ let performanceData = {
   express: null,
   forecast: null,
 };
+const detailExtras = {
+  individualFundFlow: [],
+  bigDeals: [],
+};
+
+const INDIVIDUAL_FUND_FLOW_SYMBOLS = [
+  { match: "即时", key: "symbolInstant", label: "即时数据", translationKey: "stockDetailSymbolInstant" },
+  { match: "3日排行", key: "symbol3Day", label: "3日数据", translationKey: "stockDetailSymbol3Day" },
+  { match: "5日排行", key: "symbol5Day", label: "5日数据", translationKey: "stockDetailSymbol5Day" },
+  { match: "10日排行", key: "symbol10Day", label: "10日数据", translationKey: "stockDetailSymbol10Day" },
+  { match: "20日排行", key: "symbol20Day", label: "20日数据", translationKey: "stockDetailSymbol20Day" },
+];
+
+const INDIVIDUAL_FUND_FLOW_METRICS = {
+  instant: [
+    {
+      valueKeys: ["netAmount", "net_amount"],
+      labelKey: "individualFundFlowNetAmount",
+      fallback: "Net Amount",
+      formatter: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+      signed: true,
+    },
+    {
+      valueKeys: ["inflow"],
+      labelKey: "individualFundFlowInflow",
+      fallback: "Inflow",
+      formatter: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+    },
+    {
+      valueKeys: ["outflow"],
+      labelKey: "individualFundFlowOutflow",
+      fallback: "Outflow",
+      formatter: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+    },
+    {
+      valueKeys: ["netInflow", "net_inflow"],
+      labelKey: "individualFundFlowNetInflow",
+      fallback: "Net Inflow",
+      formatter: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+      signed: true,
+    },
+    {
+      valueKeys: [
+        "stageChangePercent",
+        "stage_change_percent",
+        "priceChangePercent",
+        "price_change_percent",
+      ],
+      labelKey: "individualFundFlowStageChange",
+      fallback: "Change (%)",
+      formatter: (value) => formatPercentFlexible(value),
+      signed: true,
+    },
+    {
+      valueKeys: ["turnoverRate", "turnover_rate"],
+      labelKey: "individualFundFlowTurnover",
+      fallback: "Turnover (%)",
+      formatter: (value) => formatPercentFlexible(value),
+    },
+    {
+      valueKeys: ["continuousTurnoverRate", "continuous_turnover_rate"],
+      labelKey: "individualFundFlowContinuousTurnover",
+      fallback: "Continuous Turnover (%)",
+      formatter: (value) => formatPercentFlexible(value),
+    },
+    {
+      valueKeys: ["latestPrice", "latest_price"],
+      labelKey: "individualFundFlowLatestPrice",
+      fallback: "Last Price",
+      formatter: (value) =>
+        formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    },
+  ],
+  ranked: [
+    {
+      valueKeys: ["netInflow", "net_inflow"],
+      labelKey: "individualFundFlowNetInflow",
+      fallback: "Net Inflow",
+      formatter: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+      signed: true,
+    },
+    {
+      valueKeys: ["netAmount", "net_amount"],
+      labelKey: "individualFundFlowNetAmount",
+      fallback: "Net Amount",
+      formatter: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+      signed: true,
+    },
+    {
+      valueKeys: ["inflow"],
+      labelKey: "individualFundFlowInflow",
+      fallback: "Inflow",
+      formatter: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+    },
+    {
+      valueKeys: ["outflow"],
+      labelKey: "individualFundFlowOutflow",
+      fallback: "Outflow",
+      formatter: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+    },
+    {
+      valueKeys: [
+        "stageChangePercent",
+        "stage_change_percent",
+        "priceChangePercent",
+        "price_change_percent",
+      ],
+      labelKey: "individualFundFlowStageChange",
+      fallback: "Change (%)",
+      formatter: (value) => formatPercentFlexible(value),
+      signed: true,
+    },
+    {
+      valueKeys: ["turnoverRate", "turnover_rate"],
+      labelKey: "individualFundFlowTurnover",
+      fallback: "Turnover (%)",
+      formatter: (value) => formatPercentFlexible(value),
+    },
+    {
+      valueKeys: ["continuousTurnoverRate", "continuous_turnover_rate"],
+      labelKey: "individualFundFlowContinuousTurnover",
+      fallback: "Continuous Turnover (%)",
+      formatter: (value) => formatPercentFlexible(value),
+    },
+    {
+      valueKeys: ["latestPrice", "latest_price"],
+      labelKey: "individualFundFlowLatestPrice",
+      fallback: "Last Price",
+      formatter: (value) =>
+        formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    },
+  ],
+};
 
 const elements = {
   status: document.getElementById("detail-status"),
@@ -42,6 +175,10 @@ const elements = {
   performanceCard: document.getElementById("performance-card"),
   performanceExpressTile: document.getElementById("performance-express-tile"),
   performanceForecastTile: document.getElementById("performance-forecast-tile"),
+  individualFundFlowCard: document.getElementById("individual-fund-flow-card"),
+  individualFundFlowList: document.getElementById("individual-fund-flow-list"),
+  bigDealCard: document.getElementById("big-deal-card"),
+  bigDealList: document.getElementById("big-deal-list"),
 };
 
 const favoriteState = {
@@ -95,6 +232,97 @@ function normalizeCode(value) {
   }
 
   return raw;
+}
+
+function deriveCodeParts(value) {
+  const normalized = normalizeCode(value);
+  if (!normalized) {
+    return { detailCode: "", displayCode: "" };
+  }
+  if (normalized.includes(".")) {
+    const [symbolPart] = normalized.split(".", 2);
+    return { detailCode: normalized, displayCode: symbolPart };
+  }
+  const digitsOnly = normalized.replace(/\D/g, "");
+  if (digitsOnly) {
+    return { detailCode: normalized, displayCode: digitsOnly.padStart(6, "0") };
+  }
+  return { detailCode: normalized, displayCode: normalized };
+}
+
+function getRecordValue(record, ...keys) {
+  if (!record) {
+    return undefined;
+  }
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) {
+      const value = record[key];
+      if (value === null || value === undefined) {
+        continue;
+      }
+      if (typeof value === "number" && Number.isNaN(value)) {
+        continue;
+      }
+      if (typeof value === "string") {
+        const normalized = value.trim();
+        if (!normalized || normalized === "--" || normalized === "-") {
+          continue;
+        }
+      }
+      return value;
+    }
+    const fallback = record[key];
+    if (fallback === null || fallback === undefined) {
+      continue;
+    }
+    if (typeof fallback === "number" && Number.isNaN(fallback)) {
+      continue;
+    }
+    if (typeof fallback === "string") {
+      const normalizedFallback = fallback.trim();
+      if (!normalizedFallback || normalizedFallback === "--" || normalizedFallback === "-") {
+        continue;
+      }
+    }
+    return fallback;
+  }
+  return undefined;
+}
+
+function toNumeric(value) {
+  if (value === null || value === undefined) {
+    return Number.NaN;
+  }
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/,/g, "").trim();
+    if (!normalized || normalized === "--" || normalized === "-") {
+      return Number.NaN;
+    }
+    const numeric = Number(normalized);
+    return Number.isFinite(numeric) ? numeric : Number.NaN;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : Number.NaN;
+}
+
+function buildIndividualFundFlowMetrics(entry, variant, dict) {
+  const configs = INDIVIDUAL_FUND_FLOW_METRICS[variant] || [];
+  const metrics = [];
+  for (const config of configs) {
+    const raw = getRecordValue(entry, ...(config.valueKeys || []));
+    const numeric = toNumeric(raw);
+    if (!Number.isFinite(numeric)) {
+      continue;
+    }
+    const label = dict[config.labelKey] || config.fallback;
+    const formatted = config.formatter ? config.formatter(numeric) : formatNumber(numeric);
+    const value = config.signed ? wrapSignedValue(numeric, formatted) : escapeHTML(formatted);
+    metrics.push({ label, value });
+  }
+  return metrics;
 }
 
 function normalizeFavoriteGroupValue(value) {
@@ -560,6 +788,9 @@ function applyTranslations() {
     }
   });
   updateFavoriteToggle(favoriteState.isFavorite);
+  renderPerformanceHighlights(performanceData);
+  renderIndividualFundFlowCard(detailExtras.individualFundFlow);
+  renderBigDealCard(detailExtras.bigDeals);
 }
 
 function formatNumber(value, options = {}) {
@@ -578,6 +809,17 @@ function formatCompactNumber(value) {
   return new Intl.NumberFormat(locale, {
     notation: "compact",
     maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatCurrency(value, { maximumFractionDigits = 0 } = {}) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "--";
+  }
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
   }).format(value);
 }
 
@@ -600,6 +842,20 @@ function formatPercentFlexible(value) {
   const treatAsRatio = Math.abs(numeric) <= 1;
   const ratio = treatAsRatio ? numeric : numeric / 100;
   return `${(ratio * 100).toFixed(2)}%`;
+}
+
+function wrapSignedValue(value, display) {
+  if (display === "--") {
+    return display;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric === 0) {
+    return display;
+  }
+  const needsPlus = numeric > 0 && typeof display === "string" && !display.startsWith("+");
+  const text = needsPlus ? `+${display}` : display;
+  const cls = numeric > 0 ? "text-up" : "text-down";
+  return `<span class="${cls}">${text}</span>`;
 }
 
 function escapeHTML(value) {
@@ -650,16 +906,75 @@ function formatDate(value) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "--";
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "--";
+  }
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
+
+function detectNumericTrend(value) {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return value > 0 ? 1 : value < 0 ? -1 : 0;
+  }
+  const text = String(value).trim();
+  if (!text || text === "--" || text === "-") {
+    return 0;
+  }
+  const normalized = text.replace(/,/g, "");
+  if (!/^[+-]?\d*(?:\.\d+)?%?$/.test(normalized)) {
+    return 0;
+  }
+  const numeric = parseFloat(normalized.replace(/%$/, ""));
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  if (numeric > 0) {
+    return 1;
+  }
+  if (numeric < 0) {
+    return -1;
+  }
+  return 0;
+}
+
 function renderList(container, rows) {
+  if (!container) {
+    return;
+  }
   container.innerHTML = rows
-    .map(({ label, value }) => {
-      const displayLabel = label ?? "--";
+    .map(({ label, value, highlightTrend = false }) => {
+      const displayLabel = escapeHTML(label ?? "--");
       const displayValue =
-        value === null || value === undefined || value === "" ? "--" : value;
+        value === null || value === undefined || value === "" ? "--" : escapeHTML(String(value));
+      const trend = highlightTrend ? detectNumericTrend(value) : 0;
+      const valueClasses = ["detail-row__value"];
+      if (trend > 0) {
+        valueClasses.push("text-up");
+      } else if (trend < 0) {
+        valueClasses.push("text-down");
+      }
       return `
-      <dt>${displayLabel}</dt>
-      <dd>${displayValue}</dd>
-    `;
+        <div class="detail-row">
+          <span class="detail-row__label">${displayLabel}</span>
+          <span class="${valueClasses.join(" ")}">${displayValue}</span>
+        </div>
+      `;
     })
     .join("");
 }
@@ -705,19 +1020,18 @@ function renderPerformanceHighlights({ express, forecast }) {
   const expressTile = elements.performanceExpressTile;
   const forecastTile = elements.performanceForecastTile;
 
-  if (!express && !forecast) {
-    elements.performanceCard.classList.remove("hidden");
+  const hasExpress = Boolean(express);
+  const hasForecast = Boolean(forecast);
+
+  if (!hasExpress && !hasForecast) {
+    elements.performanceCard.classList.add("hidden");
     if (expressTile) {
-      expressTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
-        dict.performanceExpressEmpty || "--"
-      )}</p>`;
-      expressTile.classList.add("performance-tile--empty");
+      expressTile.classList.add("hidden");
+      expressTile.innerHTML = "";
     }
     if (forecastTile) {
-      forecastTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
-        dict.performanceForecastEmpty || "--"
-      )}</p>`;
-      forecastTile.classList.add("performance-tile--empty");
+      forecastTile.classList.add("hidden");
+      forecastTile.innerHTML = "";
     }
     return;
   }
@@ -725,13 +1039,11 @@ function renderPerformanceHighlights({ express, forecast }) {
   elements.performanceCard.classList.remove("hidden");
 
   if (expressTile) {
-    if (!express) {
-      expressTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
-        dict.performanceExpressEmpty || "--"
-      )}</p>`;
-      expressTile.classList.add("performance-tile--empty");
+    if (!hasExpress) {
+      expressTile.innerHTML = "";
+      expressTile.classList.add("hidden");
     } else {
-      expressTile.classList.remove("performance-tile--empty");
+      expressTile.classList.remove("hidden", "performance-tile--empty");
       const announcement = formatDate(
         express.announcement_date || express.ann_date || express.announcementDate
       );
@@ -817,13 +1129,11 @@ function renderPerformanceHighlights({ express, forecast }) {
   }
 
   if (forecastTile) {
-    if (!forecast) {
-      forecastTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
-        dict.performanceForecastEmpty || "--"
-      )}</p>`;
-      forecastTile.classList.add("performance-tile--empty");
+    if (!hasForecast) {
+      forecastTile.innerHTML = "";
+      forecastTile.classList.add("hidden");
     } else {
-      forecastTile.classList.remove("performance-tile--empty");
+      forecastTile.classList.remove("hidden", "performance-tile--empty");
       const announcement = formatDate(
         forecast.announcement_date || forecast.ann_date || forecast.announcementDate
       );
@@ -890,23 +1200,285 @@ function renderPerformanceHighlights({ express, forecast }) {
   }
 }
 
+function hideIndividualFundFlowCard() {
+  if (!elements.individualFundFlowCard) {
+    return;
+  }
+  elements.individualFundFlowCard.classList.add("hidden");
+  if (elements.individualFundFlowList) {
+    elements.individualFundFlowList.innerHTML = "";
+  }
+  detailExtras.individualFundFlow = [];
+}
+
+function renderIndividualFundFlowCard(entries) {
+  if (!elements.individualFundFlowCard || !elements.individualFundFlowList) {
+    return;
+  }
+  const items = Array.isArray(entries) ? entries : [];
+  if (!items.length) {
+    hideIndividualFundFlowCard();
+    return;
+  }
+  const dict = translations[currentLang];
+  const sections = INDIVIDUAL_FUND_FLOW_SYMBOLS.map(({ match, key, label, translationKey }) => {
+    const matches = items
+      .filter((candidate) => {
+        const symbol = candidate.symbol || candidate.Symbol || candidate.symbol_name;
+        if (!symbol) {
+          return false;
+        }
+        const normalized = String(symbol).trim();
+        return normalized === match || normalized === key;
+      })
+      .sort((a, b) => {
+        const rankA = Number.isFinite(Number(a.rank)) ? Number(a.rank) : Number.POSITIVE_INFINITY;
+        const rankB = Number.isFinite(Number(b.rank)) ? Number(b.rank) : Number.POSITIVE_INFINITY;
+        return rankA - rankB;
+      });
+    const entry = matches[0] || null;
+    const variant = key === "symbolInstant" || match === "即时" ? "instant" : "ranked";
+    const metrics = entry ? buildIndividualFundFlowMetrics(entry, variant, dict) : [];
+    const heading = (translationKey && dict[translationKey]) || dict[key] || label || match;
+    return { symbol: match, key, label: heading, entry, metrics };
+  });
+
+  const hasAny = sections.some(({ metrics }) => metrics.length > 0);
+  if (!hasAny) {
+    hideIndividualFundFlowCard();
+    return;
+  }
+
+  const content = sections
+    .filter(({ metrics }) => metrics.length > 0)
+    .map(({ label, entry, metrics }) => {
+      const updatedAtRaw = getRecordValue(entry, "updatedAt", "updated_at");
+      const updatedAt = formatDateTime(updatedAtRaw);
+      const updatedLabel = escapeHTML(dict.individualFundFlowUpdatedAt || "Updated");
+      const metricsMarkup = metrics
+        .map(
+          (metric) => `
+            <div class="individual-fund-flow-metric">
+              <span class="individual-fund-flow-metric__label">${escapeHTML(metric.label)}</span>
+              <span class="individual-fund-flow-metric__value">${metric.value}</span>
+            </div>
+          `
+        )
+        .join("");
+
+      return `
+        <div class="individual-fund-flow-row">
+          <div class="individual-fund-flow-row__meta">
+            <span class="individual-fund-flow-row__label">${escapeHTML(label)}</span>
+            <span class="individual-fund-flow-row__update">${updatedLabel}：${updatedAt}</span>
+          </div>
+          <div class="individual-fund-flow-row__metrics">
+            ${metricsMarkup}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  elements.individualFundFlowList.innerHTML = `<div class="individual-fund-flow-horizontal">${content}</div>`;
+  elements.individualFundFlowCard.classList.remove("hidden");
+  detailExtras.individualFundFlow = items;
+}
+
+async function loadIndividualFundFlowData(code) {
+  if (!elements.individualFundFlowCard) {
+    return;
+  }
+  const normalized = normalizeCode(code);
+  if (!normalized) {
+    hideIndividualFundFlowCard();
+    return;
+  }
+  hideIndividualFundFlowCard();
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/fund-flow/individual?limit=100&code=${encodeURIComponent(normalized)}`
+    );
+    if (!response.ok) {
+      hideIndividualFundFlowCard();
+      return;
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    renderIndividualFundFlowCard(items);
+  } catch (error) {
+    console.error("Failed to load individual fund flow data:", error);
+    hideIndividualFundFlowCard();
+  }
+}
+
+function translateDealSide(value) {
+  const raw = (value || "").trim();
+  if (!raw) {
+    return "--";
+  }
+  const dict = translations[currentLang];
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("买")) {
+    return dict.bigDealSideBuy || "Buy";
+  }
+  if (normalized.includes("sell") || normalized.includes("卖")) {
+    return dict.bigDealSideSell || "Sell";
+  }
+  return raw;
+}
+
+function hideBigDealCard() {
+  if (!elements.bigDealCard) {
+    return;
+  }
+  elements.bigDealCard.classList.add("hidden");
+  if (elements.bigDealList) {
+    elements.bigDealList.innerHTML = "";
+  }
+  detailExtras.bigDeals = [];
+}
+
+function renderBigDealCard(items) {
+  if (!elements.bigDealCard || !elements.bigDealList) {
+    return;
+  }
+  if (!items || !items.length) {
+    hideBigDealCard();
+    return;
+  }
+  const dict = translations[currentLang];
+  const subset = items.slice(0, 5);
+  const content = subset
+    .map((item) => {
+      const time = formatDateTime(item.trade_time || item.tradeTime);
+      const side = escapeHTML(translateDealSide(item.trade_side || item.tradeSide));
+      const sideRaw = (item.trade_side || item.tradeSide || "").trim();
+      const price = formatNumber(item.trade_price || item.tradePrice, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const amount = formatCurrency(item.trade_amount || item.tradeAmount, { maximumFractionDigits: 0 });
+      const volume = formatCurrency(item.trade_volume || item.tradeVolume, { maximumFractionDigits: 0 });
+      const changePct = formatPercentFlexible(item.price_change_percent || item.priceChangePercent);
+      const change = formatNumber(item.price_change || item.priceChange, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const codeParts = deriveCodeParts(item.stock_code || item.stockCode);
+      const stockName = escapeHTML(item.stock_name || item.stockName || "--");
+      const codeLink = codeParts.detailCode
+        ? `<a class="link big-deal-row__code" href="stock-detail.html?code=${encodeURIComponent(
+            codeParts.detailCode
+          )}" target="_blank" rel="noopener noreferrer">${escapeHTML(codeParts.displayCode)}</a>`
+        : `<span class="big-deal-row__code">--</span>`;
+      const nameLink = codeParts.detailCode
+        ? `<a class="link big-deal-row__name" href="stock-detail.html?code=${encodeURIComponent(
+            codeParts.detailCode
+          )}" target="_blank" rel="noopener noreferrer">${stockName}</a>`
+        : `<span class="big-deal-row__name">${stockName}</span>`;
+      const changePctContent = wrapSignedValue(item.price_change_percent || item.priceChangePercent, changePct);
+      const changeAmountContent = wrapSignedValue(item.price_change || item.priceChange, change);
+      const rowClass =
+        sideRaw && sideRaw.includes("买")
+          ? "big-deal-row__side--buy"
+          : sideRaw && sideRaw.toLowerCase().includes("sell")
+          ? "big-deal-row__side--sell"
+          : sideRaw && sideRaw.includes("卖")
+          ? "big-deal-row__side--sell"
+          : "";
+
+      return `
+        <div class="big-deal-row">
+          <div class="big-deal-row__meta">
+            <span class="big-deal-row__time">${time}</span>
+            <div class="big-deal-row__identity">
+              ${codeLink}
+              <span class="big-deal-row__separator">·</span>
+              ${nameLink}
+            </div>
+            <span class="big-deal-row__side ${rowClass}">${side}</span>
+          </div>
+          <div class="big-deal-row__metrics">
+            <div class="big-deal-metric">
+              <span class="big-deal-metric__label">${escapeHTML(dict.bigDealColumnPrice || "Price")}</span>
+              <span class="big-deal-metric__value">${price}</span>
+            </div>
+            <div class="big-deal-metric">
+              <span class="big-deal-metric__label">${escapeHTML(dict.bigDealColumnAmount || "Amount")}</span>
+              <span class="big-deal-metric__value">${amount}</span>
+            </div>
+            <div class="big-deal-metric">
+              <span class="big-deal-metric__label">${escapeHTML(dict.bigDealColumnVolume || "Volume")}</span>
+              <span class="big-deal-metric__value">${volume}</span>
+            </div>
+            <div class="big-deal-metric">
+              <span class="big-deal-metric__label">${escapeHTML(dict.bigDealColumnChange || "Change")}</span>
+              <span class="big-deal-metric__value">${changeAmountContent}</span>
+            </div>
+            <div class="big-deal-metric">
+              <span class="big-deal-metric__label">${escapeHTML(
+                dict.bigDealColumnChangePercent || "Change (%)"
+              )}</span>
+              <span class="big-deal-metric__value">${changePctContent}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  elements.bigDealList.innerHTML = `<div class="big-deal-horizontal">${content}</div>`;
+  elements.bigDealCard.classList.remove("hidden");
+  detailExtras.bigDeals = subset;
+}
+
+async function loadBigDealData(code) {
+  if (!elements.bigDealCard) {
+    return;
+  }
+  const normalized = normalizeCode(code);
+  if (!normalized) {
+    hideBigDealCard();
+    return;
+  }
+  hideBigDealCard();
+  try {
+    const response = await fetch(
+      `${API_BASE}/fund-flow/big-deal?limit=5&code=${encodeURIComponent(normalized)}`
+    );
+    if (!response.ok) {
+      hideBigDealCard();
+      return;
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    renderBigDealCard(items);
+  } catch (error) {
+    console.error("Failed to load big deal data:", error);
+    hideBigDealCard();
+  }
+}
+
 async function loadPerformanceData(code) {
   if (!elements.performanceCard) {
     return;
   }
   const dict = translations[currentLang];
-  elements.performanceCard.classList.remove("hidden");
   if (elements.performanceExpressTile) {
     elements.performanceExpressTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
       dict.loading || "Loading..."
     )}</p>`;
     elements.performanceExpressTile.classList.add("performance-tile--empty");
+    elements.performanceExpressTile.classList.remove("hidden");
   }
   if (elements.performanceForecastTile) {
     elements.performanceForecastTile.innerHTML = `<p class="performance-tile__empty">${escapeHTML(
       dict.loading || "Loading..."
     )}</p>`;
     elements.performanceForecastTile.classList.add("performance-tile--empty");
+    elements.performanceForecastTile.classList.remove("hidden");
   }
 
   try {
@@ -1091,8 +1663,8 @@ function renderCandlestickChart() {
     const formatted = formatDate(item.time);
     return formatted === "--" ? item.time : formatted;
   });
-  const upColor = "#16a34a";
-  const downColor = "#dc2626";
+  const upColor = "#3066BE"; // blue for price increases
+  const downColor = "#E07A1F"; // orange for price decreases
   const seriesData = candlestickData.map((item) => [
     item.open,
     item.close,
@@ -1120,7 +1692,74 @@ function renderCandlestickChart() {
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "cross", snap: false },
-        backgroundColor: "rgba(17,23,39,0.9)",
+        backgroundColor: "rgba(248, 250, 252, 0.95)",
+        borderColor: "rgba(148, 163, 184, 0.4)",
+        textStyle: { color: "#0f172a" },
+        extraCssText: "box-shadow:0 12px 32px rgba(15,23,42,0.18); border-radius:12px; padding:12px 16px;",
+        formatter: (params) => {
+          if (!Array.isArray(params) || !params.length) {
+            return "";
+          }
+          const [candlestickPoint] = params;
+          const index = candlestickPoint?.dataIndex ?? 0;
+          const source = candlestickData[index];
+          const open = source?.open ?? candlestickPoint?.data?.[0];
+          const close = source?.close ?? candlestickPoint?.data?.[1];
+          const low = source?.low ?? candlestickPoint?.data?.[2];
+          const high = source?.high ?? candlestickPoint?.data?.[3];
+          let pctText = '<span class="tooltip-row__value">--</span>';
+          if (typeof open === "number" && typeof close === "number" && open) {
+            const pct = ((close - open) / open) * 100;
+            if (Number.isFinite(pct)) {
+              const pctDisplay = `${pct > 0 ? "+" : ""}${pct.toFixed(2)}%`;
+              pctText =
+                pct > 0
+                  ? `<span class="tooltip-row__value tooltip-row__value--up">${pctDisplay}</span>`
+                  : pct < 0
+                  ? `<span class="tooltip-row__value tooltip-row__value--down">${pctDisplay}</span>`
+                  : `<span class="tooltip-row__value">${pctDisplay}</span>`;
+            }
+          }
+          const header = `<div class="tooltip-title">${candlestickPoint?.axisValueLabel ?? ""}</div>`;
+          const lines = [
+            {
+              label: dict.labelOpen ?? "Open",
+              value: escapeHTML(
+                formatNumber(open, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              ),
+            },
+            {
+              label: dict.labelClose ?? "Close",
+              value: escapeHTML(
+                formatNumber(close, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              ),
+            },
+            {
+              label: dict.labelLow ?? "Low",
+              value: escapeHTML(
+                formatNumber(low, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              ),
+            },
+            {
+              label: dict.labelHigh ?? "High",
+              value: escapeHTML(
+                formatNumber(high, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              ),
+            },
+            { label: dict.labelChange ?? "Change", value: pctText, isHtml: true },
+          ];
+          const rows = lines
+            .map(
+              ({ label, value, isHtml }) => `
+                <div class="tooltip-row">
+                  <span class="tooltip-row__label">${escapeHTML(label)}</span>
+                  ${isHtml ? value : `<span class="tooltip-row__value">${value}</span>`}
+                </div>
+              `
+            )
+            .join("");
+          return `<div class="tooltip-card">${header}${rows}</div>`;
+        },
       },
       grid: [
         { left: 40, right: 16, top: 16, height: "56%" },
@@ -1191,8 +1830,8 @@ function renderCandlestickChart() {
           itemStyle: {
             color: upColor,
             color0: downColor,
-            borderColor: upColor,
-            borderColor0: downColor,
+          borderColor: upColor,
+          borderColor0: downColor,
           },
         },
         {
@@ -1345,16 +1984,41 @@ function renderDetail(detail) {
     {
       label: dict.labelRoe,
       value: formatPercentFlexible(detail.financialData.roe),
+      highlightTrend: true,
     },
   ]);
 
   renderList(elements.statsList, [
-    { label: dict.labelPct1Y, value: formatPercent(detail.tradingStats.pctChange1Y, { fromRatio: true }) },
-    { label: dict.labelPct6M, value: formatPercent(detail.tradingStats.pctChange6M, { fromRatio: true }) },
-    { label: dict.labelPct3M, value: formatPercent(detail.tradingStats.pctChange3M, { fromRatio: true }) },
-    { label: dict.labelPct1M, value: formatPercent(detail.tradingStats.pctChange1M, { fromRatio: true }) },
-    { label: dict.labelPct2W, value: formatPercent(detail.tradingStats.pctChange2W, { fromRatio: true }) },
-    { label: dict.labelPct1W, value: formatPercent(detail.tradingStats.pctChange1W, { fromRatio: true }) },
+    {
+      label: dict.labelPct1Y,
+      value: formatPercent(detail.tradingStats.pctChange1Y, { fromRatio: true }),
+      highlightTrend: true,
+    },
+    {
+      label: dict.labelPct6M,
+      value: formatPercent(detail.tradingStats.pctChange6M, { fromRatio: true }),
+      highlightTrend: true,
+    },
+    {
+      label: dict.labelPct3M,
+      value: formatPercent(detail.tradingStats.pctChange3M, { fromRatio: true }),
+      highlightTrend: true,
+    },
+    {
+      label: dict.labelPct1M,
+      value: formatPercent(detail.tradingStats.pctChange1M, { fromRatio: true }),
+      highlightTrend: true,
+    },
+    {
+      label: dict.labelPct2W,
+      value: formatPercent(detail.tradingStats.pctChange2W, { fromRatio: true }),
+      highlightTrend: true,
+    },
+    {
+      label: dict.labelPct1W,
+      value: formatPercent(detail.tradingStats.pctChange1W, { fromRatio: true }),
+      highlightTrend: true,
+    },
     {
       label: dict.labelVolumeSpike,
       value: formatNumber(detail.tradingStats.volumeSpike, {
@@ -1393,34 +2057,42 @@ function renderDetail(detail) {
     {
       label: dict.labelNetIncomeYoyLatest,
       value: formatPercent(detail.financialStats.netIncomeYoyLatest, { fromRatio: true }),
+      highlightTrend: true,
     },
     {
       label: dict.labelNetIncomeYoyPrev1,
       value: formatPercent(detail.financialStats.netIncomeYoyPrev1, { fromRatio: true }),
+      highlightTrend: true,
     },
     {
       label: dict.labelNetIncomeYoyPrev2,
       value: formatPercent(detail.financialStats.netIncomeYoyPrev2, { fromRatio: true }),
+      highlightTrend: true,
     },
     {
       label: dict.labelNetIncomeQoqLatest,
       value: formatPercent(detail.financialStats.netIncomeQoqLatest, { fromRatio: true }),
+      highlightTrend: true,
     },
     {
       label: dict.labelRevenueYoyLatest,
       value: formatPercent(detail.financialStats.revenueYoyLatest, { fromRatio: true }),
+      highlightTrend: true,
     },
     {
       label: dict.labelRevenueQoqLatest,
       value: formatPercent(detail.financialStats.revenueQoqLatest, { fromRatio: true }),
+      highlightTrend: true,
     },
     {
       label: dict.labelRoeYoyLatest,
       value: formatPercent(detail.financialStats.roeYoyLatest, { fromRatio: true }),
+      highlightTrend: true,
     },
     {
       label: dict.labelRoeQoqLatest,
       value: formatPercent(detail.financialStats.roeQoqLatest, { fromRatio: true }),
+      highlightTrend: true,
     },
   ]);
 
@@ -1440,6 +2112,8 @@ function setStatus(messageKey, isError = false) {
   if (elements.performanceCard) {
     elements.performanceCard.classList.add("hidden");
   }
+  hideIndividualFundFlowCard();
+  hideBigDealCard();
   performanceData = { express: null, forecast: null };
   favoriteState.code = null;
   favoriteState.group = null;
@@ -1486,7 +2160,10 @@ async function fetchDetail(code) {
     const data = await response.json();
     performanceData = { express: null, forecast: null };
     renderDetail(data);
-    loadPerformanceData(data.profile.code);
+    const normalizedCode = data?.profile?.code || code;
+    loadPerformanceData(normalizedCode);
+    loadIndividualFundFlowData(normalizedCode);
+    loadBigDealData(normalizedCode);
     showDetail();
   } catch (error) {
     console.error("Failed to load stock detail:", error);
@@ -1509,6 +2186,8 @@ function handleLanguageSwitch(lang) {
     showDetail();
   }
   renderPerformanceHighlights(performanceData);
+  renderIndividualFundFlowCard(detailExtras.individualFundFlow);
+  renderBigDealCard(detailExtras.bigDeals);
   renderCandlestickChart();
 }
 

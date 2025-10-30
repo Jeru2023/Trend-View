@@ -31,6 +31,8 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-29 (REQUIREMENT backend-011/frontend-010): Track and display Tushare业绩快报与业绩预告数据；新增同步流程、控制面板卡片，以及Market菜单下的列表入口。
 - 2025-10-30 (REQUIREMENT backend-012): Migrated performance express sync from Tushare to AkShare `stock_yjkb_em` and rebuilt the persistence table schema to match the new dataset.
 - 2025-10-30 (REQUIREMENT backend-013): Migrated performance forecast sync from Tushare to AkShare `stock_yjyg_em` with a redesigned schema aligned to the new data shape.
+- 2025-10-30 (FEATURE backend/frontend-019): Added industry fund flow ingestion via AkShare `stock_fund_flow_industry`, new fund-flow control card, and front-end industry fund flow dashboard with ranking filters.
+- 2025-10-30 (FEATURE backend/frontend-020): Added concept fund flow ingestion via AkShare `stock_fund_flow_concept`, extended control panel fund-flow group, and delivered concept fund flow dashboard with ranking tabs.
 - 2025-10-30 (UPDATE frontend/backend-018): Reworked performance express & forecast pages plus stock detail highlights for the AkShare schemas (card layout restored, table columns realigned, links to stock detail, single-column tiles, and full-text change reasons with compact empty states).
 - 2025-10-20 (FEATURE backend-001): Added Tushare API client, DAO layer, and service to fetch and upsert A-share stock basics into PostgreSQL using configuration-driven credentials.
 - 2025-10-20 (FEATURE backend-002): Added daily trade ingestion pipeline covering API client helper, reusable DAO for daily trade data, batching service with duration reporting, and schema template for `daily_trade`.

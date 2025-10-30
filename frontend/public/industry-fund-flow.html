@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View - Industry Fund Flow</title>
+    <link rel="stylesheet" href="styles.css?v=20251117" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="industry-fund-flow">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="pageTitle">Industry Fund Flow</h1>
+            <p class="page-subtitle" data-i18n="pageSubtitle">
+              Monitor sector capital flows using Tonghuashun rankings.
+            </p>
+          </div>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <div class="tab-bar" role="tablist" aria-label="Ranking filter">
+            <button class="tab-btn tab-btn--active" role="tab" aria-selected="true" data-symbol="即时" data-i18n="symbolInstant">
+              Intraday
+            </button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-symbol="3日排行" data-i18n="symbol3Day">
+              3-Day
+            </button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-symbol="5日排行" data-i18n="symbol5Day">
+              5-Day
+            </button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-symbol="10日排行" data-i18n="symbol10Day">
+              10-Day
+            </button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-symbol="20日排行" data-i18n="symbol20Day">
+              20-Day
+            </button>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="data-table forecast-table industry-fund-flow-table">
+              <thead>
+                <tr>
+                  <th data-i18n="colIndustry">Industry</th>
+                  <th data-i18n="colPerformance">Performance</th>
+                  <th data-i18n="colFundFlow">Fund Flow</th>
+                  <th data-i18n="colLeaders">Leaders</th>
+                </tr>
+              </thead>
+              <tbody
+                id="fund-flow-tbody"
+                data-empty-en="No industry fund flow records."
+                data-empty-zh="暂无行业资金流数据。"
+              >
+                <!-- rows populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pagination">
+            <button class="secondary-btn" id="fund-flow-prev" data-i18n="paginationPrev">Previous</button>
+            <span class="pagination__info" id="fund-flow-page-info">--</span>
+            <button class="secondary-btn" id="fund-flow-next" data-i18n="paginationNext">Next</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20251109"></script>
+    <script src="sidebar.js?v=20251118"></script>
+    <script type="module" src="industry-fund-flow.js?v=20251118"></script>
+  </body>
+</html>

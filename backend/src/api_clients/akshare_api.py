@@ -56,6 +56,36 @@ PERFORMANCE_FORECAST_COLUMN_MAP: Final[dict[str, str]] = {
     "公告日期": "announcement_date",
 }
 
+INDUSTRY_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "rank",
+    "行业": "industry",
+    "行业指数": "industry_index",
+    "行业-涨跌幅": "price_change_percent",
+    "阶段涨跌幅": "stage_change_percent",
+    "流入资金": "inflow",
+    "流出资金": "outflow",
+    "净额": "net_amount",
+    "公司家数": "company_count",
+    "领涨股": "leading_stock",
+    "领涨股-涨跌幅": "leading_stock_change_percent",
+    "当前价": "current_price",
+}
+
+CONCEPT_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "rank",
+    "行业": "concept",
+    "行业指数": "concept_index",
+    "行业-涨跌幅": "price_change_percent",
+    "阶段涨跌幅": "stage_change_percent",
+    "流入资金": "inflow",
+    "流出资金": "outflow",
+    "净额": "net_amount",
+    "公司家数": "company_count",
+    "领涨股": "leading_stock",
+    "领涨股-涨跌幅": "leading_stock_change_percent",
+    "当前价": "current_price",
+}
+
 _FINANCE_BREAKFAST_TIMEOUT_SECONDS: Final[float] = 12.0
 
 
@@ -221,11 +251,69 @@ def fetch_performance_forecast_em(period: str) -> pd.DataFrame:
     return renamed.loc[:, list(PERFORMANCE_FORECAST_COLUMN_MAP.values())]
 
 
+def _empty_industry_fund_flow_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(INDUSTRY_FUND_FLOW_COLUMN_MAP.values()))
+
+
+def fetch_industry_fund_flow(symbol: str) -> pd.DataFrame:
+    """Fetch industry fund flow snapshot for the specified ranking symbol."""
+    if not symbol or not str(symbol).strip():
+        raise ValueError("symbol is required for industry fund flow fetch.")
+
+    try:
+        dataframe = ak.stock_fund_flow_industry(symbol=str(symbol))
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch industry fund flow data via AkShare: %s", exc)
+        return _empty_industry_fund_flow_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no industry fund flow data for %s", symbol)
+        return _empty_industry_fund_flow_frame()
+
+    renamed = dataframe.rename(columns=INDUSTRY_FUND_FLOW_COLUMN_MAP)
+    for column in INDUSTRY_FUND_FLOW_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(INDUSTRY_FUND_FLOW_COLUMN_MAP.values())]
+
+
+def _empty_concept_fund_flow_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(CONCEPT_FUND_FLOW_COLUMN_MAP.values()))
+
+
+def fetch_concept_fund_flow(symbol: str) -> pd.DataFrame:
+    """Fetch concept fund flow snapshot for the specified ranking symbol."""
+    if not symbol or not str(symbol).strip():
+        raise ValueError("symbol is required for concept fund flow fetch.")
+
+    try:
+        dataframe = ak.stock_fund_flow_concept(symbol=str(symbol))
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch concept fund flow data via AkShare: %s", exc)
+        return _empty_concept_fund_flow_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no concept fund flow data for %s", symbol)
+        return _empty_concept_fund_flow_frame()
+
+    renamed = dataframe.rename(columns=CONCEPT_FUND_FLOW_COLUMN_MAP)
+    for column in CONCEPT_FUND_FLOW_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(CONCEPT_FUND_FLOW_COLUMN_MAP.values())]
+
+
 __all__ = [
     "FINANCE_BREAKFAST_COLUMNS",
     "PERFORMANCE_EXPRESS_COLUMN_MAP",
     "PERFORMANCE_FORECAST_COLUMN_MAP",
+    "INDUSTRY_FUND_FLOW_COLUMN_MAP",
+    "CONCEPT_FUND_FLOW_COLUMN_MAP",
     "fetch_finance_breakfast",
     "fetch_performance_express_em",
     "fetch_performance_forecast_em",
+    "fetch_industry_fund_flow",
+    "fetch_concept_fund_flow",
 ]

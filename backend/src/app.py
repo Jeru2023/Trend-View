@@ -30,6 +30,8 @@ from .dao import (
     FundamentalMetricsDAO,
     PerformanceExpressDAO,
     PerformanceForecastDAO,
+    IndustryFundFlowDAO,
+    ConceptFundFlowDAO,
     StockBasicDAO,
 )
 from .services import (
@@ -42,6 +44,8 @@ from .services import (
     list_fundamental_metrics,
     list_performance_express,
     list_performance_forecast,
+    list_industry_fund_flow,
+    list_concept_fund_flow,
     set_favorite_state,
     sync_daily_indicator,
     sync_financial_indicators,
@@ -52,6 +56,8 @@ from .services import (
     sync_fundamental_metrics,
     sync_performance_express,
     sync_performance_forecast,
+    sync_industry_fund_flow,
+    sync_concept_fund_flow,
     sync_stock_basic,
 )
 from .state import monitor
@@ -530,6 +536,46 @@ class SyncPerformanceForecastResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncIndustryFundFlowRequest(BaseModel):
+    symbols: Optional[List[str]] = Field(
+        None,
+        description="Optional list of ranking symbols (e.g. 即时, 3日排行).",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncIndustryFundFlowResponse(BaseModel):
+    rows: int
+    symbols: List[str]
+    symbol_count: int = Field(..., alias="symbolCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncConceptFundFlowRequest(BaseModel):
+    symbols: Optional[List[str]] = Field(
+        None,
+        description="Optional list of ranking symbols (e.g. 即时, 3日排行).",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncConceptFundFlowResponse(BaseModel):
+    rows: int
+    symbols: List[str]
+    symbol_count: int = Field(..., alias="symbolCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class PerformanceExpressRecord(BaseModel):
     symbol: str
     ts_code: Optional[str] = Field(None, alias="tsCode")
@@ -602,6 +648,56 @@ class PerformanceForecastRecord(BaseModel):
 class PerformanceForecastListResponse(BaseModel):
     total: int
     items: List[PerformanceForecastRecord]
+
+
+class IndustryFundFlowRecord(BaseModel):
+    symbol: str
+    industry: str
+    rank: Optional[int] = None
+    industry_index: Optional[float] = Field(None, alias="industryIndex")
+    price_change_percent: Optional[float] = Field(None, alias="priceChangePercent")
+    stage_change_percent: Optional[float] = Field(None, alias="stageChangePercent")
+    inflow: Optional[float] = None
+    outflow: Optional[float] = None
+    net_amount: Optional[float] = Field(None, alias="netAmount")
+    company_count: Optional[int] = Field(None, alias="companyCount")
+    leading_stock: Optional[str] = Field(None, alias="leadingStock")
+    leading_stock_change_percent: Optional[float] = Field(None, alias="leadingStockChangePercent")
+    current_price: Optional[float] = Field(None, alias="currentPrice")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryFundFlowListResponse(BaseModel):
+    total: int
+    items: List[IndustryFundFlowRecord]
+
+
+class ConceptFundFlowRecord(BaseModel):
+    symbol: str
+    concept: str
+    rank: Optional[int] = None
+    concept_index: Optional[float] = Field(None, alias="conceptIndex")
+    price_change_percent: Optional[float] = Field(None, alias="priceChangePercent")
+    stage_change_percent: Optional[float] = Field(None, alias="stageChangePercent")
+    inflow: Optional[float] = None
+    outflow: Optional[float] = None
+    net_amount: Optional[float] = Field(None, alias="netAmount")
+    company_count: Optional[int] = Field(None, alias="companyCount")
+    leading_stock: Optional[str] = Field(None, alias="leadingStock")
+    leading_stock_change_percent: Optional[float] = Field(None, alias="leadingStockChangePercent")
+    current_price: Optional[float] = Field(None, alias="currentPrice")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptFundFlowListResponse(BaseModel):
+    total: int
+    items: List[ConceptFundFlowRecord]
 
 
 class SyncFinanceBreakfastResponse(BaseModel):
@@ -1244,9 +1340,105 @@ async def _run_performance_forecast_job(request: SyncPerformanceForecastRequest)
     await loop.run_in_executor(None, job)
 
 
+async def _run_industry_fund_flow_job(request: SyncIndustryFundFlowRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "industry_fund_flow",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("industry_fund_flow", message="Collecting industry fund flow data")
+        try:
+            result = sync_industry_fund_flow(
+                symbols=request.symbols,
+                progress_callback=progress_callback,
+            )
+            stats = IndustryFundFlowDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            message_text = f"Synced {result.get('rows', 0)} industry fund flow rows"
+            monitor.finish(
+                "industry_fund_flow",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "industry_fund_flow",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_concept_fund_flow_job(request: SyncConceptFundFlowRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "concept_fund_flow",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("concept_fund_flow", message="Collecting concept fund flow data")
+        try:
+            result = sync_concept_fund_flow(
+                symbols=request.symbols,
+                progress_callback=progress_callback,
+            )
+            stats = ConceptFundFlowDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            message_text = f"Synced {result.get('rows', 0)} concept fund flow rows"
+            monitor.finish(
+                "concept_fund_flow",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "concept_fund_flow",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 
 def _job_running(job: str) -> bool:
-    return monitor.snapshot()[job]["status"] == "running"
+    snapshot = monitor.snapshot()
+    job_state = snapshot.get(job)
+    if not job_state:
+        return False
+    return job_state.get("status") == "running"
 
 
 async def start_stock_basic_job(payload: SyncStockBasicRequest) -> None:
@@ -1321,6 +1513,22 @@ async def start_performance_forecast_job(payload: SyncPerformanceForecastRequest
     monitor.start("performance_forecast", message="Syncing performance forecast data")
     monitor.update("performance_forecast", progress=0.0)
     asyncio.create_task(_run_performance_forecast_job(payload))
+
+
+async def start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
+    if _job_running("industry_fund_flow"):
+        raise HTTPException(status_code=409, detail="Industry fund flow sync already running")
+    monitor.start("industry_fund_flow", message="Syncing industry fund flow data")
+    monitor.update("industry_fund_flow", progress=0.0)
+    asyncio.create_task(_run_industry_fund_flow_job(payload))
+
+
+async def start_concept_fund_flow_job(payload: SyncConceptFundFlowRequest) -> None:
+    if _job_running("concept_fund_flow"):
+        raise HTTPException(status_code=409, detail="Concept fund flow sync already running")
+    monitor.start("concept_fund_flow", message="Syncing concept fund flow data")
+    monitor.update("concept_fund_flow", progress=0.0)
+    asyncio.create_task(_run_concept_fund_flow_job(payload))
 
 
 async def start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> None:
@@ -1401,6 +1609,20 @@ async def safe_start_performance_forecast_job(payload: SyncPerformanceForecastRe
         logger.info("Performance forecast sync skipped: %s", exc.detail)
 
 
+async def safe_start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
+    try:
+        await start_industry_fund_flow_job(payload)
+    except HTTPException as exc:
+        logger.info("Industry fund flow sync skipped: %s", exc.detail)
+
+
+async def safe_start_concept_fund_flow_job(payload: SyncConceptFundFlowRequest) -> None:
+    try:
+        await start_concept_fund_flow_job(payload)
+    except HTTPException as exc:
+        logger.info("Concept fund flow sync skipped: %s", exc.detail)
+
+
 
 @app.on_event("startup")
 async def startup_event() -> None:
@@ -1456,6 +1678,22 @@ async def startup_event() -> None:
         )
 
 
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_industry_fund_flow_job(SyncIndustryFundFlowRequest())
+            ),
+            CronTrigger(hour=19, minute=25),
+            id="industry_fund_flow_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_concept_fund_flow_job(SyncConceptFundFlowRequest())
+            ),
+            CronTrigger(hour=19, minute=30),
+            id="concept_fund_flow_daily",
+            replace_existing=True,
+        )
         scheduler.add_job(
             lambda: asyncio.get_running_loop().create_task(
                 safe_start_performance_express_job(SyncPerformanceExpressRequest())
@@ -1975,6 +2213,70 @@ def list_performance_forecast_entries(
     return PerformanceForecastListResponse(total=int(result.get("total", 0)), items=items)
 
 
+@app.get("/fund-flow/industry", response_model=IndustryFundFlowListResponse)
+def list_industry_fund_flow_entries(
+    symbol: Optional[str] = Query(
+        None,
+        description="Optional ranking symbol filter (例如: 即时, 3日排行).",
+    ),
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> IndustryFundFlowListResponse:
+    result = list_industry_fund_flow(symbol=symbol, limit=limit, offset=offset)
+    items = [
+        IndustryFundFlowRecord(
+            symbol=entry.get("symbol"),
+            industry=entry.get("industry"),
+            rank=entry.get("rank"),
+            industry_index=entry.get("industry_index"),
+            price_change_percent=entry.get("price_change_percent"),
+            stage_change_percent=entry.get("stage_change_percent"),
+            inflow=entry.get("inflow"),
+            outflow=entry.get("outflow"),
+            net_amount=entry.get("net_amount"),
+            company_count=entry.get("company_count"),
+            leading_stock=entry.get("leading_stock"),
+            leading_stock_change_percent=entry.get("leading_stock_change_percent"),
+            current_price=entry.get("current_price"),
+            updated_at=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return IndustryFundFlowListResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.get("/fund-flow/concept", response_model=ConceptFundFlowListResponse)
+def list_concept_fund_flow_entries(
+    symbol: Optional[str] = Query(
+        None,
+        description="Optional ranking symbol filter (例如: 即时, 3日排行).",
+    ),
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> ConceptFundFlowListResponse:
+    result = list_concept_fund_flow(symbol=symbol, limit=limit, offset=offset)
+    items = [
+        ConceptFundFlowRecord(
+            symbol=entry.get("symbol"),
+            concept=entry.get("concept"),
+            rank=entry.get("rank"),
+            concept_index=entry.get("concept_index"),
+            price_change_percent=entry.get("price_change_percent"),
+            stage_change_percent=entry.get("stage_change_percent"),
+            inflow=entry.get("inflow"),
+            outflow=entry.get("outflow"),
+            net_amount=entry.get("net_amount"),
+            company_count=entry.get("company_count"),
+            leading_stock=entry.get("leading_stock"),
+            leading_stock_change_percent=entry.get("leading_stock_change_percent"),
+            current_price=entry.get("current_price"),
+            updated_at=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return ConceptFundFlowListResponse(total=int(result.get("total", 0)), items=items)
+
+
 @app.get("/finance-breakfast", response_model=List[FinanceBreakfastItem])
 async def list_finance_breakfast_entries(
     limit: int = Query(50, ge=1, le=200, description="Maximum number of entries to return."),
@@ -2057,6 +2359,16 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect performance_forecast stats: %s", exc)
         stats_map["performance_forecast"] = {}
+    try:
+        stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
+        stats_map["industry_fund_flow"] = {}
+    try:
+        stats_map["concept_fund_flow"] = ConceptFundFlowDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect concept_fund_flow stats: %s", exc)
+        stats_map["concept_fund_flow"] = {}
     try:
         stats_map["finance_breakfast"] = FinanceBreakfastDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -2156,13 +2468,25 @@ async def control_sync_financial_indicators(payload: SyncFinancialIndicatorReque
 @app.post("/control/sync/performance-express")
 async def control_sync_performance_express(payload: SyncPerformanceExpressRequest) -> dict[str, str]:
     await start_performance_express_job(payload)
-    return {"status": "accepted"}
+    return {"status": "started"}
 
 
 @app.post("/control/sync/performance-forecast")
 async def control_sync_performance_forecast(payload: SyncPerformanceForecastRequest) -> dict[str, str]:
     await start_performance_forecast_job(payload)
-    return {"status": "accepted"}
+    return {"status": "started"}
+
+
+@app.post("/control/sync/industry-fund-flow")
+async def control_sync_industry_fund_flow(payload: SyncIndustryFundFlowRequest) -> dict[str, str]:
+    await start_industry_fund_flow_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/concept-fund-flow")
+async def control_sync_concept_fund_flow(payload: SyncConceptFundFlowRequest) -> dict[str, str]:
+    await start_concept_fund_flow_job(payload)
+    return {"status": "started"}
 
 
 @app.post("/control/sync/finance-breakfast")
