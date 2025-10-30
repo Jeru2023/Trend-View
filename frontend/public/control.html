@@ -49,7 +49,7 @@
 
           <div class="control-group">
             <header class="control-group__header">
-              <h3 data-i18n="tradeGroupTitle">Trading Data</h3>
+              <h3 data-i18n="baseDataGroupTitle">Base Data Jobs</h3>
             </header>
             <div class="control-grid">
               <div class="card" id="stock-basic-card">
@@ -91,7 +91,92 @@
                 </div>
                 <p class="job-message" id="stock-basic-message"></p>
               </div>
+              <div class="card" id="stock-main-business-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="stockMainBusinessTitle">Main Business Overview</h3>
+                    <p class="card__subtitle" data-i18n="stockMainBusinessSubtitle">
+                      Pull Tonghuashun主营介绍 (stock_zyjs_ths) for listed stocks and keep descriptions current.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-stock-main-business" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="stock-main-business-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="stock-main-business-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="stock-main-business-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="stock-main-business-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="stock-main-business-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="stock-main-business-message"></p>
+              </div>
+              <div class="card" id="stock-main-composition-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="stockMainCompositionTitle">Main Composition</h3>
+                    <p class="card__subtitle" data-i18n="stockMainCompositionSubtitle">
+                      Fetch Eastmoney 主营构成 (stock_zygc_em) to track revenue mix by product and region.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-stock-main-composition" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="stock-main-composition-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="stock-main-composition-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="stock-main-composition-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="stock-main-composition-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="stock-main-composition-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="stock-main-composition-message"></p>
+              </div>
+            </div>
+          </div>
 
+          <div class="control-group">
+            <header class="control-group__header">
+              <h3 data-i18n="tradeGroupTitle">Trading Data</h3>
+            </header>
+            <div class="control-grid">
               <div class="card" id="daily-trade-card">
                 <div class="card__header">
                   <div>
@@ -505,11 +590,91 @@
               </div>
               <p class="job-message" id="concept-fund-flow-message"></p>
             </div>
+
+            <div class="card" id="individual-fund-flow-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="individualFundFlowTitle">Individual Fund Flow</h3>
+                  <p class="card__subtitle" data-i18n="individualFundFlowSubtitle">
+                    Fetch Tonghuashun individual stock fund flow rankings across intraday and multi-day windows.
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-individual-fund-flow" data-i18n="runNow">
+                  Run Now
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="individual-fund-flow-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="lastStatus">Status</span>
+                    <strong id="individual-fund-flow-status">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="records">Records</span>
+                    <strong id="individual-fund-flow-rows">&mdash;</strong>
+                  </div>
+            </div>
+            <div class="job-meta__row">
+              <div class="job-meta__item">
+                <span data-i18n="dataUpdated">Data Updated</span>
+                <strong id="individual-fund-flow-updated">&mdash;</strong>
+              </div>
+              <div class="job-meta__item">
+                <span data-i18n="lastDuration">Last Duration</span>
+                <strong id="individual-fund-flow-duration">&mdash;</strong>
+              </div>
+            </div>
           </div>
+          <p class="job-message" id="individual-fund-flow-message"></p>
         </div>
 
-        <div class="control-group">
-          <header class="control-group__header">
+        <div class="card" id="big-deal-fund-flow-card">
+          <div class="card__header">
+            <div>
+              <h3 data-i18n="bigDealFundFlowTitle">Big Deal Tracking</h3>
+              <p class="card__subtitle" data-i18n="bigDealFundFlowSubtitle">
+                Fetch Tonghuashun large order transactions (大单追踪) for intraday monitoring.
+              </p>
+            </div>
+            <button class="primary-btn" id="run-big-deal-fund-flow" data-i18n="runNow">
+              Run Now
+            </button>
+          </div>
+          <div class="progress" aria-hidden="true">
+            <div class="progress__bar" id="big-deal-fund-flow-progress"></div>
+          </div>
+          <div class="job-meta">
+            <div class="job-meta__row">
+              <div class="job-meta__item">
+                <span data-i18n="lastStatus">Status</span>
+                <strong id="big-deal-fund-flow-status">&mdash;</strong>
+              </div>
+              <div class="job-meta__item">
+                <span data-i18n="records">Records</span>
+                <strong id="big-deal-fund-flow-rows">&mdash;</strong>
+              </div>
+            </div>
+            <div class="job-meta__row">
+              <div class="job-meta__item">
+                <span data-i18n="dataUpdated">Data Updated</span>
+                <strong id="big-deal-fund-flow-updated">&mdash;</strong>
+              </div>
+              <div class="job-meta__item">
+                <span data-i18n="lastDuration">Last Duration</span>
+                <strong id="big-deal-fund-flow-duration">&mdash;</strong>
+              </div>
+            </div>
+          </div>
+          <p class="job-message" id="big-deal-fund-flow-message"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <header class="control-group__header">
             <h3 data-i18n="newsGroupTitle">News & Insights</h3>
           </header>
             <div class="control-grid">
@@ -560,12 +725,7 @@
     </div>
 
     <script src="i18n.js?v=20251109"></script>
-    <script src="sidebar.js?v=20251118"></script>
-    <script src="control.js?v=20251118"></script>
+    <script src="sidebar.js?v=20251119"></script>
+    <script src="control.js?v=20251119"></script>
   </body>
 </html>
-
-
-
-
-

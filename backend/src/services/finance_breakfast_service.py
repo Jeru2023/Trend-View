@@ -689,15 +689,15 @@ def _refresh_content_for_entries(
     consecutive_failures = 0
     skipping_due_to_failures = False
 
-    def _persist_content(value: str) -> bool:
+    def _persist_content(title_value: str, published_at_dt: datetime, value: str, display_value: object) -> bool:
         try:
-            dao.update_content([(str(title), published_at, value)])
+            dao.update_content([(title_value, published_at_dt, value)])
         except Exception as exc:  # pragma: no cover - defensive
             logger.error(
                 "Failed to persist finance breakfast content [%s]: title=%s published_at=%s error=%s",
                 logger_prefix,
-                title,
-                published_at,
+                title_value,
+                display_value,
                 exc,
             )
             return False
@@ -705,27 +705,31 @@ def _refresh_content_for_entries(
             logger.info(
                 "Finance breakfast content stored [%s]: title=%s published_at=%s content_len=%s",
                 logger_prefix,
-                title,
-                published_at,
+                title_value,
+                display_value,
                 len(value) if value else 0,
             )
             return True
 
     for entry in entries:
         title = entry.get("title")
-        published_at = entry.get("published_at")
+        published_at_raw = entry.get("published_at")
         url = entry.get("url")
-        if not title or not published_at or not url:
+        published_at_dt = _coerce_datetime(published_at_raw)
+        published_at_display = published_at_raw if published_at_raw is not None else published_at_dt
+        published_at_key = published_at_dt.date() if published_at_dt is not None else None
+
+        if not title or published_at_key is None or not url:
             logger.warning(
                 "Finance breakfast entry missing required fields [%s]: title=%s published_at=%s url=%s",
                 logger_prefix,
                 title,
-                published_at,
+                published_at_display,
                 url,
             )
-            if title and published_at:
-                if _persist_content(EMPTY_CONTENT_SENTINEL):
-                    content_map[(str(title), published_at)] = EMPTY_CONTENT_SENTINEL
+            if title and published_at_key is not None:
+                if _persist_content(str(title), published_at_key, EMPTY_CONTENT_SENTINEL, published_at_display):
+                    content_map[(str(title), published_at_key)] = EMPTY_CONTENT_SENTINEL
             consecutive_failures += 1
             if consecutive_failures >= failure_limit:
                 skipping_due_to_failures = True
@@ -734,7 +738,7 @@ def _refresh_content_for_entries(
             "Finance breakfast content fetch [%s]: title=%s published_at=%s url=%s",
             logger_prefix,
             title,
-            published_at,
+            published_at_display,
             url,
         )
         if skipping_due_to_failures:
@@ -742,10 +746,10 @@ def _refresh_content_for_entries(
                 "Skipping content fetch due to consecutive failures [%s]: title=%s published_at=%s",
                 logger_prefix,
                 title,
-                published_at,
+                published_at_display,
             )
-            if _persist_content(EMPTY_CONTENT_SENTINEL):
-                content_map[(str(title), published_at)] = EMPTY_CONTENT_SENTINEL
+            if _persist_content(str(title), published_at_key, EMPTY_CONTENT_SENTINEL, published_at_display):
+                content_map[(str(title), published_at_key)] = EMPTY_CONTENT_SENTINEL
             continue
 
         attempt = 0
@@ -771,7 +775,7 @@ def _refresh_content_for_entries(
                     logger_prefix,
                     attempt,
                     title,
-                    published_at,
+                    published_at_display,
                 )
                 time.sleep(min(1.5 * attempt, 4.0))
                 continue
@@ -779,14 +783,14 @@ def _refresh_content_for_entries(
         if not content:
             consecutive_failures += 1
             logger.warning(
-                "Finance breakfast content unavailable after retries [%s]: title=%s published_at=%s (failure streak=%s)",
-                logger_prefix,
-                title,
-                published_at,
-                consecutive_failures,
-            )
-            if _persist_content(EMPTY_CONTENT_SENTINEL):
-                content_map[(str(title), published_at)] = EMPTY_CONTENT_SENTINEL
+                    "Finance breakfast content unavailable after retries [%s]: title=%s published_at=%s (failure streak=%s)",
+                    logger_prefix,
+                    title,
+                    published_at_display,
+                    consecutive_failures,
+                )
+            if _persist_content(str(title), published_at_key, EMPTY_CONTENT_SENTINEL, published_at_display):
+                content_map[(str(title), published_at_key)] = EMPTY_CONTENT_SENTINEL
             if consecutive_failures >= failure_limit:
                 logger.warning(
                     "Consecutive finance breakfast content failures reached %s; remaining entries will be marked as %s.",
@@ -797,9 +801,9 @@ def _refresh_content_for_entries(
             continue
 
         consecutive_failures = 0
-        updates.append((str(title), published_at, content))
-        content_map[(str(title), published_at)] = content
-        if _persist_content(content):
+        updates.append((str(title), published_at_key, content))
+        content_map[(str(title), published_at_key)] = content
+        if _persist_content(str(title), published_at_key, content, published_at_display):
             continue
         # Persist failure; keep entry for retry
         missing_entries.append(entry)

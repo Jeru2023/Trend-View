@@ -22,6 +22,8 @@ from ..dao import (
     FavoriteStockDAO,
     StockBasicDAO,
 )
+from .stock_main_business_service import get_stock_main_business
+from .stock_main_composition_service import get_stock_main_composition
 
 logger = logging.getLogger(__name__)
 
@@ -357,6 +359,9 @@ def get_stock_detail(
         "favoriteGroup": favorite_group,
     }
 
+    business_profile = get_stock_main_business(item["code"], settings_path=settings_path)
+    business_composition = get_stock_main_composition(item["code"], settings_path=settings_path)
+
     return {
         "profile": profile,
         "tradingData": trading_data,
@@ -366,6 +371,8 @@ def get_stock_detail(
         "dailyTradeHistory": candles,
         "isFavorite": is_favorite,
         "favoriteGroup": favorite_group,
+        "businessProfile": business_profile,
+        "businessComposition": business_composition,
     }
 
 
@@ -374,7 +381,3 @@ __all__ = [
     "get_stock_overview",
     "get_stock_detail",
 ]
-
-
-
-

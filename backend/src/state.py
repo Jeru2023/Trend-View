@@ -48,6 +48,10 @@ class SyncMonitor:
             "performance_forecast": JobProgress(),
             "industry_fund_flow": JobProgress(),
             "concept_fund_flow": JobProgress(),
+            "individual_fund_flow": JobProgress(),
+            "big_deal_fund_flow": JobProgress(),
+            "stock_main_business": JobProgress(),
+            "stock_main_composition": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():
@@ -200,7 +204,3 @@ class SyncMonitor:
 monitor = SyncMonitor()
 
 __all__ = ["monitor", "SyncMonitor"]
-
-
-
-

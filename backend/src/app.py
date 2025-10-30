@@ -32,7 +32,11 @@ from .dao import (
     PerformanceForecastDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
+    IndividualFundFlowDAO,
+    BigDealFundFlowDAO,
     StockBasicDAO,
+    StockMainBusinessDAO,
+    StockMainCompositionDAO,
 )
 from .services import (
     get_stock_detail,
@@ -46,6 +50,8 @@ from .services import (
     list_performance_forecast,
     list_industry_fund_flow,
     list_concept_fund_flow,
+    list_individual_fund_flow,
+    list_big_deal_fund_flow,
     set_favorite_state,
     sync_daily_indicator,
     sync_financial_indicators,
@@ -58,7 +64,13 @@ from .services import (
     sync_performance_forecast,
     sync_industry_fund_flow,
     sync_concept_fund_flow,
+    sync_individual_fund_flow,
+    sync_big_deal_fund_flow,
+    sync_big_deal_fund_flow,
     sync_stock_basic,
+    sync_stock_main_business,
+    sync_stock_main_composition,
+    get_stock_main_composition,
 )
 from .state import monitor
 
@@ -217,6 +229,56 @@ class StockFinancialStats(BaseModel):
         allow_population_by_alias = True
 
 
+class StockBusinessProfile(BaseModel):
+    symbol: Optional[str] = None
+    ts_code: Optional[str] = Field(None, alias="tsCode")
+    main_business: Optional[str] = Field(None, alias="mainBusiness")
+    product_type: Optional[str] = Field(None, alias="productType")
+    product_name: Optional[str] = Field(None, alias="productName")
+    business_scope: Optional[str] = Field(None, alias="businessScope")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+        allow_population_by_alias = True
+
+
+class StockBusinessCompositionEntry(BaseModel):
+    report_date: Optional[str] = Field(None, alias="reportDate")
+    category_type: Optional[str] = Field(None, alias="categoryType")
+    composition: Optional[str] = None
+    revenue: Optional[float] = None
+    revenue_ratio: Optional[float] = Field(None, alias="revenueRatio")
+    cost: Optional[float] = None
+    cost_ratio: Optional[float] = Field(None, alias="costRatio")
+    profit: Optional[float] = None
+    profit_ratio: Optional[float] = Field(None, alias="profitRatio")
+    gross_margin: Optional[float] = Field(None, alias="grossMargin")
+
+    class Config:
+        allow_population_by_field_name = True
+        allow_population_by_alias = True
+
+
+class StockBusinessCompositionGroup(BaseModel):
+    category_type: Optional[str] = Field(None, alias="categoryType")
+    entries: List[StockBusinessCompositionEntry]
+
+    class Config:
+        allow_population_by_field_name = True
+        allow_population_by_alias = True
+
+
+class StockBusinessComposition(BaseModel):
+    symbol: Optional[str] = None
+    latest_report_date: Optional[str] = Field(None, alias="latestReportDate")
+    groups: List[StockBusinessCompositionGroup]
+
+    class Config:
+        allow_population_by_field_name = True
+        allow_population_by_alias = True
+
+
 class DailyTradeBar(BaseModel):
     time: str
     open: float
@@ -232,6 +294,8 @@ class StockDetailResponse(BaseModel):
     financial_data: StockFinancialSnapshot = Field(..., alias="financialData")
     trading_stats: StockTradingStats = Field(..., alias="tradingStats")
     financial_stats: StockFinancialStats = Field(..., alias="financialStats")
+    business_profile: Optional[StockBusinessProfile] = Field(None, alias="businessProfile")
+    business_composition: Optional[StockBusinessComposition] = Field(None, alias="businessComposition")
     daily_trade_history: List[DailyTradeBar] = Field(..., alias="dailyTradeHistory")
     is_favorite: bool = Field(False, alias="isFavorite")
     favorite_group: Optional[str] = Field(None, alias="favoriteGroup")
@@ -576,6 +640,91 @@ class SyncConceptFundFlowResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncIndividualFundFlowRequest(BaseModel):
+    symbols: Optional[List[str]] = Field(
+        None,
+        description="Optional list of ranking symbols (e.g. 即时, 3日排行).",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncIndividualFundFlowResponse(BaseModel):
+    rows: int
+    symbols: List[str]
+    symbol_count: int = Field(..., alias="symbolCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncBigDealFundFlowRequest(BaseModel):
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncBigDealFundFlowResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncStockMainBusinessRequest(BaseModel):
+    codes: Optional[List[str]] = Field(
+        None,
+        description="Optional list of stock codes (symbol or ts_code) to refresh.",
+    )
+    include_list_statuses: Optional[List[str]] = Field(
+        None,
+        alias="includeListStatuses",
+        description="Optional list of list_status values used when codes are omitted.",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncStockMainBusinessResponse(BaseModel):
+    rows: int
+    codes: List[str]
+    code_count: int = Field(..., alias="codeCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    skipped_count: int = Field(0, alias="skippedCount")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncStockMainCompositionRequest(BaseModel):
+    codes: Optional[List[str]] = Field(
+        None,
+        description="Optional list of stock codes (symbol or ts_code) to refresh.",
+    )
+    include_list_statuses: Optional[List[str]] = Field(
+        None,
+        alias="includeListStatuses",
+        description="Optional list of list_status values used when codes are omitted.",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncStockMainCompositionResponse(BaseModel):
+    rows: int
+    codes: List[str]
+    code_count: int = Field(..., alias="codeCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    skipped_symbols: int = Field(0, alias="skippedSymbols")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class PerformanceExpressRecord(BaseModel):
     symbol: str
     ts_code: Optional[str] = Field(None, alias="tsCode")
@@ -698,6 +847,53 @@ class ConceptFundFlowRecord(BaseModel):
 class ConceptFundFlowListResponse(BaseModel):
     total: int
     items: List[ConceptFundFlowRecord]
+
+
+class IndividualFundFlowRecord(BaseModel):
+    symbol: str
+    stock_code: str = Field(..., alias="stockCode")
+    stock_name: Optional[str] = Field(None, alias="stockName")
+    rank: Optional[int] = None
+    latest_price: Optional[float] = Field(None, alias="latestPrice")
+    price_change_percent: Optional[float] = Field(None, alias="priceChangePercent")
+    stage_change_percent: Optional[float] = Field(None, alias="stageChangePercent")
+    turnover_rate: Optional[float] = Field(None, alias="turnoverRate")
+    continuous_turnover_rate: Optional[float] = Field(None, alias="continuousTurnoverRate")
+    inflow: Optional[float] = None
+    outflow: Optional[float] = None
+    net_amount: Optional[float] = Field(None, alias="netAmount")
+    net_inflow: Optional[float] = Field(None, alias="netInflow")
+    turnover_amount: Optional[float] = Field(None, alias="turnoverAmount")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndividualFundFlowListResponse(BaseModel):
+    total: int
+    items: List[IndividualFundFlowRecord]
+
+
+class BigDealFundFlowRecord(BaseModel):
+    trade_time: Optional[datetime] = Field(None, alias="tradeTime")
+    stock_code: str = Field(..., alias="stockCode")
+    stock_name: Optional[str] = Field(None, alias="stockName")
+    trade_price: Optional[float] = Field(None, alias="tradePrice")
+    trade_volume: Optional[int] = Field(None, alias="tradeVolume")
+    trade_amount: Optional[float] = Field(None, alias="tradeAmount")
+    trade_side: Optional[str] = Field(None, alias="tradeSide")
+    price_change_percent: Optional[float] = Field(None, alias="priceChangePercent")
+    price_change: Optional[float] = Field(None, alias="priceChange")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class BigDealFundFlowListResponse(BaseModel):
+    total: int
+    items: List[BigDealFundFlowRecord]
 
 
 class SyncFinanceBreakfastResponse(BaseModel):
@@ -1432,6 +1628,201 @@ async def _run_concept_fund_flow_job(request: SyncConceptFundFlowRequest) -> Non
     await loop.run_in_executor(None, job)
 
 
+async def _run_individual_fund_flow_job(request: SyncIndividualFundFlowRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "individual_fund_flow",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("individual_fund_flow", message="Collecting individual fund flow data")
+        try:
+            result = sync_individual_fund_flow(
+                symbols=request.symbols,
+                progress_callback=progress_callback,
+            )
+            stats = IndividualFundFlowDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            message_text = f"Synced {result.get('rows', 0)} individual fund flow rows"
+            monitor.finish(
+                "individual_fund_flow",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "individual_fund_flow",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_big_deal_fund_flow_job(request: SyncBigDealFundFlowRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "big_deal_fund_flow",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("big_deal_fund_flow", message="Collecting big deal fund flow data")
+        try:
+            result = sync_big_deal_fund_flow(progress_callback=progress_callback)
+            stats = BigDealFundFlowDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            message_text = f"Synced {result.get('rows', 0)} big deal rows"
+            monitor.finish(
+                "big_deal_fund_flow",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "big_deal_fund_flow",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_stock_main_business_job(request: SyncStockMainBusinessRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "stock_main_business",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("stock_main_business", message="Collecting stock main business data")
+        try:
+            result = sync_stock_main_business(
+                codes=request.codes,
+                include_list_statuses=request.include_list_statuses,
+                progress_callback=progress_callback,
+            )
+            stats = StockMainBusinessDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            rows_synced = int(result.get("rows", 0) or 0)
+            new_codes = int(result.get("codeCount", 0) or 0)
+            skipped_codes = int(result.get("skippedCount", 0) or 0)
+            message_text = (
+                f"Synced {rows_synced} main business rows "
+                f"(new {new_codes}, skipped {skipped_codes})"
+            )
+            monitor.finish(
+                "stock_main_business",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "stock_main_business",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_stock_main_composition_job(request: SyncStockMainCompositionRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "stock_main_composition",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("stock_main_composition", message="Collecting stock main composition data")
+        try:
+            result = sync_stock_main_composition(
+                codes=request.codes,
+                include_list_statuses=request.include_list_statuses,
+                progress_callback=progress_callback,
+            )
+            stats = StockMainCompositionDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            rows_synced = int(result.get("rows", 0) or 0)
+            new_codes = int(result.get("codeCount", 0) or 0)
+            skipped_symbols = int(result.get("skippedSymbols", 0) or 0)
+            message_text = (
+                f"Synced {rows_synced} main composition rows "
+                f"(new {new_codes}, skipped {skipped_symbols})"
+            )
+            monitor.finish(
+                "stock_main_composition",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "stock_main_composition",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 
 def _job_running(job: str) -> bool:
     snapshot = monitor.snapshot()
@@ -1531,6 +1922,38 @@ async def start_concept_fund_flow_job(payload: SyncConceptFundFlowRequest) -> No
     asyncio.create_task(_run_concept_fund_flow_job(payload))
 
 
+async def start_individual_fund_flow_job(payload: SyncIndividualFundFlowRequest) -> None:
+    if _job_running("individual_fund_flow"):
+        raise HTTPException(status_code=409, detail="Individual fund flow sync already running")
+    monitor.start("individual_fund_flow", message="Syncing individual fund flow data")
+    monitor.update("individual_fund_flow", progress=0.0)
+    asyncio.create_task(_run_individual_fund_flow_job(payload))
+
+
+async def start_big_deal_fund_flow_job(payload: SyncBigDealFundFlowRequest) -> None:
+    if _job_running("big_deal_fund_flow"):
+        raise HTTPException(status_code=409, detail="Big deal fund flow sync already running")
+    monitor.start("big_deal_fund_flow", message="Syncing big deal fund flow data")
+    monitor.update("big_deal_fund_flow", progress=0.0)
+    asyncio.create_task(_run_big_deal_fund_flow_job(payload))
+
+
+async def start_stock_main_business_job(payload: SyncStockMainBusinessRequest) -> None:
+    if _job_running("stock_main_business"):
+        raise HTTPException(status_code=409, detail="Stock main business sync already running")
+    monitor.start("stock_main_business", message="Syncing stock main business data")
+    monitor.update("stock_main_business", progress=0.0)
+    asyncio.create_task(_run_stock_main_business_job(payload))
+
+
+async def start_stock_main_composition_job(payload: SyncStockMainCompositionRequest) -> None:
+    if _job_running("stock_main_composition"):
+        raise HTTPException(status_code=409, detail="Stock main composition sync already running")
+    monitor.start("stock_main_composition", message="Syncing stock main composition data")
+    monitor.update("stock_main_composition", progress=0.0)
+    asyncio.create_task(_run_stock_main_composition_job(payload))
+
+
 async def start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> None:
     if _job_running("finance_breakfast"):
         raise HTTPException(status_code=409, detail="Finance breakfast sync already running")
@@ -1623,6 +2046,33 @@ async def safe_start_concept_fund_flow_job(payload: SyncConceptFundFlowRequest) 
         logger.info("Concept fund flow sync skipped: %s", exc.detail)
 
 
+async def safe_start_individual_fund_flow_job(payload: SyncIndividualFundFlowRequest) -> None:
+    try:
+        await start_individual_fund_flow_job(payload)
+    except HTTPException as exc:
+        logger.info("Individual fund flow sync skipped: %s", exc.detail)
+
+
+async def safe_start_big_deal_fund_flow_job(payload: SyncBigDealFundFlowRequest) -> None:
+    try:
+        await start_big_deal_fund_flow_job(payload)
+    except HTTPException as exc:
+        logger.info("Big deal fund flow sync skipped: %s", exc.detail)
+
+
+async def safe_start_stock_main_business_job(payload: SyncStockMainBusinessRequest) -> None:
+    try:
+        await start_stock_main_business_job(payload)
+    except HTTPException as exc:
+        logger.info("Stock main business sync skipped: %s", exc.detail)
+
+
+async def safe_start_stock_main_composition_job(payload: SyncStockMainCompositionRequest) -> None:
+    try:
+        await start_stock_main_composition_job(payload)
+    except HTTPException as exc:
+        logger.info("Stock main composition sync skipped: %s", exc.detail)
+
 
 @app.on_event("startup")
 async def startup_event() -> None:
@@ -1692,6 +2142,22 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=19, minute=30),
             id="concept_fund_flow_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_individual_fund_flow_job(SyncIndividualFundFlowRequest())
+            ),
+            CronTrigger(hour=19, minute=35),
+            id="individual_fund_flow_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_big_deal_fund_flow_job(SyncBigDealFundFlowRequest())
+            ),
+            CronTrigger(hour=19, minute=37),
+            id="big_deal_fund_flow_daily",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -2277,6 +2743,75 @@ def list_concept_fund_flow_entries(
     return ConceptFundFlowListResponse(total=int(result.get("total", 0)), items=items)
 
 
+@app.get("/fund-flow/individual", response_model=IndividualFundFlowListResponse)
+def list_individual_fund_flow_entries(
+    symbol: Optional[str] = Query(
+        None,
+        description="Optional ranking symbol filter (例如: 即时, 3日排行).",
+    ),
+    code: Optional[str] = Query(
+        None,
+        description="Optional stock code filter (例如: 000063.SZ).",
+    ),
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> IndividualFundFlowListResponse:
+    result = list_individual_fund_flow(symbol=symbol, stock_code=code, limit=limit, offset=offset)
+    items = [
+        IndividualFundFlowRecord(
+            symbol=entry.get("symbol"),
+            stock_code=entry.get("stock_code"),
+            stock_name=entry.get("stock_name"),
+            rank=entry.get("rank"),
+            latest_price=entry.get("latest_price"),
+            price_change_percent=entry.get("price_change_percent"),
+            stage_change_percent=entry.get("stage_change_percent"),
+            turnover_rate=entry.get("turnover_rate"),
+            continuous_turnover_rate=entry.get("continuous_turnover_rate"),
+            inflow=entry.get("inflow"),
+            outflow=entry.get("outflow"),
+            net_amount=entry.get("net_amount"),
+            net_inflow=entry.get("net_inflow"),
+            turnover_amount=entry.get("turnover_amount"),
+            updated_at=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return IndividualFundFlowListResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.get("/fund-flow/big-deal", response_model=BigDealFundFlowListResponse)
+def list_big_deal_fund_flow_entries(
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+    side: Optional[str] = Query(
+        None,
+        description="Optional filter by trade side (e.g. 买盘 / 卖盘).",
+    ),
+    code: Optional[str] = Query(
+        None,
+        description="Optional stock code filter (例如: 000063.SZ).",
+    ),
+) -> BigDealFundFlowListResponse:
+    result = list_big_deal_fund_flow(limit=limit, offset=offset, side=side, stock_code=code)
+    items = [
+        BigDealFundFlowRecord(
+            trade_time=entry.get("trade_time"),
+            stock_code=entry.get("stock_code"),
+            stock_name=entry.get("stock_name"),
+            trade_price=entry.get("trade_price"),
+            trade_volume=entry.get("trade_volume"),
+            trade_amount=entry.get("trade_amount"),
+            trade_side=entry.get("trade_side"),
+            price_change_percent=entry.get("price_change_percent"),
+            price_change=entry.get("price_change"),
+            updated_at=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return BigDealFundFlowListResponse(total=int(result.get("total", 0)), items=items)
+
+
 @app.get("/finance-breakfast", response_model=List[FinanceBreakfastItem])
 async def list_finance_breakfast_entries(
     limit: int = Query(50, ge=1, le=200, description="Maximum number of entries to return."),
@@ -2369,6 +2904,26 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect concept_fund_flow stats: %s", exc)
         stats_map["concept_fund_flow"] = {}
+    try:
+        stats_map["individual_fund_flow"] = IndividualFundFlowDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect individual_fund_flow stats: %s", exc)
+        stats_map["individual_fund_flow"] = {}
+    try:
+        stats_map["big_deal_fund_flow"] = BigDealFundFlowDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect big_deal_fund_flow stats: %s", exc)
+        stats_map["big_deal_fund_flow"] = {}
+    try:
+        stats_map["stock_main_business"] = StockMainBusinessDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect stock_main_business stats: %s", exc)
+        stats_map["stock_main_business"] = {}
+    try:
+        stats_map["stock_main_composition"] = StockMainCompositionDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect stock_main_composition stats: %s", exc)
+        stats_map["stock_main_composition"] = {}
     try:
         stats_map["finance_breakfast"] = FinanceBreakfastDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -2489,6 +3044,30 @@ async def control_sync_concept_fund_flow(payload: SyncConceptFundFlowRequest) ->
     return {"status": "started"}
 
 
+@app.post("/control/sync/individual-fund-flow")
+async def control_sync_individual_fund_flow(payload: SyncIndividualFundFlowRequest) -> dict[str, str]:
+    await start_individual_fund_flow_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/big-deal-fund-flow")
+async def control_sync_big_deal_fund_flow(payload: SyncBigDealFundFlowRequest) -> dict[str, str]:
+    await start_big_deal_fund_flow_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/stock-main-business")
+async def control_sync_stock_main_business(payload: SyncStockMainBusinessRequest) -> dict[str, str]:
+    await start_stock_main_business_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/stock-main-composition")
+async def control_sync_stock_main_composition(payload: SyncStockMainCompositionRequest) -> dict[str, str]:
+    await start_stock_main_composition_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/finance-breakfast")
 async def control_sync_finance_breakfast(payload: SyncFinanceBreakfastRequest) -> dict[str, str]:
     await start_finance_breakfast_job(payload)
@@ -2508,6 +3087,8 @@ def control_debug_stats() -> dict[str, object]:
             "financial_indicator": FinancialIndicatorDAO(settings.postgres).stats(),
             "finance_breakfast": FinanceBreakfastDAO(settings.postgres).stats(),
             "fundamental_metrics": FundamentalMetricsDAO(settings.postgres).stats(),
+            "stock_main_business": StockMainBusinessDAO(settings.postgres).stats(),
+            "stock_main_composition": StockMainCompositionDAO(settings.postgres).stats(),
         },
         "monitor": monitor.snapshot(),
     }

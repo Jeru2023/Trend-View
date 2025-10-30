@@ -14,6 +14,10 @@ from .performance_express_dao import PerformanceExpressDAO
 from .performance_forecast_dao import PerformanceForecastDAO
 from .industry_fund_flow_dao import IndustryFundFlowDAO
 from .concept_fund_flow_dao import ConceptFundFlowDAO
+from .individual_fund_flow_dao import IndividualFundFlowDAO
+from .big_deal_fund_flow_dao import BigDealFundFlowDAO
+from .stock_main_business_dao import StockMainBusinessDAO
+from .stock_main_composition_dao import StockMainCompositionDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -30,4 +34,8 @@ __all__ = [
     "PerformanceForecastDAO",
     "IndustryFundFlowDAO",
     "ConceptFundFlowDAO",
+    "IndividualFundFlowDAO",
+    "BigDealFundFlowDAO",
+    "StockMainBusinessDAO",
+    "StockMainCompositionDAO",
 ]

@@ -56,6 +56,8 @@ class ConceptFundFlowDAO(PostgresDAOBase):
         if dataframe.empty:
             return 0
 
+        deduped = dataframe.drop_duplicates(subset=self._conflict_keys, keep="last")
+
         if conn is None:
             with self.connect() as owned_conn:
                 self.ensure_table(owned_conn)
@@ -63,7 +65,7 @@ class ConceptFundFlowDAO(PostgresDAOBase):
                     owned_conn,
                     schema=self.config.schema,
                     table=self._table_name,
-                    dataframe=dataframe,
+                    dataframe=deduped,
                     columns=CONCEPT_FUND_FLOW_FIELDS,
                     conflict_keys=self._conflict_keys,
                     date_columns=(),
@@ -74,7 +76,7 @@ class ConceptFundFlowDAO(PostgresDAOBase):
             conn,
             schema=self.config.schema,
             table=self._table_name,
-            dataframe=dataframe,
+            dataframe=deduped,
             columns=CONCEPT_FUND_FLOW_FIELDS,
             conflict_keys=self._conflict_keys,
             date_columns=(),

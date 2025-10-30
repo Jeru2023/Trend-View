@@ -1,4 +1,4 @@
-"""DAO for industry fund flow data sourced from AkShare."""
+"""DAO for big deal fund flow (large trade tracking) data sourced from AkShare."""
 
 from __future__ import annotations
 
@@ -10,38 +10,35 @@ import math
 import pandas as pd
 from psycopg2 import sql
 from psycopg2.extensions import connection as PGConnection
+from psycopg2.extras import execute_batch
 
 from ..config.settings import PostgresSettings
 from .base import PostgresDAOBase
 
 
-SCHEMA_SQL_PATH = Path(__file__).resolve().parents[2] / "config" / "industry_fund_flow_schema.sql"
+SCHEMA_SQL_PATH = Path(__file__).resolve().parents[2] / "config" / "big_deal_fund_flow_schema.sql"
 
-INDUSTRY_FUND_FLOW_FIELDS: Sequence[str] = (
-    "symbol",
-    "industry",
-    "rank",
-    "industry_index",
+BIG_DEAL_FUND_FLOW_FIELDS: Sequence[str] = (
+    "trade_time",
+    "stock_code",
+    "stock_name",
+    "trade_price",
+    "trade_volume",
+    "trade_amount",
+    "trade_side",
     "price_change_percent",
-    "stage_change_percent",
-    "inflow",
-    "outflow",
-    "net_amount",
-    "company_count",
-    "leading_stock",
-    "leading_stock_change_percent",
-    "current_price",
+    "price_change",
 )
 
 
-class IndustryFundFlowDAO(PostgresDAOBase):
-    """Persistence helper for industry fund flow data."""
+class BigDealFundFlowDAO(PostgresDAOBase):
+    """Persistence helper for big deal fund flow data."""
 
-    _conflict_keys: Sequence[str] = ("symbol", "industry")
+    _conflict_keys: Sequence[str] = ("trade_time", "stock_code", "trade_side", "trade_volume", "trade_amount")
 
     def __init__(self, config: PostgresSettings, table_name: str | None = None) -> None:
         super().__init__(config=config)
-        self._table_name = table_name or getattr(config, "industry_fund_flow_table", "industry_fund_flow")
+        self._table_name = table_name or getattr(config, "big_deal_fund_flow_table", "big_deal_fund_flow")
         self._schema_sql_template = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
 
     def ensure_table(self, conn: PGConnection) -> None:
@@ -58,29 +55,53 @@ class IndustryFundFlowDAO(PostgresDAOBase):
 
         deduped = dataframe.drop_duplicates(subset=self._conflict_keys, keep="last")
 
+        normalized = self._normalize_dataframe(deduped, ("trade_time",))
+
         if conn is None:
             with self.connect() as owned_conn:
                 self.ensure_table(owned_conn)
-                return self._upsert_dataframe(
-                    owned_conn,
-                    schema=self.config.schema,
-                    table=self._table_name,
-                    dataframe=deduped,
-                    columns=INDUSTRY_FUND_FLOW_FIELDS,
-                    conflict_keys=self._conflict_keys,
-                    date_columns=(),
-                )
+                return self._upsert_rows(owned_conn, normalized)
 
         self.ensure_table(conn)
-        return self._upsert_dataframe(
-            conn,
-            schema=self.config.schema,
-            table=self._table_name,
-            dataframe=deduped,
-            columns=INDUSTRY_FUND_FLOW_FIELDS,
-            conflict_keys=self._conflict_keys,
-            date_columns=(),
+        return self._upsert_rows(conn, normalized)
+
+    def _upsert_rows(self, conn: PGConnection, dataframe: pd.DataFrame) -> int:
+        if dataframe.empty:
+            return 0
+
+        columns = BIG_DEAL_FUND_FLOW_FIELDS
+        conflict_sql = sql.SQL(", ").join(sql.Identifier(col) for col in self._conflict_keys)
+        column_sql = sql.SQL(", ").join(sql.Identifier(col) for col in columns)
+
+        update_sql = sql.SQL(", ").join(
+            sql.Composed([sql.Identifier(col), sql.SQL(" = EXCLUDED."), sql.Identifier(col)])
+            for col in columns
+            if col not in self._conflict_keys
         )
+
+        insert_stmt = sql.SQL(
+            """
+            INSERT INTO {schema}.{table} ({columns})
+            VALUES ({placeholders})
+            ON CONFLICT ({conflict_keys}) DO UPDATE SET
+                {updates},
+                updated_at = CURRENT_TIMESTAMP
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+            columns=column_sql,
+            placeholders=sql.SQL(", ").join(sql.Placeholder() for _ in columns),
+            conflict_keys=conflict_sql,
+            updates=update_sql if update_sql else sql.SQL(""),
+        )
+
+        values = [tuple(row.get(col) for col in columns) for row in dataframe.to_dict(orient="records")]
+
+        with conn.cursor() as cur:
+            execute_batch(cur, insert_stmt.as_string(conn), values, page_size=200)
+
+        return len(values)
 
     def stats(self) -> dict[str, Optional[datetime]]:
         with self.connect() as conn:
@@ -98,16 +119,22 @@ class IndustryFundFlowDAO(PostgresDAOBase):
     def list_entries(
         self,
         *,
-        symbol: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
+        side: Optional[str] = None,
+        stock_codes: Optional[Sequence[str]] = None,
     ) -> dict[str, object]:
         conditions: List[sql.SQL] = []
         params: List[object] = []
 
-        if symbol:
-            conditions.append(sql.SQL("f.symbol = %s"))
-            params.append(symbol)
+        if side:
+            conditions.append(sql.SQL("b.trade_side = %s"))
+            params.append(side)
+
+        if stock_codes:
+            placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in stock_codes)
+            conditions.append(sql.SQL("b.stock_code IN ({placeholders})").format(placeholders=placeholders))
+            params.extend(stock_codes)
 
         where_clause = sql.SQL("")
         if conditions:
@@ -115,23 +142,19 @@ class IndustryFundFlowDAO(PostgresDAOBase):
 
         base_query = sql.SQL(
             """
-            SELECT f.symbol,
-                   f.industry,
-                   f.rank,
-                   f.industry_index,
-                   f.price_change_percent,
-                   f.stage_change_percent,
-                   f.inflow,
-                   f.outflow,
-                   f.net_amount,
-                   f.company_count,
-                   f.leading_stock,
-                   f.leading_stock_change_percent,
-                   f.current_price,
-                   f.updated_at
-            FROM {schema}.{table} AS f
+            SELECT b.trade_time,
+                   b.stock_code,
+                   b.stock_name,
+                   b.trade_price,
+                   b.trade_volume,
+                   b.trade_amount,
+                   b.trade_side,
+                   b.price_change_percent,
+                   b.price_change,
+                   b.updated_at
+            FROM {schema}.{table} AS b
             {where_clause}
-            ORDER BY f.symbol ASC, f.rank ASC NULLS LAST, f.industry ASC
+            ORDER BY b.trade_time DESC, b.trade_amount DESC
             LIMIT %s OFFSET %s
             """
         ).format(
@@ -141,7 +164,7 @@ class IndustryFundFlowDAO(PostgresDAOBase):
         )
 
         count_query = sql.SQL(
-            "SELECT COUNT(*) FROM {schema}.{table} AS f {where_clause}"
+            "SELECT COUNT(*) FROM {schema}.{table} AS b {where_clause}"
         ).format(
             schema=sql.Identifier(self.config.schema),
             table=sql.Identifier(self._table_name),
@@ -159,19 +182,15 @@ class IndustryFundFlowDAO(PostgresDAOBase):
                 rows = cur.fetchall()
 
         columns = [
-            "symbol",
-            "industry",
-            "rank",
-            "industry_index",
+            "trade_time",
+            "stock_code",
+            "stock_name",
+            "trade_price",
+            "trade_volume",
+            "trade_amount",
+            "trade_side",
             "price_change_percent",
-            "stage_change_percent",
-            "inflow",
-            "outflow",
-            "net_amount",
-            "company_count",
-            "leading_stock",
-            "leading_stock_change_percent",
-            "current_price",
+            "price_change",
             "updated_at",
         ]
 
@@ -197,25 +216,15 @@ class IndustryFundFlowDAO(PostgresDAOBase):
         items: List[dict[str, object]] = []
         for row in rows:
             record = dict(zip(columns, row))
-            for key in (
-                "industry_index",
-                "price_change_percent",
-                "stage_change_percent",
-                "inflow",
-                "outflow",
-                "net_amount",
-                "leading_stock_change_percent",
-                "current_price",
-            ):
+            record["trade_volume"] = _to_int(record.get("trade_volume"))
+            for key in ("trade_price", "trade_amount", "price_change_percent", "price_change"):
                 record[key] = _to_float(record.get(key))
-            record["company_count"] = _to_int(record.get("company_count"))
-            record["rank"] = _to_int(record.get("rank"))
             items.append(record)
 
         return {"total": int(total), "items": items}
 
 
 __all__ = [
-    "INDUSTRY_FUND_FLOW_FIELDS",
-    "IndustryFundFlowDAO",
+    "BIG_DEAL_FUND_FLOW_FIELDS",
+    "BigDealFundFlowDAO",
 ]

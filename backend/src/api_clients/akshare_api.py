@@ -86,7 +86,57 @@ CONCEPT_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
     "当前价": "current_price",
 }
 
-_FINANCE_BREAKFAST_TIMEOUT_SECONDS: Final[float] = 12.0
+INDIVIDUAL_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "rank",
+    "股票代码": "stock_code",
+    "股票简称": "stock_name",
+    "最新价": "latest_price",
+    "涨跌幅": "price_change_percent",
+    "阶段涨跌幅": "stage_change_percent",
+    "换手率": "turnover_rate",
+    "连续换手率": "continuous_turnover_rate",
+    "流入资金": "inflow",
+    "流出资金": "outflow",
+    "净额": "net_amount",
+    "资金流入净额": "net_inflow",
+    "成交额": "turnover_amount",
+}
+
+BIG_DEAL_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
+    "成交时间": "trade_time",
+    "股票代码": "stock_code",
+    "股票简称": "stock_name",
+    "成交价格": "trade_price",
+    "成交量": "trade_volume",
+    "成交额": "trade_amount",
+    "大单性质": "trade_side",
+    "涨跌幅": "price_change_percent",
+    "涨跌额": "price_change",
+}
+
+STOCK_MAIN_BUSINESS_COLUMN_MAP: Final[dict[str, str]] = {
+    "股票代码": "symbol",
+    "主营业务": "main_business",
+    "产品类型": "product_type",
+    "产品名称": "product_name",
+    "经营范围": "business_scope",
+}
+
+STOCK_MAIN_COMPOSITION_COLUMN_MAP: Final[dict[str, str]] = {
+    "股票代码": "symbol",
+    "报告日期": "report_date",
+    "分类类型": "category_type",
+    "主营构成": "composition",
+    "主营收入": "revenue",
+    "收入比例": "revenue_ratio",
+    "主营成本": "cost",
+    "成本比例": "cost_ratio",
+    "主营利润": "profit",
+    "利润比例": "profit_ratio",
+    "毛利率": "gross_margin",
+}
+
+_FINANCE_BREAKFAST_TIMEOUT_SECONDS: Final[float] = 20.0
 
 
 def _empty_finance_breakfast_frame() -> pd.DataFrame:
@@ -159,28 +209,9 @@ def _run_with_timeout(timeout: float) -> Tuple[str, Optional[pd.DataFrame], Opti
             process.close()
 
 
-def fetch_finance_breakfast(timeout: float = _FINANCE_BREAKFAST_TIMEOUT_SECONDS) -> pd.DataFrame:
-    """
-    Fetch finance breakfast summaries from AkShare.
-    """
-    status, dataframe, error_message = _run_with_timeout(timeout)
-
-    if status == "timeout":
-        logger.error(
-            "AkShare finance breakfast request exceeded %.1f seconds; skipping update.",
-            timeout,
-        )
-        return _empty_finance_breakfast_frame()
-
-    if status != "ok" or dataframe is None:
-        logger.error(
-            "Failed to fetch finance breakfast data from AkShare: %s",
-            error_message,
-        )
-        return _empty_finance_breakfast_frame()
-
+def _normalize_finance_breakfast_frame(dataframe: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Rename columns and coerce timestamps for the finance breakfast dataset."""
     if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no finance breakfast data.")
         return _empty_finance_breakfast_frame()
 
     renamed = dataframe.rename(columns=FINANCE_BREAKFAST_COLUMNS)
@@ -191,6 +222,36 @@ def fetch_finance_breakfast(timeout: float = _FINANCE_BREAKFAST_TIMEOUT_SECONDS)
     subset = renamed.loc[:, list(FINANCE_BREAKFAST_COLUMNS.values())]
     subset["published_at"] = pd.to_datetime(subset["published_at"], errors="coerce")
     return subset
+
+
+def fetch_finance_breakfast(timeout: float = _FINANCE_BREAKFAST_TIMEOUT_SECONDS) -> pd.DataFrame:
+    """
+    Fetch finance breakfast summaries from AkShare.
+    """
+    status, dataframe, error_message = _run_with_timeout(timeout)
+
+    if status != "ok" or dataframe is None or dataframe.empty:
+        reason = "timeout" if status == "timeout" else error_message or "unknown error"
+        if status == "timeout":
+            logger.warning(
+                "AkShare finance breakfast request exceeded %.1f seconds; attempting direct fallback.",
+                timeout,
+            )
+        else:
+            logger.warning(
+                "Finance breakfast fetch via worker failed (%s); attempting direct fallback.",
+                reason,
+            )
+        try:
+            dataframe = ak.stock_info_cjzc_em()
+        except Exception as fallback_exc:  # pragma: no cover - external dependency
+            logger.error("Finance breakfast fallback fetch failed: %s", fallback_exc)
+            return _empty_finance_breakfast_frame()
+
+    normalized = _normalize_finance_breakfast_frame(dataframe)
+    if normalized.empty:
+        logger.warning("AkShare returned no finance breakfast data.")
+    return normalized
 
 
 def _empty_performance_express_frame() -> pd.DataFrame:
@@ -305,15 +366,128 @@ def fetch_concept_fund_flow(symbol: str) -> pd.DataFrame:
     return renamed.loc[:, list(CONCEPT_FUND_FLOW_COLUMN_MAP.values())]
 
 
+def _empty_individual_fund_flow_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(INDIVIDUAL_FUND_FLOW_COLUMN_MAP.values()))
+
+
+def fetch_individual_fund_flow(symbol: str) -> pd.DataFrame:
+    """Fetch individual stock fund flow snapshot for the specified ranking symbol."""
+    if not symbol or not str(symbol).strip():
+        raise ValueError("symbol is required for individual fund flow fetch.")
+
+    try:
+        dataframe = ak.stock_fund_flow_individual(symbol=str(symbol))
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch individual fund flow data via AkShare: %s", exc)
+        return _empty_individual_fund_flow_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no individual fund flow data for %s", symbol)
+        return _empty_individual_fund_flow_frame()
+
+    renamed = dataframe.rename(columns=INDIVIDUAL_FUND_FLOW_COLUMN_MAP)
+    for column in INDIVIDUAL_FUND_FLOW_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(INDIVIDUAL_FUND_FLOW_COLUMN_MAP.values())]
+
+
+def _empty_big_deal_fund_flow_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(BIG_DEAL_FUND_FLOW_COLUMN_MAP.values()))
+
+
+def fetch_big_deal_fund_flow() -> pd.DataFrame:
+    """Fetch Tonghuashun big deal tracking snapshot."""
+    try:
+        dataframe = ak.stock_fund_flow_big_deal()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch big deal fund flow data via AkShare: %s", exc)
+        return _empty_big_deal_fund_flow_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no big deal fund flow data.")
+        return _empty_big_deal_fund_flow_frame()
+
+    renamed = dataframe.rename(columns=BIG_DEAL_FUND_FLOW_COLUMN_MAP)
+    for column in BIG_DEAL_FUND_FLOW_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(BIG_DEAL_FUND_FLOW_COLUMN_MAP.values())]
+
+def _empty_stock_main_business_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(STOCK_MAIN_BUSINESS_COLUMN_MAP.values()))
+
+
+def fetch_stock_main_business(symbol: str) -> pd.DataFrame:
+    """Fetch Tonghuashun stock main business data for the specified symbol."""
+    if not symbol or not str(symbol).strip():
+        raise ValueError("symbol is required for stock main business fetch.")
+
+    query_symbol = str(symbol).strip()
+    try:
+        dataframe = ak.stock_zyjs_ths(symbol=query_symbol)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch stock main business via AkShare: %s", exc)
+        return _empty_stock_main_business_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no stock main business data for %s", query_symbol)
+        return _empty_stock_main_business_frame()
+
+    renamed = dataframe.rename(columns=STOCK_MAIN_BUSINESS_COLUMN_MAP)
+    for column in STOCK_MAIN_BUSINESS_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(STOCK_MAIN_BUSINESS_COLUMN_MAP.values())]
+
+
+def _empty_stock_main_composition_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(STOCK_MAIN_COMPOSITION_COLUMN_MAP.values()))
+
+
+def fetch_stock_main_composition(symbol: str) -> pd.DataFrame:
+    """Fetch Eastmoney stock main composition data for the specified symbol."""
+    if not symbol or not str(symbol).strip():
+        raise ValueError("symbol is required for stock main composition fetch.")
+
+    query_symbol = str(symbol).strip().upper()
+    try:
+        dataframe = ak.stock_zygc_em(symbol=query_symbol)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch stock main composition via AkShare: %s", exc)
+        return _empty_stock_main_composition_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no stock main composition data for %s", query_symbol)
+        return _empty_stock_main_composition_frame()
+
+    renamed = dataframe.rename(columns=STOCK_MAIN_COMPOSITION_COLUMN_MAP)
+    for column in STOCK_MAIN_COMPOSITION_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(STOCK_MAIN_COMPOSITION_COLUMN_MAP.values())]
+
+
 __all__ = [
     "FINANCE_BREAKFAST_COLUMNS",
     "PERFORMANCE_EXPRESS_COLUMN_MAP",
     "PERFORMANCE_FORECAST_COLUMN_MAP",
     "INDUSTRY_FUND_FLOW_COLUMN_MAP",
     "CONCEPT_FUND_FLOW_COLUMN_MAP",
+    "INDIVIDUAL_FUND_FLOW_COLUMN_MAP",
+    "STOCK_MAIN_BUSINESS_COLUMN_MAP",
+    "STOCK_MAIN_COMPOSITION_COLUMN_MAP",
     "fetch_finance_breakfast",
     "fetch_performance_express_em",
     "fetch_performance_forecast_em",
     "fetch_industry_fund_flow",
     "fetch_concept_fund_flow",
+    "fetch_individual_fund_flow",
+    "fetch_big_deal_fund_flow",
+    "fetch_stock_main_business",
+    "fetch_stock_main_composition",
 ]

@@ -219,13 +219,48 @@ def sync_individual_fund_flow(
 def list_individual_fund_flow(
     *,
     symbol: Optional[str] = None,
+    stock_code: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
     settings_path: Optional[str] = None,
 ) -> dict[str, object]:
     settings = load_settings(settings_path)
     dao = IndividualFundFlowDAO(settings.postgres)
-    return dao.list_entries(symbol=symbol, limit=limit, offset=offset)
+    normalized_codes: Sequence[str] | None = None
+    if stock_code:
+        normalized = _normalize_for_query(stock_code)
+        if not normalized:
+            return {"total": 0, "items": []}
+        normalized_codes = normalized
+    return dao.list_entries(symbol=symbol, stock_codes=normalized_codes, limit=limit, offset=offset)
+
+
+def _normalize_for_query(value: str) -> Sequence[str]:
+    text = (value or "").strip().upper()
+    if not text:
+        return ()
+    codes: list[str] = []
+    def _add(candidate: str) -> None:
+        normalized = candidate.strip()
+        if normalized and normalized not in codes:
+            codes.append(normalized)
+
+    if "." in text:
+        symbol, suffix = text.split(".", 1)
+        if symbol:
+            stripped = symbol.strip()
+            if stripped.isdigit():
+                _add(stripped.zfill(6))
+            _add(stripped)
+            if suffix.strip():
+                _add(f"{stripped}.{suffix.strip().upper()}")
+    if text.isdigit():
+        _add(text.zfill(6))
+    # raw text fallback without suffix
+    digits_only = "".join(ch for ch in text if ch.isdigit())
+    if digits_only:
+        _add(digits_only.zfill(6))
+    return tuple(codes)
 
 
 __all__ = [

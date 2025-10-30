@@ -138,6 +138,24 @@ const elements = {
     progress: document.getElementById("concept-fund-flow-progress"),
     button: document.getElementById("run-concept-fund-flow"),
   },
+  individualFundFlow: {
+    status: document.getElementById("individual-fund-flow-status"),
+    updated: document.getElementById("individual-fund-flow-updated"),
+    duration: document.getElementById("individual-fund-flow-duration"),
+    rows: document.getElementById("individual-fund-flow-rows"),
+    message: document.getElementById("individual-fund-flow-message"),
+    progress: document.getElementById("individual-fund-flow-progress"),
+    button: document.getElementById("run-individual-fund-flow"),
+  },
+  bigDealFundFlow: {
+    status: document.getElementById("big-deal-fund-flow-status"),
+    updated: document.getElementById("big-deal-fund-flow-updated"),
+    duration: document.getElementById("big-deal-fund-flow-duration"),
+    rows: document.getElementById("big-deal-fund-flow-rows"),
+    message: document.getElementById("big-deal-fund-flow-message"),
+    progress: document.getElementById("big-deal-fund-flow-progress"),
+    button: document.getElementById("run-big-deal-fund-flow"),
+  },
   financialIndicator: {
     status: document.getElementById("financial-indicator-status"),
     updated: document.getElementById("financial-indicator-updated"),
@@ -155,6 +173,24 @@ const elements = {
     message: document.getElementById("finance-breakfast-message"),
     progress: document.getElementById("finance-breakfast-progress"),
     button: document.getElementById("run-finance-breakfast"),
+  },
+  stockMainBusiness: {
+    status: document.getElementById("stock-main-business-status"),
+    updated: document.getElementById("stock-main-business-updated"),
+    duration: document.getElementById("stock-main-business-duration"),
+    rows: document.getElementById("stock-main-business-rows"),
+    message: document.getElementById("stock-main-business-message"),
+    progress: document.getElementById("stock-main-business-progress"),
+    button: document.getElementById("run-stock-main-business"),
+  },
+  stockMainComposition: {
+    status: document.getElementById("stock-main-composition-status"),
+    updated: document.getElementById("stock-main-composition-updated"),
+    duration: document.getElementById("stock-main-composition-duration"),
+    rows: document.getElementById("stock-main-composition-rows"),
+    message: document.getElementById("stock-main-composition-message"),
+    progress: document.getElementById("stock-main-composition-progress"),
+    button: document.getElementById("run-stock-main-composition"),
   },
 };
 
@@ -313,14 +349,30 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
-    const conceptFundFlowSnapshot = jobs.concept_fund_flow || {
-      status: "idle",
-      progress: 0,
-    };
-    const breakfastSnapshot = jobs.finance_breakfast || {
-      status: "idle",
-      progress: 0,
-    };
+  const conceptFundFlowSnapshot = jobs.concept_fund_flow || {
+    status: "idle",
+    progress: 0,
+  };
+  const individualFundFlowSnapshot = jobs.individual_fund_flow || {
+    status: "idle",
+    progress: 0,
+  };
+  const bigDealFundFlowSnapshot = jobs.big_deal_fund_flow || {
+    status: "idle",
+    progress: 0,
+  };
+  const mainBusinessSnapshot = jobs.stock_main_business || {
+    status: "idle",
+    progress: 0,
+  };
+  const mainCompositionSnapshot = jobs.stock_main_composition || {
+    status: "idle",
+    progress: 0,
+  };
+  const breakfastSnapshot = jobs.finance_breakfast || {
+    status: "idle",
+    progress: 0,
+  };
 
     updateJobCard(elements.stockBasic, stockSnapshot);
     updateJobCard(elements.dailyTrade, dailySnapshot);
@@ -330,10 +382,14 @@ async function loadStatus() {
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.performanceExpress, expressSnapshot);
-    updateJobCard(elements.performanceForecast, forecastSnapshot);
-    updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
-    updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
-    updateJobCard(elements.financeBreakfast, breakfastSnapshot);
+  updateJobCard(elements.performanceForecast, forecastSnapshot);
+  updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
+  updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
+  updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
+  updateJobCard(elements.bigDealFundFlow, bigDealFundFlowSnapshot);
+  updateJobCard(elements.stockMainBusiness, mainBusinessSnapshot);
+  updateJobCard(elements.stockMainComposition, mainCompositionSnapshot);
+  updateJobCard(elements.financeBreakfast, breakfastSnapshot);
 
     if (data.config) {
       configState.includeST = !!data.config.includeST;
@@ -356,9 +412,13 @@ async function loadStatus() {
       expressSnapshot,
       forecastSnapshot,
       industryFundFlowSnapshot,
-      conceptFundFlowSnapshot,
-      breakfastSnapshot,
-    ].some((snapshot) => snapshot.status === "running");
+    conceptFundFlowSnapshot,
+    individualFundFlowSnapshot,
+    bigDealFundFlowSnapshot,
+    mainBusinessSnapshot,
+    mainCompositionSnapshot,
+    breakfastSnapshot,
+  ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
     } else if (!shouldPoll && pollTimer) {
@@ -442,6 +502,28 @@ function initActions() {
       })
     );
   }
+  if (elements.individualFundFlow.button) {
+    elements.individualFundFlow.button.addEventListener("click", () =>
+      triggerJob("/control/sync/individual-fund-flow", {
+        symbols: INDUSTRY_FUND_FLOW_SYMBOLS,
+      })
+    );
+  }
+  if (elements.bigDealFundFlow.button) {
+    elements.bigDealFundFlow.button.addEventListener("click", () =>
+      triggerJob("/control/sync/big-deal-fund-flow", {})
+    );
+  }
+  if (elements.stockMainBusiness.button) {
+    elements.stockMainBusiness.button.addEventListener("click", () =>
+      triggerJob("/control/sync/stock-main-business", {})
+    );
+  }
+  if (elements.stockMainComposition.button) {
+    elements.stockMainComposition.button.addEventListener("click", () =>
+      triggerJob("/control/sync/stock-main-composition", {})
+    );
+  }
   elements.financeBreakfast.button.addEventListener("click", () =>
     triggerJob("/control/sync/finance-breakfast", {})
   );
@@ -452,15 +534,3 @@ initLanguageSwitch();
 initActions();
 setLang(currentLang);
 loadStatus();
-
-
-
-
-
-
-
-
-
-
-
-

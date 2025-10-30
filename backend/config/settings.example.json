@@ -24,6 +24,8 @@
         "finance_breakfast_table": "finance_breakfast",
         "fundamental_metrics_table": "fundamental_metrics",
         "favorites_table": "stock_favorites",
+        "stock_main_business_table": "stock_main_business",
+        "stock_main_composition_table": "stock_main_composition",
         "connect_timeout": 3,
         "application_name": "trend_view_backend",
         "statement_timeout_ms": 300000,
@@ -31,6 +33,8 @@
         "performance_express_table": "performance_express",
         "performance_forecast_table": "performance_forecast",
         "industry_fund_flow_table": "industry_fund_flow",
-        "concept_fund_flow_table": "concept_fund_flow"
+        "concept_fund_flow_table": "concept_fund_flow",
+        "individual_fund_flow_table": "individual_fund_flow",
+        "big_deal_fund_flow_table": "big_deal_fund_flow"
     }
 }

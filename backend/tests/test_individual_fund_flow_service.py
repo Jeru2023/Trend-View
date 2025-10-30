@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from backend.src.services.individual_fund_flow_service import _prepare_frame
+from backend.src.services.individual_fund_flow_service import _prepare_frame, _normalize_for_query
 
 
 class IndividualFundFlowServiceTests(unittest.TestCase):
@@ -38,6 +38,11 @@ class IndividualFundFlowServiceTests(unittest.TestCase):
         self.assertAlmostEqual(prepared.loc[0, "continuous_turnover_rate"], 45.1)
         self.assertAlmostEqual(prepared.loc[0, "inflow"], 6.49e8)
         self.assertAlmostEqual(prepared.loc[0, "net_inflow"], -571.77e4)
+
+    def test_normalize_for_query(self) -> None:
+        normalized = _normalize_for_query("000063.SZ")
+        self.assertIn("000063", normalized)
+        self.assertTrue(all(value for value in normalized))
 
 
 if __name__ == "__main__":

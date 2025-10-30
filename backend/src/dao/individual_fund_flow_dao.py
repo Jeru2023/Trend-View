@@ -57,6 +57,8 @@ class IndividualFundFlowDAO(PostgresDAOBase):
         if dataframe.empty:
             return 0
 
+        deduped = dataframe.drop_duplicates(subset=self._conflict_keys, keep="last")
+
         if conn is None:
             with self.connect() as owned_conn:
                 self.ensure_table(owned_conn)
@@ -64,7 +66,7 @@ class IndividualFundFlowDAO(PostgresDAOBase):
                     owned_conn,
                     schema=self.config.schema,
                     table=self._table_name,
-                    dataframe=dataframe,
+                    dataframe=deduped,
                     columns=INDIVIDUAL_FUND_FLOW_FIELDS,
                     conflict_keys=self._conflict_keys,
                     date_columns=(),
@@ -75,7 +77,7 @@ class IndividualFundFlowDAO(PostgresDAOBase):
             conn,
             schema=self.config.schema,
             table=self._table_name,
-            dataframe=dataframe,
+            dataframe=deduped,
             columns=INDIVIDUAL_FUND_FLOW_FIELDS,
             conflict_keys=self._conflict_keys,
             date_columns=(),
@@ -98,6 +100,7 @@ class IndividualFundFlowDAO(PostgresDAOBase):
         self,
         *,
         symbol: Optional[str] = None,
+        stock_codes: Optional[Sequence[str]] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, object]:
@@ -107,6 +110,11 @@ class IndividualFundFlowDAO(PostgresDAOBase):
         if symbol:
             conditions.append(sql.SQL("i.symbol = %s"))
             params.append(symbol)
+
+        if stock_codes:
+            placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in stock_codes)
+            conditions.append(sql.SQL("i.stock_code IN ({placeholders})").format(placeholders=placeholders))
+            params.extend(stock_codes)
 
         where_clause = sql.SQL("")
         if conditions:

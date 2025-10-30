@@ -49,10 +49,14 @@ class PostgresSettings:
     finance_breakfast_table: str
     fundamental_metrics_table: str
     favorites_table: str
+    stock_main_business_table: str
+    stock_main_composition_table: str
     performance_express_table: str
     performance_forecast_table: str
     industry_fund_flow_table: str
     concept_fund_flow_table: str
+    individual_fund_flow_table: str
+    big_deal_fund_flow_table: str
     connect_timeout: int = 3
     application_name: str = DEFAULT_APPLICATION_NAME
     statement_timeout_ms: Optional[int] = None
@@ -179,6 +183,12 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             favorites_table=str(
                 postgres_config.get("favorites_table", "stock_favorites")
             ),
+            stock_main_business_table=str(
+                postgres_config.get("stock_main_business_table", "stock_main_business")
+            ),
+            stock_main_composition_table=str(
+                postgres_config.get("stock_main_composition_table", "stock_main_composition")
+            ),
             performance_express_table=str(
                 postgres_config.get("performance_express_table", "performance_express")
             ),
@@ -190,6 +200,12 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             concept_fund_flow_table=str(
                 postgres_config.get("concept_fund_flow_table", "concept_fund_flow")
+            ),
+            individual_fund_flow_table=str(
+                postgres_config.get("individual_fund_flow_table", "individual_fund_flow")
+            ),
+            big_deal_fund_flow_table=str(
+                postgres_config.get("big_deal_fund_flow_table", "big_deal_fund_flow")
             ),
             connect_timeout=int(postgres_config.get("connect_timeout", 3)),
             application_name=str(application_name).strip() if isinstance(application_name, str) and application_name.strip() else DEFAULT_APPLICATION_NAME,

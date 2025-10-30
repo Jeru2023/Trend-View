@@ -12,6 +12,10 @@ from .stock_basic_service import get_stock_overview, get_stock_detail, sync_stoc
 from .fundamental_metrics_service import list_fundamental_metrics, sync_fundamental_metrics
 from .industry_fund_flow_service import list_industry_fund_flow, sync_industry_fund_flow
 from .concept_fund_flow_service import list_concept_fund_flow, sync_concept_fund_flow
+from .individual_fund_flow_service import list_individual_fund_flow, sync_individual_fund_flow
+from .big_deal_fund_flow_service import list_big_deal_fund_flow, sync_big_deal_fund_flow
+from .stock_main_business_service import get_stock_main_business, sync_stock_main_business
+from .stock_main_composition_service import get_stock_main_composition, sync_stock_main_composition
 from .favorite_stock_service import (
     add_stock_to_favorites,
     remove_stock_from_favorites,
@@ -35,6 +39,7 @@ __all__ = [
     "list_performance_forecast",
     "list_industry_fund_flow",
     "list_concept_fund_flow",
+    "list_individual_fund_flow",
     "sync_finance_breakfast",
     "sync_daily_trade",
     "sync_daily_trade_metrics",
@@ -42,7 +47,13 @@ __all__ = [
     "sync_fundamental_metrics",
     "sync_industry_fund_flow",
     "sync_concept_fund_flow",
+    "sync_individual_fund_flow",
+    "sync_big_deal_fund_flow",
+    "sync_stock_main_business",
+    "sync_stock_main_composition",
     "list_fundamental_metrics",
+    "list_big_deal_fund_flow",
+    "list_big_deal_fund_flow",
     "get_stock_detail",
     "add_stock_to_favorites",
     "remove_stock_from_favorites",
@@ -52,4 +63,6 @@ __all__ = [
     "list_favorite_entries",
     "set_favorite_state",
     "get_favorite_status",
+    "get_stock_main_business",
+    "get_stock_main_composition",
 ]

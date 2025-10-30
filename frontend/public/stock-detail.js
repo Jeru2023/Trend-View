@@ -168,10 +168,20 @@ const elements = {
   financialList: document.getElementById("financial-list"),
   statsList: document.getElementById("stats-list"),
   fundamentalsList: document.getElementById("fundamentals-list"),
+  businessSection: document.getElementById("business-composition-section"),
+  mainBusinessCard: document.getElementById("main-business-card"),
+  mainBusinessList: document.getElementById("main-business-list"),
+  mainBusinessEmpty: document.getElementById("main-business-empty"),
+  mainCompositionCard: document.getElementById("main-composition-card"),
+  mainCompositionGroups: document.getElementById("main-composition-groups"),
+  mainCompositionDate: document.getElementById("main-composition-report-date"),
+  mainCompositionEmpty: document.getElementById("main-composition-empty"),
   langButtons: document.querySelectorAll(".lang-btn"),
   candlestickContainer: document.getElementById("candlestick-chart"),
   candlestickEmpty: document.getElementById("candlestick-empty"),
   favoriteToggle: document.getElementById("favorite-toggle"),
+  xueqiuLink: document.getElementById("detail-link-xueqiu"),
+  eastmoneyLink: document.getElementById("detail-link-eastmoney"),
   performanceCard: document.getElementById("performance-card"),
   performanceExpressTile: document.getElementById("performance-express-tile"),
   performanceForecastTile: document.getElementById("performance-forecast-tile"),
@@ -248,6 +258,266 @@ function deriveCodeParts(value) {
     return { detailCode: normalized, displayCode: digitsOnly.padStart(6, "0") };
   }
   return { detailCode: normalized, displayCode: normalized };
+}
+
+function buildExternalLinks(value) {
+  const normalized = normalizeCode(value);
+  const match = normalized.match(/^(\d{6})\.(SH|SZ|BJ)$/);
+  if (!match) {
+    return { xueqiu: "", eastmoney: "" };
+  }
+  const [, digits, suffix] = match;
+  const upperSuffix = suffix.toUpperCase();
+  const lowerSuffix = suffix.toLowerCase();
+  return {
+    xueqiu: `https://xueqiu.com/S/${upperSuffix}${digits}`,
+    eastmoney: `https://quote.eastmoney.com/${lowerSuffix}${digits}.html`,
+  };
+}
+
+function toggleExternalLink(element, url) {
+  if (!element) {
+    return;
+  }
+  if (url) {
+    element.href = url;
+    element.classList.remove("hidden");
+  } else {
+    element.removeAttribute("href");
+    element.classList.add("hidden");
+  }
+}
+
+function updateExternalLinks(code) {
+  const links = buildExternalLinks(code);
+  toggleExternalLink(elements.xueqiuLink, links.xueqiu);
+  toggleExternalLink(elements.eastmoneyLink, links.eastmoney);
+}
+
+function updateMainBusinessCard(profile) {
+  const card = elements.mainBusinessCard;
+  const list = elements.mainBusinessList;
+  const emptyState = elements.mainBusinessEmpty;
+  if (!card || !list || !emptyState) {
+    return;
+  }
+
+  if (!profile) {
+    card.classList.add("hidden");
+    list.innerHTML = "";
+    emptyState.classList.add("hidden");
+    updateBusinessSectionVisibility();
+    return;
+  }
+
+  const dict = translations[currentLang];
+  const normalize = (value) => {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    const text = String(value).trim();
+    if (!text || text === "--" || text === "-") {
+      return "";
+    }
+    return text;
+  };
+
+  const items = [
+    {
+      label: dict.mainBusinessLabelMain || "Main Business",
+      value: normalize(profile.mainBusiness),
+    },
+    {
+      label: dict.mainBusinessLabelProductType || "Product Categories",
+      value: normalize(profile.productType),
+    },
+    {
+      label: dict.mainBusinessLabelProductName || "Product Names",
+      value: normalize(profile.productName),
+    },
+    {
+      label: dict.mainBusinessLabelScope || "Business Scope",
+      value: normalize(profile.businessScope),
+    },
+  ].filter((item) => item.value);
+
+  if (!items.length) {
+    list.innerHTML = "";
+    emptyState.classList.add("hidden");
+    card.classList.add("hidden");
+    updateBusinessSectionVisibility();
+    return;
+  }
+
+  list.innerHTML = items
+    .map((item, index) => {
+      const classes = ["business-info__item"];
+      if (index === items.length - 1) {
+        classes.push("business-info__item--full");
+      }
+      return `
+        <div class="${classes.join(" ")}">
+          <span class="business-info__label">${item.label}</span>
+          <p class="business-info__value">${item.value}</p>
+        </div>
+      `;
+    })
+    .join("");
+
+  emptyState.classList.add("hidden");
+  card.classList.remove("hidden");
+  updateBusinessSectionVisibility();
+}
+
+function updateMainCompositionCard(composition) {
+  const card = elements.mainCompositionCard;
+  const groupsContainer = elements.mainCompositionGroups;
+  const emptyState = elements.mainCompositionEmpty;
+  const dateElement = elements.mainCompositionDate;
+  if (!card || !groupsContainer || !emptyState) {
+    return;
+  }
+
+  if (!composition || !Array.isArray(composition.groups) || composition.groups.length === 0) {
+    card.classList.add("hidden");
+    groupsContainer.innerHTML = "";
+    emptyState.classList.add("hidden");
+    updateBusinessSectionVisibility();
+    return;
+  }
+
+  const dict = translations[currentLang];
+  const latestDate = composition.latestReportDate ? formatDate(composition.latestReportDate) : "";
+  if (dateElement) {
+    if (latestDate) {
+      const template = dict.mainCompositionReportDate || "Latest report: {date}";
+      dateElement.textContent = template.replace("{date}", latestDate);
+      dateElement.classList.remove("hidden");
+    } else {
+      dateElement.textContent = "";
+      dateElement.classList.add("hidden");
+    }
+  }
+
+  groupsContainer.innerHTML = "";
+
+  const toRatio = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return null;
+    }
+    if (numeric > 1 || numeric < -1) {
+      return numeric / 100;
+    }
+    return numeric;
+  };
+
+  const groups = Array.isArray(composition.groups) ? composition.groups : [];
+  let renderedGroups = 0;
+
+  for (const group of groups) {
+    const entries = Array.isArray(group.entries) ? group.entries.filter((item) => item && item.composition) : [];
+    if (!entries.length) {
+      continue;
+    }
+
+    entries.sort((a, b) => {
+      const ratioA = Math.abs(toRatio(a.revenueRatio) ?? 0);
+      const ratioB = Math.abs(toRatio(b.revenueRatio) ?? 0);
+      return ratioB - ratioA;
+    });
+
+    renderedGroups += 1;
+    const groupWrapper = document.createElement("div");
+    groupWrapper.className = "composition-group";
+
+    const title = document.createElement("h3");
+    title.className = "composition-group__title";
+    title.textContent = group.categoryType || dict.mainCompositionCategoryUnknown || "Uncategorized";
+    groupWrapper.appendChild(title);
+
+    const entriesWrapper = document.createElement("div");
+    entriesWrapper.className = "composition-group__entries";
+    const categoryLabel = group.categoryType || "";
+    entriesWrapper.dataset.layout = categoryLabel.includes("地区") ? "region" : "product";
+
+    entries.forEach((entry) => {
+      const entryNode = document.createElement("div");
+      entryNode.className = "composition-entry";
+
+      const header = document.createElement("div");
+      header.className = "composition-entry__header";
+      const name = document.createElement("span");
+      name.className = "composition-entry__name";
+      name.textContent = entry.composition || dict.mainCompositionValueUnknown || "--";
+      const ratioSpan = document.createElement("span");
+      ratioSpan.className = "composition-entry__ratio";
+      ratioSpan.textContent = formatPercentFlexible(entry.revenueRatio);
+      header.appendChild(name);
+      header.appendChild(ratioSpan);
+      entryNode.appendChild(header);
+
+      const metrics = document.createElement("div");
+      metrics.className = "composition-entry__metrics";
+      if (entry.revenue !== null && entry.revenue !== undefined) {
+        metrics.appendChild(
+          document.createTextNode(`${dict.mainCompositionColumnRevenue || "Revenue"}: ${formatCompactNumber(entry.revenue)}`)
+        );
+      }
+      if (entry.profitRatio !== null && entry.profitRatio !== undefined) {
+        metrics.appendChild(
+          document.createTextNode(
+            `${dict.mainCompositionColumnProfitRatio || "Profit %"}: ${formatPercentFlexible(entry.profitRatio)}`
+          )
+        );
+      }
+      if (entry.grossMargin !== null && entry.grossMargin !== undefined) {
+        metrics.appendChild(
+          document.createTextNode(
+            `${dict.mainCompositionColumnGrossMargin || "Gross Margin"}: ${formatPercentFlexible(entry.grossMargin)}`
+          )
+        );
+      }
+      if (metrics.childNodes.length) {
+        entryNode.appendChild(metrics);
+      }
+
+      const progress = document.createElement("div");
+      progress.className = "composition-entry__bar";
+      const fill = document.createElement("span");
+      const ratioValue = toRatio(entry.revenueRatio);
+      const clamped = ratioValue === null ? 0 : Math.max(0, Math.min(1, ratioValue));
+      fill.style.width = `${(clamped * 100).toFixed(1)}%`;
+      progress.appendChild(fill);
+      entryNode.appendChild(progress);
+
+      entriesWrapper.appendChild(entryNode);
+    });
+
+    groupWrapper.appendChild(entriesWrapper);
+    groupsContainer.appendChild(groupWrapper);
+  }
+
+  if (renderedGroups === 0) {
+    card.classList.add("hidden");
+    emptyState.classList.add("hidden");
+    updateBusinessSectionVisibility();
+    return;
+  }
+
+  emptyState.classList.add("hidden");
+  card.classList.remove("hidden");
+  updateBusinessSectionVisibility();
+}
+
+function updateBusinessSectionVisibility() {
+  const section = elements.businessSection;
+  if (!section || !elements.mainBusinessCard || !elements.mainCompositionCard) {
+    return;
+  }
+  const hasBusiness = !elements.mainBusinessCard.classList.contains("hidden");
+  const hasComposition = !elements.mainCompositionCard.classList.contains("hidden");
+  section.classList.toggle("hidden", !(hasBusiness || hasComposition));
 }
 
 function getRecordValue(record, ...keys) {
@@ -791,6 +1061,10 @@ function applyTranslations() {
   renderPerformanceHighlights(performanceData);
   renderIndividualFundFlowCard(detailExtras.individualFundFlow);
   renderBigDealCard(detailExtras.bigDeals);
+  if (currentDetail) {
+    updateMainBusinessCard(currentDetail.businessProfile);
+    updateMainCompositionCard(currentDetail.businessComposition);
+  }
 }
 
 function formatNumber(value, options = {}) {
@@ -1879,6 +2153,9 @@ function renderDetail(detail) {
   currentDetail.favoriteGroup = favoriteState.group;
   elements.title.textContent = detail.profile.name ?? detail.profile.code;
   elements.subtitle.textContent = detail.profile.code;
+  updateExternalLinks(detail.profile.code);
+  updateMainBusinessCard(detail.businessProfile);
+  updateMainCompositionCard(detail.businessComposition);
   document.title = `${detail.profile.code} · ${dict.pageTitle}`;
 
   const lastPrice = detail.tradingData.lastPrice ?? detail.profile.lastPrice;
