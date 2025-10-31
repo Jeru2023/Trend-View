@@ -31,6 +31,7 @@ from .dao import (
     PerformanceExpressDAO,
     PerformanceForecastDAO,
     ProfitForecastDAO,
+    GlobalIndexDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
@@ -50,6 +51,7 @@ from .services import (
     list_performance_express,
     list_performance_forecast,
     list_profit_forecast,
+    list_global_indices,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_individual_fund_flow,
@@ -65,6 +67,7 @@ from .services import (
     sync_performance_express,
     sync_performance_forecast,
     sync_profit_forecast,
+    sync_global_indices,
     sync_industry_fund_flow,
     sync_concept_fund_flow,
     sync_individual_fund_flow,
@@ -623,6 +626,21 @@ class SyncProfitForecastResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncGlobalIndexRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncGlobalIndexResponse(BaseModel):
+    rows: int
+    codes: List[str] = Field(default_factory=list)
+    code_count: int = Field(..., alias="codeCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class SyncIndustryFundFlowRequest(BaseModel):
     symbols: Optional[List[str]] = Field(
         None,
@@ -856,6 +874,31 @@ class ProfitForecastListResponse(BaseModel):
     items: List[ProfitForecastItem]
     industries: List[str] = Field(default_factory=list)
     years: List[int] = Field(default_factory=list)
+
+
+class GlobalIndexRecord(BaseModel):
+    code: str
+    seq: Optional[int] = None
+    name: Optional[str] = None
+    latest_price: Optional[float] = Field(None, alias="latestPrice")
+    change_amount: Optional[float] = Field(None, alias="changeAmount")
+    change_percent: Optional[float] = Field(None, alias="changePercent")
+    open_price: Optional[float] = Field(None, alias="openPrice")
+    high_price: Optional[float] = Field(None, alias="highPrice")
+    low_price: Optional[float] = Field(None, alias="lowPrice")
+    prev_close: Optional[float] = Field(None, alias="prevClose")
+    amplitude: Optional[float] = None
+    last_quote_time: Optional[datetime] = Field(None, alias="lastQuoteTime")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class GlobalIndexListResponse(BaseModel):
+    total: int
+    items: List[GlobalIndexRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
 
 
 class IndustryFundFlowRecord(BaseModel):
@@ -1629,6 +1672,40 @@ async def _run_profit_forecast_job(request: SyncProfitForecastRequest) -> None:
     await loop.run_in_executor(None, job)
 
 
+async def _run_global_index_job(request: SyncGlobalIndexRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("global_index", message="Syncing global index snapshot", progress=0.0)
+        try:
+            result = sync_global_indices()
+            stats = GlobalIndexDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "global_index",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} global index rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "global_index",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_industry_fund_flow_job(request: SyncIndustryFundFlowRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -2007,6 +2084,14 @@ async def start_profit_forecast_job(payload: SyncProfitForecastRequest) -> None:
     asyncio.create_task(_run_profit_forecast_job(payload))
 
 
+async def start_global_index_job(payload: SyncGlobalIndexRequest) -> None:  # noqa: ARG001
+    if _job_running("global_index"):
+        raise HTTPException(status_code=409, detail="Global index sync already running")
+    monitor.start("global_index", message="Syncing global index snapshot")
+    monitor.update("global_index", progress=0.0)
+    asyncio.create_task(_run_global_index_job(payload))
+
+
 async def start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
     if _job_running("industry_fund_flow"):
         raise HTTPException(status_code=409, detail="Industry fund flow sync already running")
@@ -2138,6 +2223,13 @@ async def safe_start_profit_forecast_job(payload: SyncProfitForecastRequest) -> 
         await start_profit_forecast_job(payload)
     except HTTPException as exc:
         logger.info("Profit forecast sync skipped: %s", exc.detail)
+
+
+async def safe_start_global_index_job(payload: SyncGlobalIndexRequest) -> None:
+    try:
+        await start_global_index_job(payload)
+    except HTTPException as exc:
+        logger.info("Global index sync skipped: %s", exc.detail)
 
 
 async def safe_start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -2282,6 +2374,14 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=19, minute=40),
             id="performance_forecast_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_global_index_job(SyncGlobalIndexRequest())
+            ),
+            CronTrigger(hour="7,9,11,13,15,17", minute=0),
+            id="global_index_intraday",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -2878,6 +2978,37 @@ def list_profit_forecast_entries(
     )
 
 
+@app.get("/macro/global-indices", response_model=GlobalIndexListResponse)
+def list_global_indices_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> GlobalIndexListResponse:
+    result = list_global_indices(limit=limit, offset=offset)
+    items = [
+        GlobalIndexRecord(
+            code=entry.get("code"),
+            seq=entry.get("seq"),
+            name=entry.get("name"),
+            latestPrice=entry.get("latest_price"),
+            changeAmount=entry.get("change_amount"),
+            changePercent=entry.get("change_percent"),
+            openPrice=entry.get("open_price"),
+            highPrice=entry.get("high_price"),
+            lowPrice=entry.get("low_price"),
+            prevClose=entry.get("prev_close"),
+            amplitude=entry.get("amplitude"),
+            lastQuoteTime=entry.get("last_quote_time"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return GlobalIndexListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
+    )
+
+
 @app.get("/fund-flow/industry", response_model=IndustryFundFlowListResponse)
 def list_industry_fund_flow_entries(
     symbol: Optional[str] = Query(
@@ -3099,6 +3230,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect profit_forecast stats: %s", exc)
         stats_map["profit_forecast"] = {}
     try:
+        stats_map["global_index"] = GlobalIndexDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect global_index stats: %s", exc)
+        stats_map["global_index"] = {}
+    try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
@@ -3239,6 +3375,12 @@ async def control_sync_performance_forecast(payload: SyncPerformanceForecastRequ
 @app.post("/control/sync/profit-forecast")
 async def control_sync_profit_forecast(payload: SyncProfitForecastRequest) -> dict[str, str]:
     await start_profit_forecast_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/global-indices")
+async def control_sync_global_indices(payload: SyncGlobalIndexRequest) -> dict[str, str]:
+    await start_global_index_job(payload)
     return {"status": "started"}
 
 

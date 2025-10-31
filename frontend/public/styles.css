@@ -372,6 +372,8 @@ body {
 .forecast-rating__value{font-weight:600;font-variant-numeric:tabular-nums}
 .forecast-eps{font-variant-numeric:tabular-nums}
 .table-empty{text-align:center;padding:24px;color:var(--text-muted);font-size:.95rem}
+.global-index-meta{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--text-muted);font-size:.95rem}
+.global-index-meta strong{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
 
 .table-link {
     color: var(--primary);

@@ -545,11 +545,11 @@
           </div>
         </div>
 
-        <div class="control-group">
-          <header class="control-group__header">
-            <h3 data-i18n="fundsGroupTitle">Fund Flow Jobs</h3>
-          </header>
-          <div class="control-grid">
+          <div class="control-group">
+            <header class="control-group__header">
+              <h3 data-i18n="fundsGroupTitle">Fund Flow Jobs</h3>
+            </header>
+            <div class="control-grid">
             <div class="card" id="industry-fund-flow-card">
               <div class="card__header">
                 <div>
@@ -664,6 +664,53 @@
               <div class="job-meta__item">
                 <span data-i18n="lastDuration">Last Duration</span>
                 <strong id="individual-fund-flow-duration">&mdash;</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <header class="control-group__header">
+              <h3 data-i18n="macroGroupTitle">Macro Data Jobs</h3>
+            </header>
+            <div class="control-grid">
+              <div class="card" id="global-index-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="globalIndexTitle">Global Indices</h3>
+                    <p class="card__subtitle" data-i18n="globalIndexSubtitle">
+                      Fetch AkShare global index spot data (index_global_spot_em).
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-global-index" data-i18n="runNow">
+                    Run Now
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="global-index-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="global-index-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="global-index-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="global-index-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="global-index-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="global-index-message"></p>
               </div>
             </div>
           </div>

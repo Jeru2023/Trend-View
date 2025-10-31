@@ -166,6 +166,21 @@ _PROFIT_FORECAST_OUTPUT_COLUMNS: Final[Tuple[str, ...]] = (
     "forecast_eps",
 )
 
+GLOBAL_INDEX_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "seq",
+    "代码": "code",
+    "名称": "name",
+    "最新价": "latest_price",
+    "涨跌额": "change_amount",
+    "涨跌幅": "change_percent",
+    "开盘价": "open_price",
+    "最高价": "high_price",
+    "最低价": "low_price",
+    "昨收价": "prev_close",
+    "振幅": "amplitude",
+    "最新行情时间": "last_quote_time",
+}
+
 _FINANCE_BREAKFAST_TIMEOUT_SECONDS: Final[float] = 20.0
 
 
@@ -406,6 +421,30 @@ def fetch_profit_forecast_em(symbol: Optional[str] = None) -> pd.DataFrame:
 
     normalized = pd.DataFrame.from_records(records, columns=list(_PROFIT_FORECAST_OUTPUT_COLUMNS))
     return normalized
+
+
+def _empty_global_index_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(GLOBAL_INDEX_COLUMN_MAP.values()))
+
+
+def fetch_global_indices() -> pd.DataFrame:
+    """Fetch real-time global index snapshot."""
+    try:
+        dataframe = ak.index_global_spot_em()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch global index data via AkShare: %s", exc)
+        return _empty_global_index_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no global index data.")
+        return _empty_global_index_frame()
+
+    renamed = dataframe.rename(columns=GLOBAL_INDEX_COLUMN_MAP)
+    for column in GLOBAL_INDEX_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(GLOBAL_INDEX_COLUMN_MAP.values())]
 
 
 def _empty_industry_fund_flow_frame() -> pd.DataFrame:

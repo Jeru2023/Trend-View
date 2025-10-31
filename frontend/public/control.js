@@ -120,6 +120,15 @@ const elements = {
     progress: document.getElementById("performance-forecast-progress"),
     button: document.getElementById("run-performance-forecast"),
   },
+  globalIndex: {
+    status: document.getElementById("global-index-status"),
+    updated: document.getElementById("global-index-updated"),
+    duration: document.getElementById("global-index-duration"),
+    rows: document.getElementById("global-index-rows"),
+    message: document.getElementById("global-index-message"),
+    progress: document.getElementById("global-index-progress"),
+    button: document.getElementById("run-global-index"),
+  },
   profitForecast: {
     status: document.getElementById("profit-forecast-status"),
     updated: document.getElementById("profit-forecast-updated"),
@@ -358,6 +367,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const globalIndexSnapshot = jobs.global_index || {
+      status: "idle",
+      progress: 0,
+    };
     const industryFundFlowSnapshot = jobs.industry_fund_flow || {
       status: "idle",
       progress: 0,
@@ -396,6 +409,7 @@ async function loadStatus() {
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.performanceExpress, expressSnapshot);
     updateJobCard(elements.performanceForecast, forecastSnapshot);
+    updateJobCard(elements.globalIndex, globalIndexSnapshot);
     updateJobCard(elements.profitForecast, profitForecastSnapshot);
   updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
   updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
@@ -531,6 +545,11 @@ function initActions() {
   if (elements.bigDealFundFlow.button) {
     elements.bigDealFundFlow.button.addEventListener("click", () =>
       triggerJob("/control/sync/big-deal-fund-flow", {})
+    );
+  }
+  if (elements.globalIndex.button) {
+    elements.globalIndex.button.addEventListener("click", () =>
+      triggerJob("/control/sync/global-indices", {})
     );
   }
   if (elements.stockMainBusiness.button) {
