@@ -52,6 +52,7 @@ class SyncMonitor:
             "rmb_midpoint": JobProgress(),
             "futures_realtime": JobProgress(),
             "fed_statements": JobProgress(),
+            "peripheral_insight": JobProgress(),
             "industry_fund_flow": JobProgress(),
             "concept_fund_flow": JobProgress(),
             "individual_fund_flow": JobProgress(),

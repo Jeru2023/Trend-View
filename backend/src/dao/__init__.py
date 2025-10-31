@@ -24,6 +24,7 @@ from .dollar_index_dao import DollarIndexDAO
 from .rmb_midpoint_dao import RmbMidpointDAO
 from .futures_realtime_dao import FuturesRealtimeDAO
 from .fed_statement_dao import FedStatementDAO
+from .peripheral_insight_dao import PeripheralInsightDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -50,4 +51,5 @@ __all__ = [
     "RmbMidpointDAO",
     "FuturesRealtimeDAO",
     "FedStatementDAO",
+    "PeripheralInsightDAO",
 ]

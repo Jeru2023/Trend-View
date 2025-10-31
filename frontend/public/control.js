@@ -156,6 +156,15 @@ const elements = {
     progress: document.getElementById("futures-realtime-progress"),
     button: document.getElementById("run-futures-realtime"),
   },
+  peripheralInsight: {
+    status: document.getElementById("peripheral-insight-status"),
+    updated: document.getElementById("peripheral-insight-updated"),
+    duration: document.getElementById("peripheral-insight-duration"),
+    rows: document.getElementById("peripheral-insight-rows"),
+    message: document.getElementById("peripheral-insight-message"),
+    progress: document.getElementById("peripheral-insight-progress"),
+    button: document.getElementById("run-peripheral-insight"),
+  },
   fedStatements: {
     status: document.getElementById("fed-statements-status"),
     updated: document.getElementById("fed-statements-updated"),
@@ -419,6 +428,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const peripheralInsightSnapshot = jobs.peripheral_insight || {
+      status: "idle",
+      progress: 0,
+    };
     const fedStatementsSnapshot = jobs.fed_statements || {
       status: "idle",
       progress: 0,
@@ -464,6 +477,7 @@ async function loadStatus() {
     updateJobCard(elements.globalIndex, globalIndexSnapshot);
     updateJobCard(elements.rmbMidpoint, rmbMidpointSnapshot);
     updateJobCard(elements.futuresRealtime, futuresRealtimeSnapshot);
+    updateJobCard(elements.peripheralInsight, peripheralInsightSnapshot);
     updateJobCard(elements.fedStatements, fedStatementsSnapshot);
     updateJobCard(elements.dollarIndex, dollarIndexSnapshot);
     updateJobCard(elements.profitForecast, profitForecastSnapshot);
@@ -498,6 +512,7 @@ async function loadStatus() {
       globalIndexSnapshot,
       rmbMidpointSnapshot,
       futuresRealtimeSnapshot,
+      peripheralInsightSnapshot,
       fedStatementsSnapshot,
       dollarIndexSnapshot,
       industryFundFlowSnapshot,
@@ -621,6 +636,13 @@ function initActions() {
   if (elements.futuresRealtime.button) {
     elements.futuresRealtime.button.addEventListener("click", () =>
       triggerJob("/control/sync/futures-realtime", {})
+    );
+  }
+  if (elements.peripheralInsight.button) {
+    elements.peripheralInsight.button.addEventListener("click", () =>
+      triggerJob("/control/sync/peripheral-summary", {
+        runLLM: true,
+      })
     );
   }
   if (elements.fedStatements.button) {

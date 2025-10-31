@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View - Peripheral Insight</title>
+    <link rel="stylesheet" href="styles.css?v=20251226" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="peripheral-insight">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="pageTitle">Peripheral Market Insight</h1>
+            <p class="page-subtitle" data-i18n="pageSubtitle">
+              Summary of overseas markets and DeepSeek commentary on possible A-share impact.
+            </p>
+          </div>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <div class="peripheral-meta">
+            <button class="primary-btn" id="peripheral-insight-refresh" data-i18n="refreshButton">
+              Refresh
+            </button>
+            <span data-i18n="lastGeneratedLabel">Last generated</span>
+            <strong id="peripheral-insight-generated">--</strong>
+          </div>
+
+          <div class="insight-card" id="peripheral-summary">
+            <div class="insight-card__header">
+              <h2 data-i18n="summaryTitle">LLM Summary</h2>
+              <span class="insight-card__model" id="peripheral-insight-model"></span>
+            </div>
+            <div id="peripheral-insight-content" data-empty-en="No summary available." data-empty-zh="暂无总结。" class="insight-card__body"></div>
+          </div>
+
+          <div class="insight-grid">
+            <section class="insight-panel">
+              <h3 data-i18n="indicesTitle">US Major Indices</h3>
+              <table class="data-table" id="peripheral-indices-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="tableName">Name</th>
+                    <th data-i18n="tableLast">Last</th>
+                    <th data-i18n="tableChange">Change</th>
+                    <th data-i18n="tableChangePercent">Change %</th>
+                    <th data-i18n="tableAsOf">As of</th>
+                  </tr>
+                </thead>
+                <tbody data-empty-en="No index data." data-empty-zh="暂无指数数据。"></tbody>
+              </table>
+            </section>
+
+            <section class="insight-panel">
+              <h3 data-i18n="currencyTitle">Dollar Index & RMB Midpoint</h3>
+              <div class="insight-panel__stack">
+                <table class="data-table" id="peripheral-dollar-table">
+                  <thead>
+                    <tr>
+                      <th data-i18n="tableName">Name</th>
+                      <th data-i18n="tableLast">Last</th>
+                      <th data-i18n="tableChange">Change</th>
+                      <th data-i18n="tableChangePercent">Change %</th>
+                      <th data-i18n="tableAsOf">As of</th>
+                    </tr>
+                  </thead>
+                  <tbody data-empty-en="No dollar index data." data-empty-zh="暂无美元指数数据。"></tbody>
+                </table>
+
+                <table class="data-table" id="peripheral-rmb-table">
+                  <thead>
+                    <tr>
+                      <th data-i18n="tableCurrency">Currency</th>
+                      <th data-i18n="tableQuote">Quote / 100 CNY</th>
+                      <th data-i18n="tableAsOf">As of</th>
+                    </tr>
+                  </thead>
+                  <tbody data-empty-en="No RMB midpoint data." data-empty-zh="暂无人民币中间价数据。"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="insight-panel">
+              <h3 data-i18n="commoditiesTitle">Key Commodities</h3>
+              <table class="data-table" id="peripheral-commodities-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="tableName">Name</th>
+                    <th data-i18n="tableLast">Last</th>
+                    <th data-i18n="tableChange">Change</th>
+                    <th data-i18n="tableChangePercent">Change %</th>
+                    <th data-i18n="tableAsOf">As of</th>
+                  </tr>
+                </thead>
+                <tbody data-empty-en="No commodity data." data-empty-zh="暂无大宗商品数据。"></tbody>
+              </table>
+            </section>
+          </div>
+
+          <div class="insight-warnings" id="peripheral-insight-warnings"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20251226"></script>
+    <script src="sidebar.js?v=20251226"></script>
+    <script type="module" src="peripheral-insight.js?v=20251226"></script>
+  </body>
+</html>

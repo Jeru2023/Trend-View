@@ -36,6 +36,7 @@ from .dao import (
     RmbMidpointDAO,
     FuturesRealtimeDAO,
     FedStatementDAO,
+    PeripheralInsightDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
@@ -60,6 +61,7 @@ from .services import (
     list_rmb_midpoint_rates,
     list_futures_realtime,
     list_fed_statements,
+    get_latest_peripheral_insight,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_individual_fund_flow,
@@ -80,6 +82,7 @@ from .services import (
     sync_rmb_midpoint_rates,
     sync_futures_realtime,
     sync_fed_statements,
+    generate_peripheral_insight,
     sync_industry_fund_flow,
     sync_concept_fund_flow,
     sync_individual_fund_flow,
@@ -724,6 +727,14 @@ class SyncFedStatementResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncPeripheralInsightRequest(BaseModel):
+    run_llm: Optional[bool] = Field(True, alias="runLLM")
+
+    class Config:
+        allow_population_by_field_name = True
+        extra = "forbid"
+
+
 class SyncIndustryFundFlowRequest(BaseModel):
     symbols: Optional[List[str]] = Field(
         None,
@@ -1088,6 +1099,24 @@ class FedStatementListResponse(BaseModel):
     total: int
     items: List[FedStatementRecord]
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class PeripheralInsightRecord(BaseModel):
+    snapshot_date: date = Field(..., alias="snapshotDate")
+    generated_at: datetime = Field(..., alias="generatedAt")
+    metrics: Dict[str, Any]
+    summary: Optional[str] = None
+    raw_response: Optional[str] = Field(None, alias="rawResponse")
+    model: Optional[str] = None
+    created_at: Optional[datetime] = Field(None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class PeripheralInsightResponse(BaseModel):
+    insight: Optional[PeripheralInsightRecord]
 
 
 class IndustryFundFlowRecord(BaseModel):
@@ -2033,6 +2062,41 @@ async def _run_fed_statement_job(request: SyncFedStatementRequest) -> None:
     await loop.run_in_executor(None, job)
 
 
+async def _run_peripheral_insight_job(request: SyncPeripheralInsightRequest) -> None:
+    loop = asyncio.get_running_loop()
+    run_llm = True if request.run_llm is None else bool(request.run_llm)
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("peripheral_insight", message="Generating peripheral market insight", progress=0.0)
+        try:
+            result = generate_peripheral_insight(run_llm=run_llm)
+            stats = PeripheralInsightDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = 1
+            monitor.finish(
+                "peripheral_insight",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message="Peripheral insight snapshot generated",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "peripheral_insight",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_industry_fund_flow_job(request: SyncIndustryFundFlowRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -2451,6 +2515,14 @@ async def start_fed_statement_job(payload: SyncFedStatementRequest) -> None:
     asyncio.create_task(_run_fed_statement_job(payload))
 
 
+async def start_peripheral_insight_job(payload: SyncPeripheralInsightRequest) -> None:
+    if _job_running("peripheral_insight"):
+        raise HTTPException(status_code=409, detail="Peripheral insight job already running")
+    monitor.start("peripheral_insight", message="Generating peripheral market insight")
+    monitor.update("peripheral_insight", progress=0.0)
+    asyncio.create_task(_run_peripheral_insight_job(payload))
+
+
 async def start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
     if _job_running("industry_fund_flow"):
         raise HTTPException(status_code=409, detail="Industry fund flow sync already running")
@@ -2617,6 +2689,13 @@ async def safe_start_fed_statement_job(payload: SyncFedStatementRequest) -> None
         await start_fed_statement_job(payload)
     except HTTPException as exc:
         logger.info("Fed statements sync skipped: %s", exc.detail)
+
+
+async def safe_start_peripheral_insight_job(payload: SyncPeripheralInsightRequest) -> None:
+    try:
+        await start_peripheral_insight_job(payload)
+    except HTTPException as exc:
+        logger.info("Peripheral insight generation skipped: %s", exc.detail)
 
 
 async def safe_start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -2801,6 +2880,14 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour="7,17", minute=15),
             id="fed_statements_twice_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_peripheral_insight_job(SyncPeripheralInsightRequest())
+            ),
+            CronTrigger(hour=18, minute=10),
+            id="peripheral_insight_daily",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -3563,6 +3650,25 @@ def list_fed_statements_api(
     )
 
 
+@app.get("/peripheral/insights/latest", response_model=PeripheralInsightResponse)
+def get_latest_peripheral_insight_api() -> PeripheralInsightResponse:
+    record = get_latest_peripheral_insight()
+    if not record:
+        return PeripheralInsightResponse(insight=None)
+
+    payload = PeripheralInsightRecord(
+        snapshotDate=record.get("snapshot_date"),
+        generatedAt=record.get("generated_at"),
+        metrics=record.get("metrics") or {},
+        summary=record.get("summary"),
+        rawResponse=record.get("raw_response"),
+        model=record.get("model"),
+        createdAt=record.get("created_at"),
+        updatedAt=record.get("updated_at"),
+    )
+    return PeripheralInsightResponse(insight=payload)
+
+
 @app.get("/fund-flow/industry", response_model=IndustryFundFlowListResponse)
 def list_industry_fund_flow_entries(
     symbol: Optional[str] = Query(
@@ -3809,6 +3915,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect fed_statements stats: %s", exc)
         stats_map["fed_statements"] = {}
     try:
+        stats_map["peripheral_insight"] = PeripheralInsightDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect peripheral_insight stats: %s", exc)
+        stats_map["peripheral_insight"] = {}
+    try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
@@ -4003,6 +4114,12 @@ async def control_sync_futures_realtime(payload: SyncFuturesRealtimeRequest) -> 
 @app.post("/control/sync/fed-statements")
 async def control_sync_fed_statements(payload: SyncFedStatementRequest) -> dict[str, str]:
     await start_fed_statement_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/peripheral-summary")
+async def control_sync_peripheral_summary(payload: SyncPeripheralInsightRequest) -> dict[str, str]:
+    await start_peripheral_insight_job(payload)
     return {"status": "started"}
 
 

@@ -59,6 +59,7 @@ class PostgresSettings:
     concept_fund_flow_table: str
     individual_fund_flow_table: str
     big_deal_fund_flow_table: str
+    peripheral_insight_table: str
     connect_timeout: int = 3
     application_name: str = DEFAULT_APPLICATION_NAME
     statement_timeout_ms: Optional[int] = None
@@ -214,6 +215,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             big_deal_fund_flow_table=str(
                 postgres_config.get("big_deal_fund_flow_table", "big_deal_fund_flow")
+            ),
+            peripheral_insight_table=str(
+                postgres_config.get("peripheral_insight_table", "peripheral_insights")
             ),
             connect_timeout=int(postgres_config.get("connect_timeout", 3)),
             application_name=str(application_name).strip() if isinstance(application_name, str) and application_name.strip() else DEFAULT_APPLICATION_NAME,
