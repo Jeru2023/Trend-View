@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="title">Trend View - Global Indices</title>
-    <link rel="stylesheet" href="styles.css?v=20251218" />
+    <link rel="stylesheet" href="styles.css?v=20251224" />
     <script>
       (function () {
         var key = "trend-view-lang";
@@ -22,7 +22,7 @@
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
   </head>
-  <body data-active-nav="macro-global-indices">
+  <body data-active-nav="peripheral-global-indices">
     <div class="layout">
       <div data-sidebar-container></div>
 
@@ -35,6 +35,9 @@
             </p>
           </div>
           <div class="header-actions">
+            <button class="secondary-btn" id="global-index-refresh" data-i18n="refreshButton">
+              Refresh
+            </button>
             <div class="language-switcher">
               <button class="lang-btn" data-lang="en">EN</button>
               <button class="lang-btn" data-lang="zh">中文</button>
@@ -75,8 +78,8 @@
       </main>
     </div>
 
-    <script src="i18n.js?v=20251218"></script>
-    <script src="sidebar.js?v=20251218"></script>
-    <script type="module" src="global-indices.js?v=20251218"></script>
+    <script src="i18n.js?v=20251224"></script>
+    <script src="sidebar.js?v=20251224"></script>
+    <script type="module" src="global-indices.js?v=20251224"></script>
   </body>
 </html>

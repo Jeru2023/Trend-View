@@ -51,6 +51,15 @@ class GlobalIndexDAO(PostgresDAOBase):
             table=self._table_name,
         )
 
+        with conn.cursor() as cur:
+            cur.execute(
+                sql.SQL("CREATE INDEX IF NOT EXISTS {index} ON {schema}.{table} (updated_at DESC)").format(
+                    index=sql.Identifier(f"{self._table_name}_updated_at_idx"),
+                    schema=sql.Identifier(self.config.schema),
+                    table=sql.Identifier(self._table_name),
+                )
+            )
+
     def clear_table(self) -> int:
         with self.connect() as conn:
             self.ensure_table(conn)

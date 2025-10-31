@@ -14,6 +14,3 @@ CREATE TABLE IF NOT EXISTS {schema}.{table} (
     updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
     PRIMARY KEY (code)
 );
-
-CREATE INDEX IF NOT EXISTS {table}_updated_at_idx
-    ON {schema}.{table} (updated_at DESC);

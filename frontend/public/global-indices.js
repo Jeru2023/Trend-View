@@ -13,6 +13,7 @@ const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
   tableBody: document.getElementById("global-index-tbody"),
   lastSynced: document.getElementById("global-index-last-synced"),
+  refreshButton: document.getElementById("global-index-refresh"),
 };
 
 function getInitialLanguage() {
@@ -92,6 +93,19 @@ function formatDateTime(value) {
   }
 }
 
+function readValue(item, camelKey, snakeKey) {
+  if (!item) {
+    return undefined;
+  }
+  if (camelKey && Object.prototype.hasOwnProperty.call(item, camelKey) && item[camelKey] !== null && item[camelKey] !== undefined) {
+    return item[camelKey];
+  }
+  if (snakeKey && Object.prototype.hasOwnProperty.call(item, snakeKey) && item[snakeKey] !== null && item[snakeKey] !== undefined) {
+    return item[snakeKey];
+  }
+  return camelKey ? item[camelKey] ?? item[snakeKey] : item[snakeKey];
+}
+
 function applyTranslations() {
   const dict = getDict();
   document.documentElement.lang = currentLang;
@@ -101,7 +115,11 @@ function applyTranslations() {
     const key = el.dataset.i18n;
     const value = dict[key];
     if (typeof value === "string") {
-      el.textContent = value;
+      if (key === "refreshButton" && elements.refreshButton?.dataset.loading === "1") {
+        el.textContent = dict.refreshing || value;
+      } else {
+        el.textContent = value;
+      }
     }
   });
 
@@ -138,24 +156,38 @@ function renderTable(items = []) {
   const fragment = document.createDocumentFragment();
   items.forEach((item) => {
     const row = document.createElement("tr");
-    const change = Number(item.change_amount);
-    const changePercent = Number(item.change_percent);
+    const code = readValue(item, "code");
+    const name = readValue(item, "name");
+    const latestPrice = readValue(item, "latestPrice", "latest_price");
+    const changeRaw = readValue(item, "changeAmount", "change_amount");
+    const changePercentRaw = readValue(item, "changePercent", "change_percent");
+    const openPrice = readValue(item, "openPrice", "open_price");
+    const highPrice = readValue(item, "highPrice", "high_price");
+    const lowPrice = readValue(item, "lowPrice", "low_price");
+    const prevClose = readValue(item, "prevClose", "prev_close");
+    const amplitude = readValue(item, "amplitude");
+    const lastQuoteTime = readValue(item, "lastQuoteTime", "last_quote_time");
+
+    const change = Number(changeRaw);
+    const changePercent = Number(changePercentRaw);
     const up = change > 0;
     const down = change < 0;
     const changeClass = up ? "text-up" : down ? "text-down" : "";
 
     const cells = [
-      item.code,
-      item.name,
-      formatNumber(item.latest_price, { maximumFractionDigits: 2 }),
-      changeClass ? `<span class="${changeClass}">${formatNumber(change, { maximumFractionDigits: 2 })}</span>` : formatNumber(change, { maximumFractionDigits: 2 }),
+      code ?? "--",
+      name ?? "--",
+      formatNumber(latestPrice, { maximumFractionDigits: 2 }),
+      changeClass
+        ? `<span class="${changeClass}">${formatNumber(change, { maximumFractionDigits: 2 })}</span>`
+        : formatNumber(change, { maximumFractionDigits: 2 }),
       changeClass ? `<span class="${changeClass}">${formatPercent(changePercent)}</span>` : formatPercent(changePercent),
-      formatNumber(item.open_price, { maximumFractionDigits: 2 }),
-      formatNumber(item.high_price, { maximumFractionDigits: 2 }),
-      formatNumber(item.low_price, { maximumFractionDigits: 2 }),
-      formatNumber(item.prev_close, { maximumFractionDigits: 2 }),
-      formatPercent(item.amplitude),
-      formatDateTime(item.last_quote_time),
+      formatNumber(openPrice, { maximumFractionDigits: 2 }),
+      formatNumber(highPrice, { maximumFractionDigits: 2 }),
+      formatNumber(lowPrice, { maximumFractionDigits: 2 }),
+      formatNumber(prevClose, { maximumFractionDigits: 2 }),
+      formatPercent(amplitude),
+      formatDateTime(lastQuoteTime),
     ];
 
     cells.forEach((value, index) => {
@@ -201,6 +233,53 @@ async function fetchGlobalIndices() {
   }
 }
 
+function setRefreshLoading(isLoading) {
+  const button = elements.refreshButton;
+  if (!button) {
+    return;
+  }
+  const dict = getDict();
+  if (isLoading) {
+    button.dataset.loading = "1";
+    button.disabled = true;
+    button.textContent = dict.refreshing || dict.refreshButton || "Refreshing...";
+  } else {
+    delete button.dataset.loading;
+    button.disabled = false;
+    button.textContent = dict.refreshButton || "Refresh";
+  }
+}
+
+async function triggerManualSync() {
+  if (!elements.refreshButton || elements.refreshButton.dataset.loading === "1") {
+    return;
+  }
+  const dict = getDict();
+  setRefreshLoading(true);
+  try {
+    const response = await fetch(`${API_BASE}/control/sync/global-indices`, { method: "POST" });
+    if (!response.ok) {
+      let detail = response.statusText || `HTTP ${response.status}`;
+      try {
+        const payload = await response.json();
+        if (payload && typeof payload.detail === "string") {
+          detail = payload.detail;
+        }
+      } catch (error) {
+        /* no-op parsing failure */
+      }
+      throw new Error(detail);
+    }
+    await fetchGlobalIndices();
+  } catch (error) {
+    console.error("Manual global index sync failed:", error);
+    renderEmpty(error?.message || dict.loading || "Failed to load data");
+    updateLastSynced(null);
+  } finally {
+    setRefreshLoading(false);
+  }
+}
+
 function bindLanguageButtons() {
   elements.langButtons.forEach((btn) => {
     btn.onclick = () => {
@@ -215,10 +294,22 @@ function bindLanguageButtons() {
   });
 }
 
+function bindRefreshButton() {
+  if (!elements.refreshButton) {
+    return;
+  }
+  elements.refreshButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    triggerManualSync();
+  });
+}
+
 function initialize() {
   applyTranslations();
   bindLanguageButtons();
+  bindRefreshButton();
   fetchGlobalIndices();
 }
 
 document.addEventListener("DOMContentLoaded", initialize);
+window.applyTranslations = applyTranslations;
