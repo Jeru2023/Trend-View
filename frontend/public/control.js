@@ -129,6 +129,33 @@ const elements = {
     progress: document.getElementById("global-index-progress"),
     button: document.getElementById("run-global-index"),
   },
+  dollarIndex: {
+    status: document.getElementById("dollar-index-status"),
+    updated: document.getElementById("dollar-index-updated"),
+    duration: document.getElementById("dollar-index-duration"),
+    rows: document.getElementById("dollar-index-rows"),
+    message: document.getElementById("dollar-index-message"),
+    progress: document.getElementById("dollar-index-progress"),
+    button: document.getElementById("run-dollar-index"),
+  },
+  rmbMidpoint: {
+    status: document.getElementById("rmb-midpoint-status"),
+    updated: document.getElementById("rmb-midpoint-updated"),
+    duration: document.getElementById("rmb-midpoint-duration"),
+    rows: document.getElementById("rmb-midpoint-rows"),
+    message: document.getElementById("rmb-midpoint-message"),
+    progress: document.getElementById("rmb-midpoint-progress"),
+    button: document.getElementById("run-rmb-midpoint"),
+  },
+  futuresRealtime: {
+    status: document.getElementById("futures-realtime-status"),
+    updated: document.getElementById("futures-realtime-updated"),
+    duration: document.getElementById("futures-realtime-duration"),
+    rows: document.getElementById("futures-realtime-rows"),
+    message: document.getElementById("futures-realtime-message"),
+    progress: document.getElementById("futures-realtime-progress"),
+    button: document.getElementById("run-futures-realtime"),
+  },
   profitForecast: {
     status: document.getElementById("profit-forecast-status"),
     updated: document.getElementById("profit-forecast-updated"),
@@ -371,6 +398,18 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const dollarIndexSnapshot = jobs.dollar_index || {
+      status: "idle",
+      progress: 0,
+    };
+    const rmbMidpointSnapshot = jobs.rmb_midpoint || {
+      status: "idle",
+      progress: 0,
+    };
+    const futuresRealtimeSnapshot = jobs.futures_realtime || {
+      status: "idle",
+      progress: 0,
+    };
     const industryFundFlowSnapshot = jobs.industry_fund_flow || {
       status: "idle",
       progress: 0,
@@ -410,14 +449,17 @@ async function loadStatus() {
     updateJobCard(elements.performanceExpress, expressSnapshot);
     updateJobCard(elements.performanceForecast, forecastSnapshot);
     updateJobCard(elements.globalIndex, globalIndexSnapshot);
+    updateJobCard(elements.rmbMidpoint, rmbMidpointSnapshot);
+    updateJobCard(elements.futuresRealtime, futuresRealtimeSnapshot);
+    updateJobCard(elements.dollarIndex, dollarIndexSnapshot);
     updateJobCard(elements.profitForecast, profitForecastSnapshot);
-  updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
-  updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
-  updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
-  updateJobCard(elements.bigDealFundFlow, bigDealFundFlowSnapshot);
-  updateJobCard(elements.stockMainBusiness, mainBusinessSnapshot);
-  updateJobCard(elements.stockMainComposition, mainCompositionSnapshot);
-  updateJobCard(elements.financeBreakfast, breakfastSnapshot);
+    updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
+    updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
+    updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
+    updateJobCard(elements.bigDealFundFlow, bigDealFundFlowSnapshot);
+    updateJobCard(elements.stockMainBusiness, mainBusinessSnapshot);
+    updateJobCard(elements.stockMainComposition, mainCompositionSnapshot);
+    updateJobCard(elements.financeBreakfast, breakfastSnapshot);
 
     if (data.config) {
       configState.includeST = !!data.config.includeST;
@@ -439,14 +481,18 @@ async function loadStatus() {
       financialSnapshot,
       expressSnapshot,
       forecastSnapshot,
+      globalIndexSnapshot,
+      rmbMidpointSnapshot,
+      futuresRealtimeSnapshot,
+      dollarIndexSnapshot,
       industryFundFlowSnapshot,
-    conceptFundFlowSnapshot,
-    individualFundFlowSnapshot,
-    bigDealFundFlowSnapshot,
-    mainBusinessSnapshot,
-    mainCompositionSnapshot,
-    breakfastSnapshot,
-  ].some((snapshot) => snapshot.status === "running");
+      conceptFundFlowSnapshot,
+      individualFundFlowSnapshot,
+      bigDealFundFlowSnapshot,
+      mainBusinessSnapshot,
+      mainCompositionSnapshot,
+      breakfastSnapshot,
+    ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
     } else if (!shouldPoll && pollTimer) {
@@ -550,6 +596,21 @@ function initActions() {
   if (elements.globalIndex.button) {
     elements.globalIndex.button.addEventListener("click", () =>
       triggerJob("/control/sync/global-indices", {})
+    );
+  }
+  if (elements.rmbMidpoint.button) {
+    elements.rmbMidpoint.button.addEventListener("click", () =>
+      triggerJob("/control/sync/rmb-midpoint", {})
+    );
+  }
+  if (elements.futuresRealtime.button) {
+    elements.futuresRealtime.button.addEventListener("click", () =>
+      triggerJob("/control/sync/futures-realtime", {})
+    );
+  }
+  if (elements.dollarIndex.button) {
+    elements.dollarIndex.button.addEventListener("click", () =>
+      triggerJob("/control/sync/dollar-index", {})
     );
   }
   if (elements.stockMainBusiness.button) {

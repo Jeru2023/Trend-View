@@ -20,6 +20,9 @@ from .stock_main_business_dao import StockMainBusinessDAO
 from .stock_main_composition_dao import StockMainCompositionDAO
 from .profit_forecast_dao import ProfitForecastDAO
 from .global_index_dao import GlobalIndexDAO
+from .dollar_index_dao import DollarIndexDAO
+from .rmb_midpoint_dao import RmbMidpointDAO
+from .futures_realtime_dao import FuturesRealtimeDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -42,4 +45,7 @@ __all__ = [
     "StockMainCompositionDAO",
     "ProfitForecastDAO",
     "GlobalIndexDAO",
+    "DollarIndexDAO",
+    "RmbMidpointDAO",
+    "FuturesRealtimeDAO",
 ]

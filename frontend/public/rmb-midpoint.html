@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View - RMB Central Parity</title>
+    <link rel="stylesheet" href="styles.css?v=20251226" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="peripheral-rmb-midpoint">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="pageTitle">RMB Central Parity</h1>
+            <p class="page-subtitle" data-i18n="pageSubtitle">
+              SAFE-published reference rates for RMB versus major currencies.
+            </p>
+          </div>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <div class="dollar-index-controls">
+            <div class="dollar-index-actions">
+              <button class="primary-btn" id="rmb-mid-refresh" data-i18n="refreshButton">
+                Refresh
+              </button>
+            </div>
+            <div class="dollar-index-meta">
+              <span data-i18n="lastSyncedLabel">Last synced</span>
+              <strong id="rmb-mid-last-synced">--</strong>
+            </div>
+          </div>
+
+          <article class="chart-card">
+            <header class="chart-card__header">
+              <h2 data-i18n="chartTitle">Past Year Trend</h2>
+              <label class="chart-select" for="rmb-mid-currency">
+                <span data-i18n="currencySelectLabel">Currency</span>
+                <select id="rmb-mid-currency">
+                  <option value="usd" selected>USD</option>
+                  <option value="eur">EUR</option>
+                  <option value="jpy">JPY</option>
+                  <option value="hkd">HKD</option>
+                  <option value="gbp">GBP</option>
+                  <option value="aud">AUD</option>
+                  <option value="cad">CAD</option>
+                  <option value="nzd">NZD</option>
+                  <option value="sgd">SGD</option>
+                  <option value="chf">CHF</option>
+                  <option value="myr">MYR</option>
+                  <option value="rub">RUB</option>
+                  <option value="zar">ZAR</option>
+                  <option value="krw">KRW</option>
+                  <option value="aed">AED</option>
+                  <option value="sar">SAR</option>
+                  <option value="huf">HUF</option>
+                  <option value="pln">PLN</option>
+                  <option value="dkk">DKK</option>
+                  <option value="sek">SEK</option>
+                  <option value="nok">NOK</option>
+                  <option value="try">TRY</option>
+                  <option value="mxn">MXN</option>
+                  <option value="thb">THB</option>
+                </select>
+              </label>
+            </header>
+            <div class="chart-card__body">
+              <div class="chart-container" id="rmb-mid-chart"></div>
+              <p class="chart-empty hidden" id="rmb-mid-chart-empty" data-i18n="chartEmpty">
+                No chart data available.
+              </p>
+            </div>
+          </article>
+
+          <div class="rate-note">
+            <p data-i18n="noteIndirect">
+              * Rates for MYR, RUB, ZAR, KRW, AED, SAR, HUF, PLN, DKK, SEK, NOK, TRY, MXN, and THB reflect 100 CNY = foreign currency (indirect quotation).
+            </p>
+            <p data-i18n="noteDirect">
+              * Other currencies show 100 foreign currency = CNY (direct quotation).
+            </p>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="data-table" id="rmb-mid-table">
+              <thead>
+                <tr>
+                  <th data-i18n="tableDate">Date</th>
+                  <th data-i18n="tableUsd">USD</th>
+                  <th data-i18n="tableEur">EUR</th>
+                  <th data-i18n="tableJpy">JPY</th>
+                  <th data-i18n="tableHkd">HKD</th>
+                  <th data-i18n="tableGbp">GBP</th>
+                  <th data-i18n="tableAud">AUD</th>
+                  <th data-i18n="tableCad">CAD</th>
+                  <th data-i18n="tableNzd">NZD</th>
+                  <th data-i18n="tableSgd">SGD</th>
+                  <th data-i18n="tableChf">CHF</th>
+                  <th data-i18n="tableMyr">MYR</th>
+                  <th data-i18n="tableRub">RUB</th>
+                  <th data-i18n="tableZar">ZAR</th>
+                  <th data-i18n="tableKrw">KRW</th>
+                  <th data-i18n="tableAed">AED</th>
+                  <th data-i18n="tableSar">SAR</th>
+                  <th data-i18n="tableHuf">HUF</th>
+                  <th data-i18n="tablePln">PLN</th>
+                  <th data-i18n="tableDkk">DKK</th>
+                  <th data-i18n="tableSek">SEK</th>
+                  <th data-i18n="tableNok">NOK</th>
+                  <th data-i18n="tableTry">TRY</th>
+                  <th data-i18n="tableMxn">MXN</th>
+                  <th data-i18n="tableThb">THB</th>
+                </tr>
+              </thead>
+              <tbody
+                id="rmb-mid-tbody"
+                data-empty-en="No midpoint data available."
+                data-empty-zh="暂无中间价数据。"
+              ></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20251226"></script>
+    <script src="sidebar.js?v=20251226"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" crossorigin="anonymous"></script>
+    <script type="module" src="rmb-midpoint.js?v=20251226"></script>
+  </body>
+</html>

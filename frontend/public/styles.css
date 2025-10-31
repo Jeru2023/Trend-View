@@ -373,7 +373,27 @@ body {
 .forecast-eps{font-variant-numeric:tabular-nums}
 .table-empty{text-align:center;padding:24px;color:var(--text-muted);font-size:.95rem}
 .global-index-meta{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--text-muted);font-size:.95rem}
+.global-index-meta #global-index-refresh{padding:6px 14px;font-size:.9rem}
+.global-index-meta #global-index-refresh[disabled]{opacity:.65;cursor:not-allowed}
 .global-index-meta strong{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+
+.dollar-index-controls{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.dollar-index-actions{display:flex;align-items:center;gap:10px}
+.dollar-index-actions .primary-btn,.dollar-index-actions .secondary-btn{padding:6px 14px;font-size:.9rem}
+.dollar-index-meta{display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:.95rem}
+.dollar-index-meta strong{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+.chart-card{background:var(--bg-card);border-radius:var(--radius);padding:18px 20px;box-shadow:0 10px 26px rgba(15,23,42,0.12);border:1px solid rgba(148,163,184,0.14);margin-bottom:18px}
+.chart-card__header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.chart-card__header h2{margin:0;font-size:1.05rem;color:var(--text)}
+.chart-card__body{position:relative;height:320px}
+.chart-container{width:100%;height:100%}
+.chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.95rem;color:var(--text-muted);text-align:center;padding:24px}
+.chart-select{display:flex;align-items:center;gap:8px;font-size:.9rem;color:var(--text-muted)}
+.chart-select select{margin-left:4px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)}
+.chart-select span{white-space:nowrap}
+.rate-note{margin-bottom:16px;font-size:.9rem;color:var(--text-muted);line-height:1.5}
+.rate-note p{margin:0}
+.rate-note p + p{margin-top:4px}
 
 .table-link {
     color: var(--primary);

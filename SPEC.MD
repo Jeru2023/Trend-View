@@ -76,6 +76,9 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-29 (UPDATE frontend-015): Enabled header search to look up stocks by code/name independently of combination filters on the Market Intelligence dashboard.
 - 2025-10-29 (UPDATE frontend/backend-017): Added multi-period performance sorting to the trading stats tab with API support for ascending/descending order.
 - 2025-10-29 (FIX backend-018): Market Intelligence search now ignores blank keywords so empty input no longer constrains results.
+- 2025-10-31 (FEATURE backend/frontend-028): Added global index snapshot ingestion via AkShare `index_global_spot_em`, control-panel automation, “外围” navigation group, language-aware refresh button, and a dedicated global indices dashboard.
+- 2025-10-31 (FEATURE backend/frontend-029): Delivered Dollar Index historical sync using AkShare `index_global_hist_em`, new control-panel card, peripheral menu link, and a Dollar Index page with localized one-year trend chart plus refreshed data table/controls.
+- 2025-10-31 (FEATURE backend/frontend-030): Added RMB central parity module via AkShare `currency_boc_safe`, including PostgreSQL schema/DAO/service, scheduled control-panel job, peripheral navigation entry, localized one-year trend visualization, and comprehensive exchange-rate table with quotation notes.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.

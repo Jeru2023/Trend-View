@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-i18n="title">Trend View - Global Indices</title>
+    <title data-i18n="title">Trend View - Futures Realtime</title>
     <link rel="stylesheet" href="styles.css?v=20251226" />
     <script>
       (function () {
@@ -22,16 +22,16 @@
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
   </head>
-  <body data-active-nav="peripheral-global-indices">
+  <body data-active-nav="peripheral-futures">
     <div class="layout">
       <div data-sidebar-container></div>
 
       <main class="content">
         <header class="content__header">
           <div>
-            <h1 class="page-heading" data-i18n="pageTitle">Global Indices</h1>
+            <h1 class="page-heading" data-i18n="pageTitle">Futures Realtime</h1>
             <p class="page-subtitle" data-i18n="pageSubtitle">
-              Real-time performance of major world benchmarks.
+              Live quotes for selected global commodity futures.
             </p>
           </div>
           <div class="header-actions">
@@ -43,34 +43,55 @@
         </header>
 
         <section class="page">
-          <div class="global-index-meta">
-            <button class="primary-btn" id="global-index-refresh" data-i18n="refreshButton">
-              Refresh
-            </button>
-            <span data-i18n="lastSyncedLabel">Last synced</span>
-            <strong id="global-index-last-synced">--</strong>
+          <div class="dollar-index-controls">
+            <div class="dollar-index-actions">
+              <button class="primary-btn" id="futures-refresh" data-i18n="refreshButton">
+                Refresh
+              </button>
+            </div>
+            <div class="dollar-index-meta">
+              <span data-i18n="lastSyncedLabel">Last synced</span>
+              <strong id="futures-last-synced">--</strong>
+            </div>
           </div>
+
+          <article class="chart-card">
+            <header class="chart-card__header">
+              <h2 data-i18n="chartTitle">Change % Snapshot</h2>
+            </header>
+            <div class="chart-card__body">
+              <div class="chart-container" id="futures-chart"></div>
+              <p class="chart-empty hidden" id="futures-chart-empty" data-i18n="chartEmpty">
+                No chart data available.
+              </p>
+            </div>
+          </article>
+
           <div class="table-wrapper">
-            <table class="data-table" id="global-index-table">
+            <table class="data-table" id="futures-table">
               <thead>
                 <tr>
+                  <th data-i18n="tableName">Instrument</th>
                   <th data-i18n="tableCode">Code</th>
-                  <th data-i18n="tableName">Name</th>
-                  <th data-i18n="tableLatest">Last</th>
+                  <th data-i18n="tableLast">Last</th>
+                  <th data-i18n="tableCny">CNY Quote</th>
                   <th data-i18n="tableChange">Change</th>
                   <th data-i18n="tableChangePercent">Change %</th>
                   <th data-i18n="tableOpen">Open</th>
                   <th data-i18n="tableHigh">High</th>
                   <th data-i18n="tableLow">Low</th>
-                  <th data-i18n="tablePrevClose">Prev Close</th>
-                  <th data-i18n="tableAmplitude">Amplitude</th>
+                  <th data-i18n="tablePrev">Prev Settle</th>
+                  <th data-i18n="tableOpenInterest">Open Interest</th>
+                  <th data-i18n="tableBid">Bid</th>
+                  <th data-i18n="tableAsk">Ask</th>
                   <th data-i18n="tableQuoteTime">Quote Time</th>
+                  <th data-i18n="tableDate">Date</th>
                 </tr>
               </thead>
               <tbody
-                id="global-index-tbody"
-                data-empty-en="No global index data."
-                data-empty-zh="暂无全球指数数据。"
+                id="futures-tbody"
+                data-empty-en="No futures data available."
+                data-empty-zh="暂无期货行情数据。"
               ></tbody>
             </table>
           </div>
@@ -80,6 +101,7 @@
 
     <script src="i18n.js?v=20251226"></script>
     <script src="sidebar.js?v=20251226"></script>
-    <script type="module" src="global-indices.js?v=20251226"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" crossorigin="anonymous"></script>
+    <script type="module" src="futures-realtime.js?v=20251226"></script>
   </body>
 </html>

@@ -8,6 +8,9 @@ from .performance_express_service import list_performance_express, sync_performa
 from .performance_forecast_service import list_performance_forecast, sync_performance_forecast
 from .profit_forecast_service import list_profit_forecast, sync_profit_forecast
 from .global_index_service import list_global_indices, sync_global_indices
+from .dollar_index_service import list_dollar_index, sync_dollar_index
+from .rmb_midpoint_service import list_rmb_midpoint_rates, sync_rmb_midpoint_rates
+from .futures_realtime_service import list_futures_realtime, sync_futures_realtime
 from .daily_trade_service import sync_daily_trade
 from .daily_trade_metrics_service import sync_daily_trade_metrics
 from .stock_basic_service import get_stock_overview, get_stock_detail, sync_stock_basic
@@ -38,11 +41,17 @@ __all__ = [
     "sync_performance_forecast",
     "sync_profit_forecast",
     "sync_global_indices",
+    "sync_dollar_index",
+    "sync_rmb_midpoint_rates",
+    "sync_futures_realtime",
     "list_finance_breakfast",
     "list_performance_express",
     "list_performance_forecast",
     "list_profit_forecast",
     "list_global_indices",
+    "list_dollar_index",
+    "list_rmb_midpoint_rates",
+    "list_futures_realtime",
     "list_industry_fund_flow",
     "list_concept_fund_flow",
     "list_individual_fund_flow",

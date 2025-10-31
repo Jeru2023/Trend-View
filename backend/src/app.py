@@ -32,6 +32,9 @@ from .dao import (
     PerformanceForecastDAO,
     ProfitForecastDAO,
     GlobalIndexDAO,
+    DollarIndexDAO,
+    RmbMidpointDAO,
+    FuturesRealtimeDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
@@ -52,6 +55,9 @@ from .services import (
     list_performance_forecast,
     list_profit_forecast,
     list_global_indices,
+    list_dollar_index,
+    list_rmb_midpoint_rates,
+    list_futures_realtime,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_individual_fund_flow,
@@ -68,6 +74,9 @@ from .services import (
     sync_performance_forecast,
     sync_profit_forecast,
     sync_global_indices,
+    sync_dollar_index,
+    sync_rmb_midpoint_rates,
+    sync_futures_realtime,
     sync_industry_fund_flow,
     sync_concept_fund_flow,
     sync_individual_fund_flow,
@@ -641,6 +650,53 @@ class SyncGlobalIndexResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncDollarIndexRequest(BaseModel):
+    symbol: Optional[str] = Field(
+        None,
+        description="Optional AkShare symbol name for the index (default: 美元指数).",
+    )
+
+    class Config:
+        extra = "forbid"
+        allow_population_by_field_name = True
+
+
+class SyncDollarIndexResponse(BaseModel):
+    rows: int
+    codes: List[str] = Field(default_factory=list)
+    code_count: int = Field(..., alias="codeCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncRmbMidpointRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncRmbMidpointResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncFuturesRealtimeRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncFuturesRealtimeResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class SyncIndustryFundFlowRequest(BaseModel):
     symbols: Optional[List[str]] = Field(
         None,
@@ -898,6 +954,93 @@ class GlobalIndexRecord(BaseModel):
 class GlobalIndexListResponse(BaseModel):
     total: int
     items: List[GlobalIndexRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class DollarIndexRecord(BaseModel):
+    trade_date: date = Field(..., alias="tradeDate")
+    code: str
+    name: Optional[str] = None
+    open_price: Optional[float] = Field(None, alias="openPrice")
+    close_price: Optional[float] = Field(None, alias="closePrice")
+    high_price: Optional[float] = Field(None, alias="highPrice")
+    low_price: Optional[float] = Field(None, alias="lowPrice")
+    amplitude: Optional[float] = None
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class DollarIndexListResponse(BaseModel):
+    total: int
+    items: List[DollarIndexRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class RmbMidpointRecord(BaseModel):
+    trade_date: date = Field(..., alias="tradeDate")
+    usd: Optional[float] = None
+    eur: Optional[float] = None
+    jpy: Optional[float] = None
+    hkd: Optional[float] = None
+    gbp: Optional[float] = None
+    aud: Optional[float] = None
+    cad: Optional[float] = None
+    nzd: Optional[float] = None
+    sgd: Optional[float] = None
+    chf: Optional[float] = None
+    myr: Optional[float] = None
+    rub: Optional[float] = None
+    zar: Optional[float] = None
+    krw: Optional[float] = None
+    aed: Optional[float] = None
+    sar: Optional[float] = None
+    huf: Optional[float] = None
+    pln: Optional[float] = None
+    dkk: Optional[float] = None
+    sek: Optional[float] = None
+    nok: Optional[float] = None
+    try_value: Optional[float] = Field(None, alias="try")
+    mxn: Optional[float] = None
+    thb: Optional[float] = None
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class RmbMidpointListResponse(BaseModel):
+    total: int
+    items: List[RmbMidpointRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class FuturesRealtimeRecord(BaseModel):
+    name: str
+    code: Optional[str] = None
+    last_price: Optional[float] = Field(None, alias="lastPrice")
+    price_cny: Optional[float] = Field(None, alias="priceCny")
+    change_amount: Optional[float] = Field(None, alias="changeAmount")
+    change_percent: Optional[float] = Field(None, alias="changePercent")
+    open_price: Optional[float] = Field(None, alias="openPrice")
+    high_price: Optional[float] = Field(None, alias="highPrice")
+    low_price: Optional[float] = Field(None, alias="lowPrice")
+    prev_settlement: Optional[float] = Field(None, alias="prevSettlement")
+    open_interest: Optional[float] = Field(None, alias="openInterest")
+    bid_price: Optional[float] = Field(None, alias="bidPrice")
+    ask_price: Optional[float] = Field(None, alias="askPrice")
+    quote_time: Optional[str] = Field(None, alias="quoteTime")
+    trade_date: Optional[date] = Field(None, alias="tradeDate")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class FuturesRealtimeListResponse(BaseModel):
+    total: int
+    items: List[FuturesRealtimeRecord]
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
 
 
@@ -1706,6 +1849,109 @@ async def _run_global_index_job(request: SyncGlobalIndexRequest) -> None:  # noq
     await loop.run_in_executor(None, job)
 
 
+async def _run_dollar_index_job(request: SyncDollarIndexRequest) -> None:
+    loop = asyncio.get_running_loop()
+    symbol = request.symbol or "美元指数"
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("dollar_index", message=f"Syncing {symbol} history", progress=0.0)
+        try:
+            result = sync_dollar_index(symbol=symbol)
+            stats = DollarIndexDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "dollar_index",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} dollar index rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "dollar_index",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_rmb_midpoint_job(request: SyncRmbMidpointRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("rmb_midpoint", message="Syncing RMB midpoint rates", progress=0.0)
+        try:
+            result = sync_rmb_midpoint_rates()
+            stats = RmbMidpointDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "rmb_midpoint",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} midpoint rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "rmb_midpoint",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_futures_realtime_job(request: SyncFuturesRealtimeRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("futures_realtime", message="Syncing futures realtime data", progress=0.0)
+        try:
+            result = sync_futures_realtime()
+            stats = FuturesRealtimeDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "futures_realtime",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} futures rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "futures_realtime",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_industry_fund_flow_job(request: SyncIndustryFundFlowRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -2092,6 +2338,30 @@ async def start_global_index_job(payload: SyncGlobalIndexRequest) -> None:  # no
     asyncio.create_task(_run_global_index_job(payload))
 
 
+async def start_dollar_index_job(payload: SyncDollarIndexRequest) -> None:
+    if _job_running("dollar_index"):
+        raise HTTPException(status_code=409, detail="Dollar index sync already running")
+    monitor.start("dollar_index", message="Syncing dollar index history")
+    monitor.update("dollar_index", progress=0.0)
+    asyncio.create_task(_run_dollar_index_job(payload))
+
+
+async def start_rmb_midpoint_job(payload: SyncRmbMidpointRequest) -> None:
+    if _job_running("rmb_midpoint"):
+        raise HTTPException(status_code=409, detail="RMB midpoint sync already running")
+    monitor.start("rmb_midpoint", message="Syncing RMB midpoint rates")
+    monitor.update("rmb_midpoint", progress=0.0)
+    asyncio.create_task(_run_rmb_midpoint_job(payload))
+
+
+async def start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
+    if _job_running("futures_realtime"):
+        raise HTTPException(status_code=409, detail="Futures realtime sync already running")
+    monitor.start("futures_realtime", message="Syncing futures realtime data")
+    monitor.update("futures_realtime", progress=0.0)
+    asyncio.create_task(_run_futures_realtime_job(payload))
+
+
 async def start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
     if _job_running("industry_fund_flow"):
         raise HTTPException(status_code=409, detail="Industry fund flow sync already running")
@@ -2230,6 +2500,27 @@ async def safe_start_global_index_job(payload: SyncGlobalIndexRequest) -> None:
         await start_global_index_job(payload)
     except HTTPException as exc:
         logger.info("Global index sync skipped: %s", exc.detail)
+
+
+async def safe_start_dollar_index_job(payload: SyncDollarIndexRequest) -> None:
+    try:
+        await start_dollar_index_job(payload)
+    except HTTPException as exc:
+        logger.info("Dollar index sync skipped: %s", exc.detail)
+
+
+async def safe_start_rmb_midpoint_job(payload: SyncRmbMidpointRequest) -> None:
+    try:
+        await start_rmb_midpoint_job(payload)
+    except HTTPException as exc:
+        logger.info("RMB midpoint sync skipped: %s", exc.detail)
+
+
+async def safe_start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
+    try:
+        await start_futures_realtime_job(payload)
+    except HTTPException as exc:
+        logger.info("Futures realtime sync skipped: %s", exc.detail)
 
 
 async def safe_start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -2382,6 +2673,30 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour="7,9,11,13,15,17", minute=0),
             id="global_index_intraday",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_dollar_index_job(SyncDollarIndexRequest())
+            ),
+            CronTrigger(hour="7,17", minute=10),
+            id="dollar_index_twice_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_rmb_midpoint_job(SyncRmbMidpointRequest())
+            ),
+            CronTrigger(hour=9, minute=20),
+            id="rmb_midpoint_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_futures_realtime_job(SyncFuturesRealtimeRequest())
+            ),
+            CronTrigger(hour="7,10,13,16,19", minute=5),
+            id="futures_realtime_intraday",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -3009,6 +3324,116 @@ def list_global_indices_api(
     )
 
 
+@app.get("/macro/dollar-index", response_model=DollarIndexListResponse)
+def list_dollar_index_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+    start_date: Optional[date] = Query(None, alias="startDate", description="Filter results on or after this date."),
+    end_date: Optional[date] = Query(None, alias="endDate", description="Filter results on or before this date."),
+) -> DollarIndexListResponse:
+    result = list_dollar_index(limit=limit, offset=offset, start_date=start_date, end_date=end_date)
+    items = [
+        DollarIndexRecord(
+            tradeDate=entry.get("trade_date"),
+            code=entry.get("code"),
+            name=entry.get("name"),
+            openPrice=entry.get("open_price"),
+            closePrice=entry.get("close_price"),
+            highPrice=entry.get("high_price"),
+            lowPrice=entry.get("low_price"),
+            amplitude=entry.get("amplitude"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return DollarIndexListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
+    )
+
+
+@app.get("/macro/rmb-midpoint", response_model=RmbMidpointListResponse)
+def list_rmb_midpoint_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+    start_date: Optional[date] = Query(None, alias="startDate", description="Filter results on or after this date."),
+    end_date: Optional[date] = Query(None, alias="endDate", description="Filter results on or before this date."),
+) -> RmbMidpointListResponse:
+    result = list_rmb_midpoint_rates(limit=limit, offset=offset, start_date=start_date, end_date=end_date)
+    items: List[RmbMidpointRecord] = []
+    for entry in result.get("items", []):
+        payload = {
+            "tradeDate": entry.get("trade_date"),
+            "usd": entry.get("usd"),
+            "eur": entry.get("eur"),
+            "jpy": entry.get("jpy"),
+            "hkd": entry.get("hkd"),
+            "gbp": entry.get("gbp"),
+            "aud": entry.get("aud"),
+            "cad": entry.get("cad"),
+            "nzd": entry.get("nzd"),
+            "sgd": entry.get("sgd"),
+            "chf": entry.get("chf"),
+            "myr": entry.get("myr"),
+            "rub": entry.get("rub"),
+            "zar": entry.get("zar"),
+            "krw": entry.get("krw"),
+            "aed": entry.get("aed"),
+            "sar": entry.get("sar"),
+            "huf": entry.get("huf"),
+            "pln": entry.get("pln"),
+            "dkk": entry.get("dkk"),
+            "sek": entry.get("sek"),
+            "nok": entry.get("nok"),
+            "try": entry.get("try"),
+            "mxn": entry.get("mxn"),
+            "thb": entry.get("thb"),
+            "updatedAt": entry.get("updated_at"),
+        }
+        items.append(RmbMidpointRecord(**payload))
+
+    return RmbMidpointListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
+    )
+
+
+@app.get("/macro/futures-realtime", response_model=FuturesRealtimeListResponse)
+def list_futures_realtime_api(
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> FuturesRealtimeListResponse:
+    result = list_futures_realtime(limit=limit, offset=offset)
+    items = [
+        FuturesRealtimeRecord(
+            name=entry.get("name"),
+            code=entry.get("code"),
+            lastPrice=entry.get("last_price"),
+            priceCny=entry.get("price_cny"),
+            changeAmount=entry.get("change_amount"),
+            changePercent=entry.get("change_percent"),
+            openPrice=entry.get("open_price"),
+            highPrice=entry.get("high_price"),
+            lowPrice=entry.get("low_price"),
+            prevSettlement=entry.get("prev_settlement"),
+            openInterest=entry.get("open_interest"),
+            bidPrice=entry.get("bid_price"),
+            askPrice=entry.get("ask_price"),
+            quoteTime=entry.get("quote_time"),
+            tradeDate=entry.get("trade_date"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return FuturesRealtimeListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
+    )
+
+
 @app.get("/fund-flow/industry", response_model=IndustryFundFlowListResponse)
 def list_industry_fund_flow_entries(
     symbol: Optional[str] = Query(
@@ -3235,6 +3660,21 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect global_index stats: %s", exc)
         stats_map["global_index"] = {}
     try:
+        stats_map["dollar_index"] = DollarIndexDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect dollar_index stats: %s", exc)
+        stats_map["dollar_index"] = {}
+    try:
+        stats_map["rmb_midpoint"] = RmbMidpointDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect rmb_midpoint stats: %s", exc)
+        stats_map["rmb_midpoint"] = {}
+    try:
+        stats_map["futures_realtime"] = FuturesRealtimeDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect futures_realtime stats: %s", exc)
+        stats_map["futures_realtime"] = {}
+    try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
@@ -3302,6 +3742,30 @@ def get_control_status() -> ControlStatusResponse:
             last_duration=info.get("lastDuration"),
             last_market=info.get("lastMarket"),
             error=info.get("error"),
+        )
+
+    for name, stats in stats_map.items():
+        if name in jobs:
+            continue
+        finished_at = stats.get("updated_at")
+        if finished_at is not None and hasattr(finished_at, "isoformat"):
+            finished_at = finished_at.isoformat()
+        total_rows = stats.get("count")
+        if total_rows is not None:
+            try:
+                total_rows = int(total_rows)
+            except (TypeError, ValueError):
+                pass
+        jobs[name] = JobStatusPayload(
+            status="idle",
+            started_at=None,
+            finished_at=finished_at,
+            progress=0.0,
+            message=None,
+            total_rows=total_rows,
+            last_duration=None,
+            last_market=None,
+            error=None,
         )
 
     return ControlStatusResponse(jobs=jobs, config=_runtime_config_to_payload(config))
@@ -3381,6 +3845,24 @@ async def control_sync_profit_forecast(payload: SyncProfitForecastRequest) -> di
 @app.post("/control/sync/global-indices")
 async def control_sync_global_indices(payload: SyncGlobalIndexRequest) -> dict[str, str]:
     await start_global_index_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/dollar-index")
+async def control_sync_dollar_index(payload: SyncDollarIndexRequest) -> dict[str, str]:
+    await start_dollar_index_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/rmb-midpoint")
+async def control_sync_rmb_midpoint(payload: SyncRmbMidpointRequest) -> dict[str, str]:
+    await start_rmb_midpoint_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/futures-realtime")
+async def control_sync_futures_realtime(payload: SyncFuturesRealtimeRequest) -> dict[str, str]:
+    await start_futures_realtime_job(payload)
     return {"status": "started"}
 
 

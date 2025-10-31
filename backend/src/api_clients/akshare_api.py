@@ -181,6 +181,79 @@ GLOBAL_INDEX_COLUMN_MAP: Final[dict[str, str]] = {
     "最新行情时间": "last_quote_time",
 }
 
+DOLLAR_INDEX_COLUMN_MAP: Final[dict[str, str]] = {
+    "日期": "trade_date",
+    "代码": "code",
+    "名称": "name",
+    "今开": "open_price",
+    "最新价": "close_price",
+    "最高": "high_price",
+    "最低": "low_price",
+    "振幅": "amplitude",
+}
+
+RMB_MIDPOINT_COLUMN_MAP: Final[dict[str, str]] = {
+    "日期": "trade_date",
+    "美元": "usd",
+    "欧元": "eur",
+    "日元": "jpy",
+    "港元": "hkd",
+    "英镑": "gbp",
+    "澳元": "aud",
+    "加元": "cad",
+    "新西兰元": "nzd",
+    "新加坡元": "sgd",
+    "瑞士法郎": "chf",
+    "林吉特": "myr",
+    "卢布": "rub",
+    "兰特": "zar",
+    "韩元": "krw",
+    "迪拉姆": "aed",
+    "里亚尔": "sar",
+    "福林": "huf",
+    "兹罗提": "pln",
+    "丹麦克朗": "dkk",
+    "瑞典克朗": "sek",
+    "挪威克朗": "nok",
+    "里拉": "try",
+    "比索": "mxn",
+    "泰铢": "thb",
+}
+
+FUTURES_REALTIME_COLUMN_MAP: Final[dict[str, str]] = {
+    "名称": "name",
+    "最新价": "last_price",
+    "人民币报价": "price_cny",
+    "涨跌额": "change_amount",
+    "涨跌幅": "change_percent",
+    "开盘价": "open_price",
+    "最高价": "high_price",
+    "最低价": "low_price",
+    "昨日结算价": "prev_settlement",
+    "持仓量": "open_interest",
+    "买价": "bid_price",
+    "卖价": "ask_price",
+    "行情时间": "quote_time",
+    "日期": "trade_date",
+}
+
+FUTURES_TARGET_CODES: Final[dict[str, str]] = {
+    "LME镍3个月": "NID",
+    "LME铅3个月": "PBD",
+    "LME锡3个月": "SND",
+    "LME锌3个月": "ZSD",
+    "LME铝3个月": "AHD",
+    "LME铜3个月": "CAD",
+    "COMEX铜": "HG",
+    "NYMEX天然气": "NG",
+    "NYMEX原油": "CL",
+    "COMEX白银": "SI",
+    "COMEX黄金": "GC",
+    "布伦特原油": "OIL",
+    "伦敦金": "XAU",
+    "伦敦银": "XAG",
+}
+
 _FINANCE_BREAKFAST_TIMEOUT_SECONDS: Final[float] = 20.0
 
 
@@ -445,6 +518,90 @@ def fetch_global_indices() -> pd.DataFrame:
             renamed[column] = None
 
     return renamed.loc[:, list(GLOBAL_INDEX_COLUMN_MAP.values())]
+
+
+def _empty_dollar_index_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(DOLLAR_INDEX_COLUMN_MAP.values()))
+
+
+def fetch_dollar_index_history(symbol: str = "美元指数") -> pd.DataFrame:
+    """Fetch historical quotes for a global index (default: Dollar Index)."""
+    symbol_param = str(symbol).strip() or "美元指数"
+
+    try:
+        dataframe = ak.index_global_hist_em(symbol=symbol_param)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch dollar index history via AkShare: %s", exc)
+        return _empty_dollar_index_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no dollar index history for %s", symbol_param)
+        return _empty_dollar_index_frame()
+
+    renamed = dataframe.rename(columns=DOLLAR_INDEX_COLUMN_MAP)
+    for column in DOLLAR_INDEX_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(DOLLAR_INDEX_COLUMN_MAP.values())]
+
+
+def _empty_rmb_midpoint_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(RMB_MIDPOINT_COLUMN_MAP.values()))
+
+
+def fetch_rmb_midpoint_rates() -> pd.DataFrame:
+    """Fetch historical RMB central parity rates from SAFE."""
+
+    try:
+        dataframe = ak.currency_boc_safe()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch RMB midpoint data via AkShare: %s", exc)
+        return _empty_rmb_midpoint_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no RMB midpoint data.")
+        return _empty_rmb_midpoint_frame()
+
+    renamed = dataframe.rename(columns=RMB_MIDPOINT_COLUMN_MAP)
+    for column in RMB_MIDPOINT_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(RMB_MIDPOINT_COLUMN_MAP.values())]
+
+
+def _empty_futures_realtime_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(FUTURES_REALTIME_COLUMN_MAP.values()))
+
+
+def fetch_futures_realtime(symbols: Optional[Sequence[str]] = None) -> pd.DataFrame:
+    """Fetch realtime foreign commodity futures quotes for selected symbols."""
+
+    if not symbols:
+        symbols = list(FUTURES_TARGET_CODES.values())
+
+    try:
+        symbol_param = ",".join(symbols)
+        dataframe = ak.futures_foreign_commodity_realtime(symbol=symbol_param)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch futures realtime data via AkShare: %s", exc)
+        return _empty_futures_realtime_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no futures realtime data for %s", symbols)
+        return _empty_futures_realtime_frame()
+
+    renamed = dataframe.rename(columns=FUTURES_REALTIME_COLUMN_MAP)
+    for column in FUTURES_REALTIME_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    filtered = renamed.loc[
+        renamed["name"].isin(FUTURES_TARGET_CODES.keys())
+    ]
+
+    return filtered.loc[:, list(FUTURES_REALTIME_COLUMN_MAP.values())]
 
 
 def _empty_industry_fund_flow_frame() -> pd.DataFrame:
