@@ -26,7 +26,7 @@ function getInitialLanguage() {
     return htmlLang;
   }
   const browserLang = (navigator.language || "").toLowerCase();
-  return browserLang.startsWith("zh") ? "zh" : "en";
+  return "zh";
 }
 
 function persistLanguage(lang) {
@@ -50,6 +50,7 @@ const elements = {
 
 function applyTranslations() {
   document.documentElement.lang = currentLang;
+  document.documentElement.setAttribute("data-pref-lang", currentLang);
   document.title = translations[currentLang].configTitle;
 
   document.querySelectorAll("[data-i18n]").forEach((node) => {
@@ -59,7 +60,12 @@ function applyTranslations() {
     }
   });
 }
+
 window.applyTranslations = applyTranslations;
+if (window.__SIDEBAR_TRANSLATE_PENDING) {
+  window.applyTranslations();
+  window.__SIDEBAR_TRANSLATE_PENDING = false;
+}
 
 function setLang(lang) {
   if (!lang || !translations[lang]) {

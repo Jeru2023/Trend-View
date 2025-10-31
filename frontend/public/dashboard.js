@@ -20,7 +20,7 @@ function getInitialLanguage() {
     return htmlLang;
   }
   const browserLang = (navigator.language || "").toLowerCase();
-  return browserLang.startsWith("zh") ? "zh" : "en";
+  return "zh";
 }
 
 function persistLanguage(lang) {
@@ -37,6 +37,7 @@ let currentLang = getInitialLanguage();
 function applyTranslations() {
   const dict = translations[currentLang] || translations.en;
   document.documentElement.lang = currentLang;
+  document.documentElement.setAttribute("data-pref-lang", currentLang);
   document.title = dict.title;
 
   document.querySelectorAll("[data-i18n]").forEach((el) => {
@@ -55,11 +56,14 @@ function applyTranslations() {
       img.setAttribute("title", value);
     }
   });
+
+  document.querySelectorAll(".lang-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.lang === currentLang);
+  });
 }
 
 function bindLanguageButtons() {
   document.querySelectorAll(".lang-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.lang === currentLang);
     btn.onclick = () => {
       const lang = btn.dataset.lang;
       if (lang && translations[lang]) {
@@ -74,6 +78,13 @@ function bindLanguageButtons() {
 function initialize() {
   applyTranslations();
   bindLanguageButtons();
+}
+
+
+window.applyTranslations = applyTranslations;
+if (window.__SIDEBAR_TRANSLATE_PENDING) {
+  window.applyTranslations();
+  window.__SIDEBAR_TRANSLATE_PENDING = false;
 }
 
 document.addEventListener("DOMContentLoaded", initialize);

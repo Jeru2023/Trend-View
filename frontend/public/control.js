@@ -26,7 +26,7 @@ function getInitialLanguage() {
     return htmlLang;
   }
   const browserLang = (navigator.language || "").toLowerCase();
-  return browserLang.startsWith("zh") ? "zh" : "en";
+  return "zh";
 }
 
 function persistLanguage(lang) {
@@ -307,6 +307,7 @@ function setLang(lang) {
 function applyTranslations() {
   const dict = translations[currentLang];
   document.documentElement.lang = currentLang;
+  document.documentElement.setAttribute("data-pref-lang", currentLang);
   document.title = dict.title;
 
   document
@@ -554,12 +555,103 @@ async function triggerJob(endpoint, payload) {
 }
 
 
+
 window.applyTranslations = applyTranslations;
+if (window.__SIDEBAR_TRANSLATE_PENDING) {
+  window.applyTranslations();
+  window.__SIDEBAR_TRANSLATE_PENDING = false;
+}
 
 function initLanguageSwitch() {
   elements.langButtons.forEach((btn) =>
     btn.addEventListener("click", () => setLang(btn.dataset.lang))
   );
+}
+
+function initControlTabs() {
+  const tabLinks = Array.from(document.querySelectorAll(".control-tabs__link"));
+  if (!tabLinks.length) {
+    return;
+  }
+
+  const contentRoot = document.querySelector(".content");
+  const groups = tabLinks
+    .map((link) => {
+      const href = link.getAttribute("href");
+      if (!href || !href.startsWith("#")) {
+        return null;
+      }
+      const target = document.getElementById(href.slice(1));
+      return target ? { link, target } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.target.offsetTop - b.target.offsetTop);
+
+  if (!groups.length) {
+    return;
+  }
+
+  const setActive = (activeLink) => {
+    tabLinks.forEach((link) =>
+      link.classList.toggle("active", link === activeLink)
+    );
+  };
+
+  setActive(groups[0].link);
+
+  tabLinks.forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const href = link.getAttribute("href");
+      if (!href || !href.startsWith("#")) {
+        return;
+      }
+      event.preventDefault();
+      const target = document.getElementById(href.slice(1));
+      if (!target) {
+        return;
+      }
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActive(link);
+    });
+  });
+
+  if (!("IntersectionObserver" in window)) {
+    return;
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort(
+          (a, b) => a.boundingClientRect.top - b.boundingClientRect.top
+        );
+      if (visible.length) {
+        const topTarget = visible[0].target;
+        const match = groups.find((item) => item.target === topTarget);
+        if (match) {
+          setActive(match.link);
+        }
+        return;
+      }
+      const scrollTop =
+        (contentRoot ? contentRoot.scrollTop : window.scrollY) + 1;
+      let current = groups[0];
+      for (const item of groups) {
+        if (item.target.offsetTop <= scrollTop) {
+          current = item;
+        }
+      }
+      setActive(current.link);
+    },
+    {
+      root: contentRoot || null,
+      threshold: 0.3,
+      rootMargin: "-20% 0px -55% 0px",
+    }
+  );
+
+  groups.forEach((item) => observer.observe(item.target));
 }
 
 function initActions() {
@@ -674,6 +766,7 @@ function initActions() {
 
 // Boot
 initLanguageSwitch();
+initControlTabs();
 initActions();
 setLang(currentLang);
 loadStatus();

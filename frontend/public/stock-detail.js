@@ -1481,7 +1481,7 @@ function getInitialLanguage() {
     return attr;
   }
   const browserLang = (navigator.language || "").toLowerCase();
-  return browserLang.startsWith("zh") ? "zh" : "en";
+  return "zh";
 }
 
 function persistLanguage(lang) {
@@ -2955,6 +2955,13 @@ function initialize() {
   document.title = `${translations[currentLang].pageTitle} - ${code}`;
   fetchDetail(code);
   window.addEventListener("resize", resizeCandlestickChart);
+}
+
+
+window.applyTranslations = applyTranslations;
+if (window.__SIDEBAR_TRANSLATE_PENDING) {
+  window.applyTranslations();
+  window.__SIDEBAR_TRANSLATE_PENDING = false;
 }
 
 document.addEventListener("DOMContentLoaded", initialize);
