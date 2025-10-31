@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View - Fed Statements</title>
+    <link rel="stylesheet" href="styles.css?v=20251226" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="peripheral-fed-statements">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="pageTitle">Federal Reserve Statements</h1>
+            <p class="page-subtitle" data-i18n="pageSubtitle">
+              Latest press releases issued by the Federal Reserve Board.
+            </p>
+          </div>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <div class="fed-meta">
+            <button class="primary-btn" id="fed-statements-refresh" data-i18n="refreshButton">
+              Refresh
+            </button>
+            <span data-i18n="lastSyncedLabel">Last synced</span>
+            <strong id="fed-statements-last-synced">--</strong>
+          </div>
+
+          <div class="statement-list" id="fed-statements-list" data-empty-en="No statements available." data-empty-zh="暂无美联储声明数据。"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20251226"></script>
+    <script src="sidebar.js?v=20251226"></script>
+    <script type="module" src="fed-statements.js?v=20251226"></script>
+  </body>
+</html>

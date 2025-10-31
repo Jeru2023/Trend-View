@@ -18,6 +18,7 @@
         navDollarIndex: "Dollar Index",
         navRmbMidpoint: "RMB Midpoint",
         navFuturesRealtime: "Futures Realtime",
+        navFedStatements: "Fed Statements",
         navFunds: "Funds",
         navConceptFundFlow: "Concept Fund Flow",
         navBigDealFundFlow: "Big Deal Tracking",
@@ -48,6 +49,7 @@
         navDollarIndex: "美元指数",
         navRmbMidpoint: "人民币中间价",
         navFuturesRealtime: "外盘期货",
+        navFedStatements: "美联储声明",
         navFunds: "资金流",
         navConceptFundFlow: "概念资金流",
         navBigDealFundFlow: "大单追踪",
@@ -974,6 +976,8 @@
         rmbMidpointSubtitle: "Sync SAFE central parity rates (currency_boc_safe).",
         futuresRealtimeTitle: "Futures Realtime",
         futuresRealtimeSubtitle: "Fetch commodity futures quotes (futures_foreign_commodity_realtime).",
+        fedStatementsTitle: "Fed Statements",
+        fedStatementsSubtitle: "Fetch latest Federal Reserve press releases and persist full text content.",
         fundamentalMetricsTitle: "Fundamental Metrics",
         fundamentalMetricsSubtitle:
           "Compute YoY and QoQ KPIs from income statements and indicators (auto 19:10).",
@@ -1053,6 +1057,8 @@
         rmbMidpointSubtitle: "同步外汇管理局公布的人民币汇率中间价 (currency_boc_safe)。",
         futuresRealtimeTitle: "外盘期货行情",
         futuresRealtimeSubtitle: "同步新浪外盘商品期货实时行情 (futures_foreign_commodity_realtime)。",
+        fedStatementsTitle: "美联储声明",
+        fedStatementsSubtitle: "抓取最新的美联储新闻稿并保存正文内容。",
         fundamentalMetricsTitle: "基本面衍生指标",
         fundamentalMetricsSubtitle:
           "基于最新财报计算净利润、营收、ROE 的同比与环比（19:10 自动执行）。",
@@ -1430,6 +1436,33 @@
         aiImpactStrategy: "投资策略",
         aiImpactDetails: "影响理由",
         aiImpactTags: "标签"
+    }
+    },
+
+    fedStatements: {
+      en: {
+        title: "Trend View - Fed Statements",
+        pageTitle: "Federal Reserve Statements",
+        pageSubtitle: "Latest press releases published by the Federal Reserve Board.",
+        lastSyncedLabel: "Last synced",
+        refreshButton: "Refresh",
+        refreshing: "Refreshing...",
+        empty: "No statements available.",
+        viewOriginal: "View original",
+        updatedAtLabel: "Updated",
+        untitled: "Untitled statement",
+      },
+      zh: {
+        title: "趋势视图 - 美联储声明",
+        pageTitle: "美联储声明",
+        pageSubtitle: "收录美联储官网发布的最新新闻稿。",
+        lastSyncedLabel: "最近同步",
+        refreshButton: "刷新",
+        refreshing: "刷新中...",
+        empty: "暂无美联储声明数据。",
+        viewOriginal: "查看原文",
+        updatedAtLabel: "更新时间",
+        untitled: "未命名声明",
       }
     }
   };

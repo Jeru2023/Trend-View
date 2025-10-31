@@ -79,6 +79,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-31 (FEATURE backend/frontend-028): Added global index snapshot ingestion via AkShare `index_global_spot_em`, control-panel automation, “外围” navigation group, language-aware refresh button, and a dedicated global indices dashboard.
 - 2025-10-31 (FEATURE backend/frontend-029): Delivered Dollar Index historical sync using AkShare `index_global_hist_em`, new control-panel card, peripheral menu link, and a Dollar Index page with localized one-year trend chart plus refreshed data table/controls.
 - 2025-10-31 (FEATURE backend/frontend-030): Added RMB central parity module via AkShare `currency_boc_safe`, including PostgreSQL schema/DAO/service, scheduled control-panel job, peripheral navigation entry, localized one-year trend visualization, and comprehensive exchange-rate table with quotation notes.
+- 2025-10-31 (FEATURE backend/frontend-031): Added Federal Reserve statements ingestion (requests + BeautifulSoup crawler), new PostgreSQL schema/DAO/service with twice-daily scheduler, control-panel sync card, peripheral navigation entry, and a localized Fed Statements landing page with full-text rendering.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.

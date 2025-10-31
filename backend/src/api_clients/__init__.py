@@ -46,6 +46,7 @@ from .akshare_api import (
 )
 from .eastmoney_news import EastmoneyNewsDetail, fetch_eastmoney_detail
 from .deepseek_api import generate_finance_analysis
+from .fed_board import fetch_fed_press_releases
 
 __all__ = [
     "DAILY_INDICATOR_FIELDS",
@@ -91,4 +92,5 @@ __all__ = [
     "EastmoneyNewsDetail",
     "fetch_eastmoney_detail",
     "generate_finance_analysis",
+    "fetch_fed_press_releases",
 ]

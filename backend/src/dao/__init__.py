@@ -23,6 +23,7 @@ from .global_index_dao import GlobalIndexDAO
 from .dollar_index_dao import DollarIndexDAO
 from .rmb_midpoint_dao import RmbMidpointDAO
 from .futures_realtime_dao import FuturesRealtimeDAO
+from .fed_statement_dao import FedStatementDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -48,4 +49,5 @@ __all__ = [
     "DollarIndexDAO",
     "RmbMidpointDAO",
     "FuturesRealtimeDAO",
+    "FedStatementDAO",
 ]

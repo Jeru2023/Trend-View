@@ -35,6 +35,7 @@ from .dao import (
     DollarIndexDAO,
     RmbMidpointDAO,
     FuturesRealtimeDAO,
+    FedStatementDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
@@ -58,6 +59,7 @@ from .services import (
     list_dollar_index,
     list_rmb_midpoint_rates,
     list_futures_realtime,
+    list_fed_statements,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_individual_fund_flow,
@@ -77,6 +79,7 @@ from .services import (
     sync_dollar_index,
     sync_rmb_midpoint_rates,
     sync_futures_realtime,
+    sync_fed_statements,
     sync_industry_fund_flow,
     sync_concept_fund_flow,
     sync_individual_fund_flow,
@@ -697,6 +700,30 @@ class SyncFuturesRealtimeResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncFedStatementRequest(BaseModel):
+    limit: Optional[int] = Field(
+        None,
+        ge=1,
+        le=50,
+        description="Optional override for number of statements to fetch (default: 5).",
+    )
+
+    class Config:
+        extra = "forbid"
+        allow_population_by_field_name = True
+
+
+class SyncFedStatementResponse(BaseModel):
+    rows: int
+    urls: List[str] = Field(default_factory=list)
+    url_count: int = Field(..., alias="urlCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    pruned: int = 0
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class SyncIndustryFundFlowRequest(BaseModel):
     symbols: Optional[List[str]] = Field(
         None,
@@ -1041,6 +1068,25 @@ class FuturesRealtimeRecord(BaseModel):
 class FuturesRealtimeListResponse(BaseModel):
     total: int
     items: List[FuturesRealtimeRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class FedStatementRecord(BaseModel):
+    title: str
+    url: str
+    statement_date: Optional[date] = Field(None, alias="statementDate")
+    content: Optional[str] = None
+    raw_text: Optional[str] = Field(None, alias="rawText")
+    position: Optional[int] = None
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class FedStatementListResponse(BaseModel):
+    total: int
+    items: List[FedStatementRecord]
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
 
 
@@ -1952,6 +1998,41 @@ async def _run_futures_realtime_job(request: SyncFuturesRealtimeRequest) -> None
     await loop.run_in_executor(None, job)
 
 
+async def _run_fed_statement_job(request: SyncFedStatementRequest) -> None:
+    loop = asyncio.get_running_loop()
+    limit = request.limit or 5
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("fed_statements", message="Syncing Federal Reserve statements", progress=0.0)
+        try:
+            result = sync_fed_statements(limit=limit)
+            stats = FedStatementDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "fed_statements",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} Fed statements",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "fed_statements",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_industry_fund_flow_job(request: SyncIndustryFundFlowRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -2362,6 +2443,14 @@ async def start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> Non
     asyncio.create_task(_run_futures_realtime_job(payload))
 
 
+async def start_fed_statement_job(payload: SyncFedStatementRequest) -> None:
+    if _job_running("fed_statements"):
+        raise HTTPException(status_code=409, detail="Fed statements sync already running")
+    monitor.start("fed_statements", message="Syncing Federal Reserve statements")
+    monitor.update("fed_statements", progress=0.0)
+    asyncio.create_task(_run_fed_statement_job(payload))
+
+
 async def start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
     if _job_running("industry_fund_flow"):
         raise HTTPException(status_code=409, detail="Industry fund flow sync already running")
@@ -2521,6 +2610,13 @@ async def safe_start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -
         await start_futures_realtime_job(payload)
     except HTTPException as exc:
         logger.info("Futures realtime sync skipped: %s", exc.detail)
+
+
+async def safe_start_fed_statement_job(payload: SyncFedStatementRequest) -> None:
+    try:
+        await start_fed_statement_job(payload)
+    except HTTPException as exc:
+        logger.info("Fed statements sync skipped: %s", exc.detail)
 
 
 async def safe_start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -2697,6 +2793,14 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour="7,10,13,16,19", minute=5),
             id="futures_realtime_intraday",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_fed_statement_job(SyncFedStatementRequest())
+            ),
+            CronTrigger(hour="7,17", minute=15),
+            id="fed_statements_twice_daily",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -3434,6 +3538,31 @@ def list_futures_realtime_api(
     )
 
 
+@app.get("/macro/fed-statements", response_model=FedStatementListResponse)
+def list_fed_statements_api(
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of statements to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> FedStatementListResponse:
+    result = list_fed_statements(limit=limit, offset=offset)
+    items = [
+        FedStatementRecord(
+            title=entry.get("title", ""),
+            url=entry.get("url", ""),
+            statement_date=entry.get("statement_date"),
+            content=entry.get("content"),
+            raw_text=entry.get("raw_text"),
+            position=entry.get("position"),
+            updated_at=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return FedStatementListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
 @app.get("/fund-flow/industry", response_model=IndustryFundFlowListResponse)
 def list_industry_fund_flow_entries(
     symbol: Optional[str] = Query(
@@ -3675,6 +3804,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect futures_realtime stats: %s", exc)
         stats_map["futures_realtime"] = {}
     try:
+        stats_map["fed_statements"] = FedStatementDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect fed_statements stats: %s", exc)
+        stats_map["fed_statements"] = {}
+    try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
@@ -3863,6 +3997,12 @@ async def control_sync_rmb_midpoint(payload: SyncRmbMidpointRequest) -> dict[str
 @app.post("/control/sync/futures-realtime")
 async def control_sync_futures_realtime(payload: SyncFuturesRealtimeRequest) -> dict[str, str]:
     await start_futures_realtime_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/fed-statements")
+async def control_sync_fed_statements(payload: SyncFedStatementRequest) -> dict[str, str]:
+    await start_fed_statement_job(payload)
     return {"status": "started"}
 
 

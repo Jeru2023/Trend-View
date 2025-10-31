@@ -156,6 +156,15 @@ const elements = {
     progress: document.getElementById("futures-realtime-progress"),
     button: document.getElementById("run-futures-realtime"),
   },
+  fedStatements: {
+    status: document.getElementById("fed-statements-status"),
+    updated: document.getElementById("fed-statements-updated"),
+    duration: document.getElementById("fed-statements-duration"),
+    rows: document.getElementById("fed-statements-rows"),
+    message: document.getElementById("fed-statements-message"),
+    progress: document.getElementById("fed-statements-progress"),
+    button: document.getElementById("run-fed-statements"),
+  },
   profitForecast: {
     status: document.getElementById("profit-forecast-status"),
     updated: document.getElementById("profit-forecast-updated"),
@@ -410,6 +419,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const fedStatementsSnapshot = jobs.fed_statements || {
+      status: "idle",
+      progress: 0,
+    };
     const industryFundFlowSnapshot = jobs.industry_fund_flow || {
       status: "idle",
       progress: 0,
@@ -451,6 +464,7 @@ async function loadStatus() {
     updateJobCard(elements.globalIndex, globalIndexSnapshot);
     updateJobCard(elements.rmbMidpoint, rmbMidpointSnapshot);
     updateJobCard(elements.futuresRealtime, futuresRealtimeSnapshot);
+    updateJobCard(elements.fedStatements, fedStatementsSnapshot);
     updateJobCard(elements.dollarIndex, dollarIndexSnapshot);
     updateJobCard(elements.profitForecast, profitForecastSnapshot);
     updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
@@ -484,6 +498,7 @@ async function loadStatus() {
       globalIndexSnapshot,
       rmbMidpointSnapshot,
       futuresRealtimeSnapshot,
+      fedStatementsSnapshot,
       dollarIndexSnapshot,
       industryFundFlowSnapshot,
       conceptFundFlowSnapshot,
@@ -606,6 +621,13 @@ function initActions() {
   if (elements.futuresRealtime.button) {
     elements.futuresRealtime.button.addEventListener("click", () =>
       triggerJob("/control/sync/futures-realtime", {})
+    );
+  }
+  if (elements.fedStatements.button) {
+    elements.fedStatements.button.addEventListener("click", () =>
+      triggerJob("/control/sync/fed-statements", {
+        limit: 5,
+      })
     );
   }
   if (elements.dollarIndex.button) {
