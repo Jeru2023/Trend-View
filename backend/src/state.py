@@ -46,6 +46,7 @@ class SyncMonitor:
             "fundamental_metrics": JobProgress(),
             "performance_express": JobProgress(),
             "performance_forecast": JobProgress(),
+            "profit_forecast": JobProgress(),
             "industry_fund_flow": JobProgress(),
             "concept_fund_flow": JobProgress(),
             "individual_fund_flow": JobProgress(),

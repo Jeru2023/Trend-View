@@ -22,6 +22,22 @@ const detailExtras = {
   bigDeals: [],
 };
 
+const SEARCH_RESULT_LIMIT = 8;
+const SEARCH_DEBOUNCE_MS = 260;
+
+let searchDebounceTimer = null;
+let searchAbortController = null;
+let searchRequestToken = 0;
+let searchBlurTimeout = null;
+
+const searchState = {
+  keyword: "",
+  results: [],
+  activeIndex: -1,
+  loading: false,
+  error: false,
+};
+
 const INDIVIDUAL_FUND_FLOW_SYMBOLS = [
   { match: "即时", key: "symbolInstant", label: "即时数据", translationKey: "stockDetailSymbolInstant" },
   { match: "3日排行", key: "symbol3Day", label: "3日数据", translationKey: "stockDetailSymbol3Day" },
@@ -189,6 +205,9 @@ const elements = {
   individualFundFlowList: document.getElementById("individual-fund-flow-list"),
   bigDealCard: document.getElementById("big-deal-card"),
   bigDealList: document.getElementById("big-deal-list"),
+  searchWrapper: document.getElementById("detail-search"),
+  searchInput: document.getElementById("detail-search-input"),
+  searchResults: document.getElementById("detail-search-results"),
 };
 
 const favoriteState = {
@@ -1021,6 +1040,433 @@ function initFavoriteToggle() {
   updateFavoriteToggle(false);
 }
 
+function resetSearchState() {
+  searchState.keyword = "";
+  searchState.results = [];
+  searchState.activeIndex = -1;
+  searchState.loading = false;
+  searchState.error = false;
+}
+
+function hideSearchResults() {
+  if (elements.searchResults) {
+    elements.searchResults.classList.add("hidden");
+    elements.searchResults.innerHTML = "";
+  }
+  if (elements.searchInput) {
+    elements.searchInput.setAttribute("aria-expanded", "false");
+  }
+}
+
+function clearSearchInterface() {
+  resetSearchState();
+  hideSearchResults();
+}
+
+function ensureActiveOptionVisible() {
+  if (!elements.searchResults) {
+    return;
+  }
+  const index = searchState.activeIndex;
+  if (index < 0) {
+    return;
+  }
+  const activeOption = elements.searchResults.querySelector(
+    `.detail-search__result[data-index="${index}"]`
+  );
+  if (activeOption && typeof activeOption.scrollIntoView === "function") {
+    activeOption.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function applySearchActiveState() {
+  if (!elements.searchResults) {
+    return;
+  }
+  const options = elements.searchResults.querySelectorAll(".detail-search__result");
+  options.forEach((option) => {
+    const optionIndex = Number.parseInt(option.dataset.index || "-1", 10);
+    const isActive = optionIndex === searchState.activeIndex;
+    option.classList.toggle("detail-search__result--active", isActive);
+    option.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  ensureActiveOptionVisible();
+}
+
+function renderSearchResults() {
+  if (!elements.searchResults || !elements.searchInput) {
+    return;
+  }
+  const container = elements.searchResults;
+  container.innerHTML = "";
+  const keyword = searchState.keyword;
+  if (!keyword) {
+    hideSearchResults();
+    return;
+  }
+  elements.searchInput.setAttribute("aria-expanded", "true");
+  container.classList.remove("hidden");
+  const dict = translations[currentLang] || {};
+  if (searchState.loading) {
+    const status = document.createElement("div");
+    status.className = "detail-search__status";
+    status.textContent = dict.searchLoading || "Searching...";
+    container.appendChild(status);
+    return;
+  }
+  if (searchState.error) {
+    const status = document.createElement("div");
+    status.className = "detail-search__status detail-search__status--error";
+    status.textContent =
+      dict.searchError || "Unable to fetch search results. Please try again later.";
+    container.appendChild(status);
+    return;
+  }
+  if (!searchState.results.length) {
+    const status = document.createElement("div");
+    status.className = "detail-search__status";
+    const template = dict.searchNoResults || 'No matches for "{keyword}"';
+    status.textContent = template.replace("{keyword}", keyword);
+    container.appendChild(status);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  searchState.results.forEach((item, index) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "detail-search__result";
+    option.dataset.index = String(index);
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", "false");
+    option.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      if (item && item.code) {
+        navigateToStock(item.code);
+      }
+    });
+    option.addEventListener("mouseenter", () => {
+      searchState.activeIndex = index;
+      applySearchActiveState();
+    });
+    const primary = document.createElement("div");
+    primary.className = "detail-search__result-primary";
+    const codeSpan = document.createElement("span");
+    codeSpan.className = "detail-search__result-code";
+    codeSpan.textContent = (item && item.code) || "--";
+    primary.appendChild(codeSpan);
+    if (item && item.name) {
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "detail-search__result-name";
+      nameSpan.textContent = item.name;
+      primary.appendChild(nameSpan);
+    }
+    option.appendChild(primary);
+    const metaParts = [];
+    if (item && item.industry) {
+      metaParts.push(item.industry);
+    }
+    if (item && item.market) {
+      metaParts.push(item.market);
+    }
+    if (item && item.exchange) {
+      metaParts.push(item.exchange);
+    }
+    if (metaParts.length) {
+      const meta = document.createElement("div");
+      meta.className = "detail-search__result-meta";
+      meta.textContent = metaParts.join(" · ");
+      option.appendChild(meta);
+    }
+    fragment.appendChild(option);
+  });
+  container.appendChild(fragment);
+  applySearchActiveState();
+}
+
+function scheduleSearch(keyword) {
+  const value = typeof keyword === "string" ? keyword.trim() : "";
+  if (!value) {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+    if (searchAbortController) {
+      searchAbortController.abort();
+      searchAbortController = null;
+    }
+    clearSearchInterface();
+    return;
+  }
+  searchState.keyword = value;
+  searchState.activeIndex = -1;
+  searchState.error = false;
+  searchState.loading = true;
+  if (searchAbortController) {
+    searchAbortController.abort();
+    searchAbortController = null;
+  }
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+  }
+  renderSearchResults();
+  searchDebounceTimer = window.setTimeout(() => {
+    performSearch(value);
+  }, SEARCH_DEBOUNCE_MS);
+}
+
+async function fetchLegacySearchResults(value, controller) {
+  const params = new URLSearchParams();
+  params.set("limit", String(SEARCH_RESULT_LIMIT));
+  params.set("keyword", value);
+  params.set("searchOnly", "true");
+  params.set("pctChangeMin", "2");
+  params.set("pctChangeMax", "5");
+  params.set("volumeSpikeMin", "1.8");
+  params.set("peMin", "0");
+  params.set("roeMin", "3");
+  params.set("netIncomeQoqMin", "0");
+  params.set("netIncomeYoyMin", "0.1");
+  const response = await fetch(`${API_BASE}/stocks?${params.toString()}`, {
+    signal: controller.signal,
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+async function fetchSearchResults(value, controller) {
+  const params = new URLSearchParams();
+  params.set("limit", String(SEARCH_RESULT_LIMIT));
+  params.set("keyword", value);
+  const response = await fetch(`${API_BASE}/stocks/search?${params.toString()}`, {
+    signal: controller.signal,
+  });
+  if (response.status === 404) {
+    return fetchLegacySearchResults(value, controller);
+  }
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+async function performSearch(keyword) {
+  const value = typeof keyword === "string" ? keyword.trim() : "";
+  if (!value) {
+    clearSearchInterface();
+    return [];
+  }
+  const token = ++searchRequestToken;
+  const controller = new AbortController();
+  searchAbortController = controller;
+  searchDebounceTimer = null;
+  searchState.loading = true;
+  renderSearchResults();
+  try {
+    const data = await fetchSearchResults(value, controller);
+    if (controller.signal.aborted || token !== searchRequestToken) {
+      return [];
+    }
+    const items = Array.isArray(data.items) ? data.items : [];
+    searchState.results = items;
+    searchState.loading = false;
+    searchState.error = false;
+    if (searchState.activeIndex >= items.length) {
+      searchState.activeIndex = -1;
+    }
+    renderSearchResults();
+    return items;
+  } catch (error) {
+    if (controller.signal.aborted || token !== searchRequestToken) {
+      return [];
+    }
+    console.error("Stock search failed:", error);
+    searchState.loading = false;
+    searchState.error = true;
+    searchState.results = [];
+    renderSearchResults();
+    return [];
+  } finally {
+    if (searchAbortController === controller) {
+      searchAbortController = null;
+    }
+  }
+}
+
+function startImmediateSearch(keyword) {
+  const value = typeof keyword === "string" ? keyword.trim() : "";
+  if (!value) {
+    clearSearchInterface();
+    return Promise.resolve([]);
+  }
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = null;
+  }
+  if (searchAbortController) {
+    searchAbortController.abort();
+    searchAbortController = null;
+  }
+  searchState.keyword = value;
+  searchState.activeIndex = -1;
+  searchState.error = false;
+  return performSearch(value);
+}
+
+function handleSearchInput(event) {
+  const value = typeof event.target.value === "string" ? event.target.value : "";
+  if (!value.trim()) {
+    clearSearchInterface();
+    return;
+  }
+  scheduleSearch(value);
+}
+
+async function handleSearchKeyDown(event) {
+  if (event.key === "ArrowDown") {
+    if (searchState.results.length) {
+      event.preventDefault();
+      if (searchState.activeIndex < searchState.results.length - 1) {
+        searchState.activeIndex += 1;
+      } else if (searchState.activeIndex < 0) {
+        searchState.activeIndex = 0;
+      }
+      applySearchActiveState();
+    }
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    if (searchState.results.length) {
+      event.preventDefault();
+      if (searchState.activeIndex <= 0) {
+        searchState.activeIndex = -1;
+      } else {
+        searchState.activeIndex -= 1;
+      }
+      applySearchActiveState();
+    }
+    return;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    await executeSearch(event.target.value || "");
+    return;
+  }
+  if (event.key === "Escape") {
+    if (elements.searchInput && elements.searchInput.value) {
+      event.preventDefault();
+      elements.searchInput.value = "";
+      clearSearchInterface();
+    } else {
+      hideSearchResults();
+    }
+  }
+}
+
+function handleSearchFocus() {
+  if (searchBlurTimeout) {
+    clearTimeout(searchBlurTimeout);
+    searchBlurTimeout = null;
+  }
+  if (searchState.keyword) {
+    renderSearchResults();
+  }
+}
+
+function handleSearchBlur() {
+  if (searchBlurTimeout) {
+    clearTimeout(searchBlurTimeout);
+  }
+  searchBlurTimeout = window.setTimeout(() => {
+    if (!elements.searchWrapper) {
+      hideSearchResults();
+      return;
+    }
+    const activeEl = document.activeElement;
+    if (!elements.searchWrapper.contains(activeEl)) {
+      hideSearchResults();
+    }
+  }, 150);
+}
+
+function handleSearchDocumentClick(event) {
+  if (!elements.searchWrapper) {
+    return;
+  }
+  if (!elements.searchWrapper.contains(event.target)) {
+    hideSearchResults();
+  }
+}
+
+async function executeSearch(rawValue) {
+  const value = typeof rawValue === "string" ? rawValue.trim() : "";
+  if (!value) {
+    clearSearchInterface();
+    if (elements.searchInput) {
+      elements.searchInput.value = "";
+    }
+    return;
+  }
+  if (
+    searchState.results.length &&
+    value === searchState.keyword &&
+    !searchState.loading
+  ) {
+    const index =
+      searchState.activeIndex >= 0 && searchState.activeIndex < searchState.results.length
+        ? searchState.activeIndex
+        : 0;
+    const candidate = searchState.results[index];
+    if (candidate && candidate.code) {
+      navigateToStock(candidate.code);
+      return;
+    }
+  }
+  const items = await startImmediateSearch(value);
+  const list = Array.isArray(items) && items.length ? items : searchState.results;
+  if (!list.length) {
+    return;
+  }
+  const index =
+    searchState.activeIndex >= 0 && searchState.activeIndex < list.length
+      ? searchState.activeIndex
+      : 0;
+  const selected = list[index];
+  if (selected && selected.code) {
+    navigateToStock(selected.code);
+  }
+}
+
+function navigateToStock(code) {
+  if (!code) {
+    return;
+  }
+  const normalized = String(code).trim();
+  if (!normalized) {
+    return;
+  }
+  const params = new URLSearchParams(window.location.search);
+  params.set("code", normalized);
+  const queryString = params.toString();
+  const target = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
+  window.location.href = target;
+}
+
+function initSearch() {
+  if (!elements.searchInput || !elements.searchResults) {
+    return;
+  }
+  elements.searchInput.addEventListener("input", handleSearchInput);
+  elements.searchInput.addEventListener("keydown", handleSearchKeyDown);
+  elements.searchInput.addEventListener("focus", handleSearchFocus);
+  elements.searchInput.addEventListener("blur", handleSearchBlur);
+  elements.searchInput.addEventListener("search", (event) => {
+    executeSearch(event.target.value || "");
+  });
+  document.addEventListener("click", handleSearchDocumentClick);
+}
+
 function getInitialLanguage() {
   try {
     const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
@@ -1057,6 +1503,25 @@ function applyTranslations() {
       el.textContent = value;
     }
   });
+  document.querySelectorAll("[data-placeholder-en]").forEach((el) => {
+    const attr = `placeholder${currentLang.toUpperCase()}`;
+    const placeholder = el.dataset[attr];
+    if (typeof placeholder === "string") {
+      el.placeholder = placeholder;
+    }
+  });
+  if (elements.searchInput) {
+    const label = dict.searchInputLabel;
+    if (typeof label === "string" && label) {
+      elements.searchInput.setAttribute("aria-label", label);
+    }
+  }
+  if (elements.searchResults) {
+    const resultsLabel = dict.searchResultsLabel;
+    if (typeof resultsLabel === "string" && resultsLabel) {
+      elements.searchResults.setAttribute("aria-label", resultsLabel);
+    }
+  }
   updateFavoriteToggle(favoriteState.isFavorite);
   renderPerformanceHighlights(performanceData);
   renderIndividualFundFlowCard(detailExtras.individualFundFlow);
@@ -1065,6 +1530,7 @@ function applyTranslations() {
     updateMainBusinessCard(currentDetail.businessProfile);
     updateMainCompositionCard(currentDetail.businessComposition);
   }
+  renderSearchResults();
 }
 
 function formatNumber(value, options = {}) {
@@ -2479,6 +2945,7 @@ function initialize() {
   applyTranslations();
   initLanguageButtons();
   initFavoriteToggle();
+  initSearch();
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
   if (!code) {

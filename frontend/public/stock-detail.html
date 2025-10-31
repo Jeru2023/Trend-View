@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="pageTitle">Trend View - Stock Detail</title>
-    <link rel="stylesheet" href="styles.css?v=20251204" />
+    <link rel="stylesheet" href="styles.css?v=20251217" />
     <script>
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
@@ -72,9 +72,33 @@
             </div>
             <p class="detail-subtitle" id="detail-subtitle"></p>
           </div>
-          <div class="language-switcher">
-            <button class="lang-btn" data-lang="en" data-i18n="langEn">EN</button>
-            <button class="lang-btn" data-lang="zh" data-i18n="langZh">中文</button>
+          <div class="detail-header__actions">
+            <div class="detail-search" id="detail-search">
+              <input
+                id="detail-search-input"
+                type="search"
+                class="search-box detail-search__input"
+                placeholder="Search stocks by code or name"
+                data-placeholder-en="Search stocks by code or name"
+                data-placeholder-zh="按代码或名称搜索股票"
+                aria-label="Search stocks"
+                aria-autocomplete="list"
+                aria-controls="detail-search-results"
+                aria-expanded="false"
+                autocomplete="off"
+                spellcheck="false"
+                enterkeyhint="search"
+              />
+              <div
+                class="detail-search__results hidden"
+                id="detail-search-results"
+                role="listbox"
+              ></div>
+            </div>
+            <div class="language-switcher detail-header__language">
+              <button class="lang-btn" data-lang="en" data-i18n="langEn">EN</button>
+              <button class="lang-btn" data-lang="zh" data-i18n="langZh">中文</button>
+            </div>
           </div>
         </header>
 
@@ -210,6 +234,6 @@
     <script src="i18n.js?v=20251109"></script>
     <script src="sidebar.js?v=20251109"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" crossorigin="anonymous"></script>
-    <script type="module" src="stock-detail.js?v=20251204"></script>
+    <script type="module" src="stock-detail.js?v=20251217"></script>
   </body>
 </html>

@@ -30,6 +30,7 @@ from .dao import (
     FundamentalMetricsDAO,
     PerformanceExpressDAO,
     PerformanceForecastDAO,
+    ProfitForecastDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
@@ -48,6 +49,7 @@ from .services import (
     list_fundamental_metrics,
     list_performance_express,
     list_performance_forecast,
+    list_profit_forecast,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_individual_fund_flow,
@@ -62,10 +64,10 @@ from .services import (
     sync_fundamental_metrics,
     sync_performance_express,
     sync_performance_forecast,
+    sync_profit_forecast,
     sync_industry_fund_flow,
     sync_concept_fund_flow,
     sync_individual_fund_flow,
-    sync_big_deal_fund_flow,
     sync_big_deal_fund_flow,
     sync_stock_basic,
     sync_stock_main_business,
@@ -600,6 +602,27 @@ class SyncPerformanceForecastResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncProfitForecastRequest(BaseModel):
+    symbol: Optional[str] = Field(
+        None,
+        description="Optional industry filter passed to the AkShare profit forecast API.",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncProfitForecastResponse(BaseModel):
+    rows: int
+    codes: List[str] = Field(default_factory=list)
+    code_count: int = Field(..., alias="codeCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    years: List[int] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class SyncIndustryFundFlowRequest(BaseModel):
     symbols: Optional[List[str]] = Field(
         None,
@@ -797,6 +820,42 @@ class PerformanceForecastRecord(BaseModel):
 class PerformanceForecastListResponse(BaseModel):
     total: int
     items: List[PerformanceForecastRecord]
+
+
+class ProfitForecastRating(BaseModel):
+    buy: Optional[float] = None
+    add: Optional[float] = None
+    neutral: Optional[float] = None
+    reduce: Optional[float] = None
+    sell: Optional[float] = None
+
+
+class ProfitForecastPoint(BaseModel):
+    year: int
+    eps: Optional[float] = None
+
+
+class ProfitForecastItem(BaseModel):
+    code: str
+    symbol: str
+    ts_code: Optional[str] = Field(None, alias="tsCode")
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    report_count: Optional[int] = Field(None, alias="reportCount")
+    ratings: ProfitForecastRating
+    forecasts: List[ProfitForecastPoint] = Field(default_factory=list)
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ProfitForecastListResponse(BaseModel):
+    total: int
+    items: List[ProfitForecastItem]
+    industries: List[str] = Field(default_factory=list)
+    years: List[int] = Field(default_factory=list)
 
 
 class IndustryFundFlowRecord(BaseModel):
@@ -1536,6 +1595,40 @@ async def _run_performance_forecast_job(request: SyncPerformanceForecastRequest)
     await loop.run_in_executor(None, job)
 
 
+async def _run_profit_forecast_job(request: SyncProfitForecastRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("profit_forecast", message="Collecting profit forecast data", progress=0.0)
+        try:
+            result = sync_profit_forecast(symbol=request.symbol)
+            stats = ProfitForecastDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "profit_forecast",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} profit forecast rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "profit_forecast",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_industry_fund_flow_job(request: SyncIndustryFundFlowRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -1906,6 +1999,14 @@ async def start_performance_forecast_job(payload: SyncPerformanceForecastRequest
     asyncio.create_task(_run_performance_forecast_job(payload))
 
 
+async def start_profit_forecast_job(payload: SyncProfitForecastRequest) -> None:
+    if _job_running("profit_forecast"):
+        raise HTTPException(status_code=409, detail="Profit forecast sync already running")
+    monitor.start("profit_forecast", message="Syncing profit forecast data")
+    monitor.update("profit_forecast", progress=0.0)
+    asyncio.create_task(_run_profit_forecast_job(payload))
+
+
 async def start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
     if _job_running("industry_fund_flow"):
         raise HTTPException(status_code=409, detail="Industry fund flow sync already running")
@@ -2030,6 +2131,13 @@ async def safe_start_performance_forecast_job(payload: SyncPerformanceForecastRe
         await start_performance_forecast_job(payload)
     except HTTPException as exc:
         logger.info("Performance forecast sync skipped: %s", exc.detail)
+
+
+async def safe_start_profit_forecast_job(payload: SyncProfitForecastRequest) -> None:
+    try:
+        await start_profit_forecast_job(payload)
+    except HTTPException as exc:
+        logger.info("Profit forecast sync skipped: %s", exc.detail)
 
 
 async def safe_start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -2176,6 +2284,14 @@ async def startup_event() -> None:
             id="performance_forecast_daily",
             replace_existing=True,
         )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_profit_forecast_job(SyncProfitForecastRequest())
+            ),
+            CronTrigger(hour=19, minute=45),
+            id="profit_forecast_daily",
+            replace_existing=True,
+        )
 
 
 @app.on_event("shutdown")
@@ -2197,13 +2313,18 @@ def list_stocks(
     exchange: Optional[str] = Query(None, description="Filter by exchange"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    search_only: bool = Query(
+        False,
+        alias="searchOnly",
+        description="When true, bypass filter metrics and return keyword matches directly.",
+    ),
     pct_change_min: Optional[float] = Query(
-        2.0,
+        None,
         alias="pctChangeMin",
         description="Minimum daily percentage change filter.",
     ),
     pct_change_max: Optional[float] = Query(
-        5.0,
+        None,
         alias="pctChangeMax",
         description="Maximum daily percentage change filter.",
     ),
@@ -2348,17 +2469,18 @@ def list_stocks(
         )
 
     keyword_only_search = bool(keyword and keyword.strip())
+    keyword_bypass = bool(search_only and keyword_only_search)
     filters_at_defaults = (
-        pct_change_min == 2.0
-        and pct_change_max == 5.0
-        and volume_spike_min == 1.8
+        pct_change_min is None
+        and pct_change_max is None
+        and volume_spike_min is None
         and market_cap_min is None
         and market_cap_max is None
-        and pe_min == 0.0
+        and pe_min is None
         and pe_max is None
-        and roe_min == 3.0
-        and net_income_qoq_min == 0.0
-        and net_income_yoy_min == 0.1
+        and roe_min is None
+        and net_income_qoq_min is None
+        and net_income_yoy_min is None
         and (industry is None or industry.lower() == "all")
         and (exchange is None or exchange.lower() == "all")
     )
@@ -2371,7 +2493,7 @@ def list_stocks(
     if sort_direction not in {"asc", "desc"}:
         sort_direction = "desc"
 
-    if effective_favorites_only or (keyword_only_search and filters_at_defaults):
+    if effective_favorites_only or keyword_bypass or (keyword_only_search and filters_at_defaults):
         filtered_items = list(result["items"])
     else:
         filtered_items = [item for item in result["items"] if _passes_filters(item)]
@@ -2444,6 +2566,43 @@ def list_stocks(
         for item in paged_items
     ]
     return StockListResponse(total=len(filtered_items), items=items, industries=available_industries)
+
+
+@app.get("/stocks/search", response_model=StockListResponse)
+def search_stocks_api(
+    keyword: str = Query(..., min_length=1, description="Keyword to match code/name/industry."),
+    limit: int = Query(20, ge=1, le=200),
+) -> StockListResponse:
+    stripped_keyword = keyword.strip()
+    if not stripped_keyword:
+        return StockListResponse(total=0, items=[], industries=[])
+
+    settings = load_settings()
+    runtime = load_runtime_config()
+    dao = StockBasicDAO(settings.postgres)
+    result = dao.query_fundamentals(
+        keyword=stripped_keyword,
+        limit=limit,
+        offset=0,
+        include_st=runtime.include_st,
+        include_delisted=runtime.include_delisted,
+    )
+
+    items = [
+        StockItem(
+            code=item["code"],
+            name=item.get("name"),
+            industry=item.get("industry"),
+            market=item.get("market"),
+            exchange=item.get("exchange"),
+            status=item.get("status"),
+        )
+        for item in result["items"]
+    ]
+
+    industries = sorted({item.industry for item in items if isinstance(item.industry, str) and item.industry})
+    return StockListResponse(total=result["total"], items=items, industries=industries)
+
 
 @app.get("/stocks/{code}", response_model=StockDetailResponse)
 def get_stock_detail_api(
@@ -2679,6 +2838,46 @@ def list_performance_forecast_entries(
     return PerformanceForecastListResponse(total=int(result.get("total", 0)), items=items)
 
 
+@app.get("/profit-forecast", response_model=ProfitForecastListResponse)
+def list_profit_forecast_entries(
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+    keyword: Optional[str] = Query(None, description="Optional keyword filtering code or name."),
+    industry: Optional[str] = Query(None, description="Optional industry filter."),
+    year: Optional[int] = Query(None, description="Optional forecast year filter."),
+) -> ProfitForecastListResponse:
+    normalized_keyword = keyword.strip() if keyword else None
+    normalized_industry = industry.strip() if industry else None
+    result = list_profit_forecast(
+        limit=limit,
+        offset=offset,
+        keyword=normalized_keyword,
+        industry=normalized_industry,
+        forecast_year=year,
+    )
+    items = [
+        ProfitForecastItem(
+            code=item.get("code"),
+            symbol=item.get("symbol"),
+            tsCode=item.get("tsCode"),
+            name=item.get("name"),
+            industry=item.get("industry"),
+            market=item.get("market"),
+            reportCount=item.get("reportCount"),
+            ratings=ProfitForecastRating(**(item.get("ratings") or {})),
+            forecasts=[ProfitForecastPoint(**point) for point in item.get("forecasts", [])],
+            updatedAt=item.get("updatedAt"),
+        )
+        for item in result.get("items", [])
+    ]
+    return ProfitForecastListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        industries=list(result.get("industries", [])),
+        years=list(result.get("years", [])),
+    )
+
+
 @app.get("/fund-flow/industry", response_model=IndustryFundFlowListResponse)
 def list_industry_fund_flow_entries(
     symbol: Optional[str] = Query(
@@ -2895,6 +3094,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect performance_forecast stats: %s", exc)
         stats_map["performance_forecast"] = {}
     try:
+        stats_map["profit_forecast"] = ProfitForecastDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect profit_forecast stats: %s", exc)
+        stats_map["profit_forecast"] = {}
+    try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
@@ -3029,6 +3233,12 @@ async def control_sync_performance_express(payload: SyncPerformanceExpressReques
 @app.post("/control/sync/performance-forecast")
 async def control_sync_performance_forecast(payload: SyncPerformanceForecastRequest) -> dict[str, str]:
     await start_performance_forecast_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/profit-forecast")
+async def control_sync_profit_forecast(payload: SyncProfitForecastRequest) -> dict[str, str]:
+    await start_profit_forecast_job(payload)
     return {"status": "started"}
 
 

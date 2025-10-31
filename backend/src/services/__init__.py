@@ -6,6 +6,7 @@ from .financial_indicator_service import sync_financial_indicators
 from .finance_breakfast_service import list_finance_breakfast, sync_finance_breakfast
 from .performance_express_service import list_performance_express, sync_performance_express
 from .performance_forecast_service import list_performance_forecast, sync_performance_forecast
+from .profit_forecast_service import list_profit_forecast, sync_profit_forecast
 from .daily_trade_service import sync_daily_trade
 from .daily_trade_metrics_service import sync_daily_trade_metrics
 from .stock_basic_service import get_stock_overview, get_stock_detail, sync_stock_basic
@@ -34,9 +35,11 @@ __all__ = [
     "sync_financial_indicators",
     "sync_performance_express",
     "sync_performance_forecast",
+    "sync_profit_forecast",
     "list_finance_breakfast",
     "list_performance_express",
     "list_performance_forecast",
+    "list_profit_forecast",
     "list_industry_fund_flow",
     "list_concept_fund_flow",
     "list_individual_fund_flow",
@@ -52,7 +55,6 @@ __all__ = [
     "sync_stock_main_business",
     "sync_stock_main_composition",
     "list_fundamental_metrics",
-    "list_big_deal_fund_flow",
     "list_big_deal_fund_flow",
     "get_stock_detail",
     "add_stock_to_favorites",

@@ -35,8 +35,8 @@ const DEFAULT_FILTERS = {
 
 const RESET_FILTERS = {
   industry: "all",
-  pctChangeMin: 2,
-  pctChangeMax: 5,
+  pctChangeMin: null,
+  pctChangeMax: null,
   marketCapMin: null,
   marketCapMax: null,
   volumeSpikeMin: null,

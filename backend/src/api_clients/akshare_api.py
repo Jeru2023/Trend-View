@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import multiprocessing as mp
+import re
 from contextlib import suppress
 from queue import Empty
 from typing import Final, Optional, Tuple
@@ -135,6 +136,35 @@ STOCK_MAIN_COMPOSITION_COLUMN_MAP: Final[dict[str, str]] = {
     "利润比例": "profit_ratio",
     "毛利率": "gross_margin",
 }
+
+PROFIT_FORECAST_BASE_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "row_number",
+    "代码": "symbol",
+    "股票代码": "symbol",
+    "名称": "stock_name",
+    "股票简称": "stock_name",
+    "研报数": "report_count",
+    "机构投资评级(近六个月)-买入": "rating_buy",
+    "机构投资评级(近六个月)-增持": "rating_add",
+    "机构投资评级(近六个月)-中性": "rating_neutral",
+    "机构投资评级(近六个月)-减持": "rating_reduce",
+    "机构投资评级(近六个月)-卖出": "rating_sell",
+}
+
+_FORECAST_YEAR_PATTERN = re.compile(r"(?P<year>\d{4})预测每股收益")
+_PROFIT_FORECAST_OUTPUT_COLUMNS: Final[Tuple[str, ...]] = (
+    "symbol",
+    "stock_name",
+    "report_count",
+    "rating_buy",
+    "rating_add",
+    "rating_neutral",
+    "rating_reduce",
+    "rating_sell",
+    "row_number",
+    "forecast_year",
+    "forecast_eps",
+)
 
 _FINANCE_BREAKFAST_TIMEOUT_SECONDS: Final[float] = 20.0
 
@@ -310,6 +340,72 @@ def fetch_performance_forecast_em(period: str) -> pd.DataFrame:
             renamed[column] = None
 
     return renamed.loc[:, list(PERFORMANCE_FORECAST_COLUMN_MAP.values())]
+
+
+def _empty_profit_forecast_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(_PROFIT_FORECAST_OUTPUT_COLUMNS))
+
+
+def fetch_profit_forecast_em(symbol: Optional[str] = None) -> pd.DataFrame:
+    """
+    Fetch profit forecast (盈利预测) snapshot, optionally filtered by industry symbol.
+    """
+    symbol_param = "" if symbol is None else str(symbol).strip()
+    try:
+        dataframe = ak.stock_profit_forecast_em(symbol=symbol_param)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch profit forecast data via AkShare: %s", exc)
+        return _empty_profit_forecast_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no profit forecast data for symbol '%s'", symbol_param or "ALL")
+        return _empty_profit_forecast_frame()
+
+    renamed = dataframe.rename(columns=PROFIT_FORECAST_BASE_COLUMN_MAP)
+    for column in PROFIT_FORECAST_BASE_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    year_columns: dict[str, int] = {}
+    for column in dataframe.columns:
+        match = _FORECAST_YEAR_PATTERN.match(str(column))
+        if match:
+            year_columns[column] = int(match.group("year"))
+
+    if not year_columns:
+        logger.warning("No forecast EPS columns detected in profit forecast dataset.")
+        return _empty_profit_forecast_frame()
+
+    records = []
+    for _, row in renamed.iterrows():
+        base = {
+            "symbol": row.get("symbol"),
+            "stock_name": row.get("stock_name"),
+            "report_count": row.get("report_count"),
+            "rating_buy": row.get("rating_buy"),
+            "rating_add": row.get("rating_add"),
+            "rating_neutral": row.get("rating_neutral"),
+            "rating_reduce": row.get("rating_reduce"),
+            "rating_sell": row.get("rating_sell"),
+            "row_number": row.get("row_number"),
+        }
+        for column, year in year_columns.items():
+            value = row.get(column)
+            numeric_value = None
+            if value is not None and value != "":
+                numeric_value = pd.to_numeric(value, errors="coerce")
+                if pd.isna(numeric_value):
+                    numeric_value = None
+            record = base.copy()
+            record["forecast_year"] = int(year)
+            record["forecast_eps"] = float(numeric_value) if numeric_value is not None else None
+            records.append(record)
+
+    if not records:
+        return _empty_profit_forecast_frame()
+
+    normalized = pd.DataFrame.from_records(records, columns=list(_PROFIT_FORECAST_OUTPUT_COLUMNS))
+    return normalized
 
 
 def _empty_industry_fund_flow_frame() -> pd.DataFrame:

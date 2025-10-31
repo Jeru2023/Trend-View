@@ -18,6 +18,7 @@ from .individual_fund_flow_dao import IndividualFundFlowDAO
 from .big_deal_fund_flow_dao import BigDealFundFlowDAO
 from .stock_main_business_dao import StockMainBusinessDAO
 from .stock_main_composition_dao import StockMainCompositionDAO
+from .profit_forecast_dao import ProfitForecastDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -38,4 +39,5 @@ __all__ = [
     "BigDealFundFlowDAO",
     "StockMainBusinessDAO",
     "StockMainCompositionDAO",
+    "ProfitForecastDAO",
 ]

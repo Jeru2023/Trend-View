@@ -330,6 +330,30 @@ body {
   color: var(--text-muted);
 }
 
+.filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+  align-items: flex-end;
+}
+
+.filter-toolbar__group{display:flex;flex-direction:column;gap:6px;align-items:flex-start;min-width:180px}
+.filter-toolbar__group--inline{flex-direction:row;align-items:center;gap:12px;min-width:auto}
+.filter-toolbar__group--inline .filter-toolbar__label{margin:0;white-space:nowrap}
+.filter-toolbar__group--inline select{min-width:160px;padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border);background:#fff;font-size:.95rem}
+.filter-toolbar__group .search-box{flex:0 0 auto;width:280px;max-width:320px}
+.filter-toolbar__label{font-size:.9rem;font-weight:600;color:var(--text-muted)}
+.chip-group{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.profit-forecast-table th,.profit-forecast-table td{vertical-align:top}
+.profit-forecast-table td{font-size:.92rem}
+.forecast-ratings{display:flex;flex-wrap:wrap;gap:4px 12px}
+.forecast-rating__item{display:flex;gap:6px;align-items:baseline}
+.forecast-rating__label{color:var(--text-muted);font-size:.85rem}
+.forecast-rating__value{font-weight:600;font-variant-numeric:tabular-nums}
+.forecast-eps{font-variant-numeric:tabular-nums}
+.table-empty{text-align:center;padding:24px;color:var(--text-muted);font-size:.95rem}
+
 .table-link {
     color: var(--primary);
     text-decoration: none;
@@ -367,6 +391,128 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.detail-header__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-end;
+    width: 100%;
+}
+
+.detail-header__language .lang-btn {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+}
+
+.detail-header__language .lang-btn.active,
+.detail-header__language .lang-btn:hover {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.detail-search {
+    position: relative;
+    width: 100%;
+    align-self: stretch;
+}
+
+.detail-search__input {
+    width: 100%;
+    padding-right: 40px;
+}
+
+.detail-search__results {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    left: 0;
+    background: var(--bg-card);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: var(--radius);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 6px 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.detail-search__result {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: inherit;
+    border-radius: 10px;
+    margin: 0 6px;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.detail-search__result:hover,
+.detail-search__result:focus-visible,
+.detail-search__result--active {
+    background: rgba(29, 78, 216, 0.12);
+    outline: none;
+}
+
+.detail-search__result-primary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-weight: 600;
+}
+
+.detail-search__result-code {
+    font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.9rem;
+    color: var(--primary);
+}
+
+.detail-search__result-name {
+    font-size: 0.95rem;
+    color: var(--text);
+}
+
+.detail-search__result-meta {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.detail-search__status {
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.detail-search__status--error {
+    color: #dc2626;
+}
+
+@media (min-width: 768px) {
+    .detail-header__actions {
+        align-items: center;
+        flex-direction: row;
+        justify-content: flex-end;
+        gap: 16px;
+        width: auto;
+    }
+
+    .detail-search {
+        max-width: 420px;
+    }
 }
 
 .detail-title-group {

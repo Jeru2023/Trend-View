@@ -120,6 +120,15 @@ const elements = {
     progress: document.getElementById("performance-forecast-progress"),
     button: document.getElementById("run-performance-forecast"),
   },
+  profitForecast: {
+    status: document.getElementById("profit-forecast-status"),
+    updated: document.getElementById("profit-forecast-updated"),
+    duration: document.getElementById("profit-forecast-duration"),
+    rows: document.getElementById("profit-forecast-rows"),
+    message: document.getElementById("profit-forecast-message"),
+    progress: document.getElementById("profit-forecast-progress"),
+    button: document.getElementById("run-profit-forecast"),
+  },
   industryFundFlow: {
     status: document.getElementById("industry-fund-flow-status"),
     updated: document.getElementById("industry-fund-flow-updated"),
@@ -345,6 +354,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const profitForecastSnapshot = jobs.profit_forecast || {
+      status: "idle",
+      progress: 0,
+    };
     const industryFundFlowSnapshot = jobs.industry_fund_flow || {
       status: "idle",
       progress: 0,
@@ -382,7 +395,8 @@ async function loadStatus() {
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.performanceExpress, expressSnapshot);
-  updateJobCard(elements.performanceForecast, forecastSnapshot);
+    updateJobCard(elements.performanceForecast, forecastSnapshot);
+    updateJobCard(elements.profitForecast, profitForecastSnapshot);
   updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
   updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
   updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
@@ -488,6 +502,11 @@ function initActions() {
   elements.performanceForecast.button.addEventListener("click", () =>
     triggerJob("/control/sync/performance-forecast", {})
   );
+  if (elements.profitForecast.button) {
+    elements.profitForecast.button.addEventListener("click", () =>
+      triggerJob("/control/sync/profit-forecast", {})
+    );
+  }
   if (elements.industryFundFlow.button) {
     elements.industryFundFlow.button.addEventListener("click", () =>
       triggerJob("/control/sync/industry-fund-flow", {
