@@ -9,7 +9,7 @@ import math
 import logging
 import time
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -40,6 +40,8 @@ from .dao import (
     MacroLeverageDAO,
     MacroSocialFinancingDAO,
     MacroCpiDAO,
+    MacroPmiDAO,
+    MacroM2DAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
@@ -71,6 +73,10 @@ from .services import (
     sync_social_financing_ratios,
     list_macro_cpi,
     sync_macro_cpi,
+    list_macro_pmi,
+    sync_macro_pmi,
+    list_macro_m2,
+    sync_macro_m2,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_individual_fund_flow,
@@ -730,6 +736,32 @@ class SyncMacroCpiResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncMacroPmiRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncMacroPmiResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMacroM2Request(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncMacroM2Response(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class SyncFuturesRealtimeRequest(BaseModel):
     class Config:
         extra = "forbid"
@@ -769,6 +801,25 @@ class SyncFedStatementResponse(BaseModel):
 
 class SyncPeripheralInsightRequest(BaseModel):
     run_llm: Optional[bool] = Field(True, alias="runLLM")
+
+    class Config:
+        allow_population_by_field_name = True
+        extra = "forbid"
+
+
+class SyncPeripheralAggregateRequest(BaseModel):
+    fed_limit: Optional[int] = Field(
+        None,
+        alias="fedLimit",
+        ge=1,
+        le=50,
+        description="Optional override for number of Fed statements to fetch during aggregate sync.",
+    )
+    run_llm: Optional[bool] = Field(
+        None,
+        alias="runLLM",
+        description="Optional override for generating LLM insight during aggregate sync.",
+    )
 
     class Config:
         allow_population_by_field_name = True
@@ -1155,6 +1206,43 @@ class CpiRecord(BaseModel):
 class CpiListResponse(BaseModel):
     total: int
     items: List[CpiRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class PmiRecord(BaseModel):
+    series: str = Field(..., alias="series")
+    period_date: date = Field(..., alias="periodDate")
+    period_label: Optional[str] = Field(None, alias="periodLabel")
+    actual_value: Optional[float] = Field(None, alias="actualValue")
+    forecast_value: Optional[float] = Field(None, alias="forecastValue")
+    previous_value: Optional[float] = Field(None, alias="previousValue")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class PmiListResponse(BaseModel):
+    total: int
+    items: List[PmiRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class M2Record(BaseModel):
+    period_date: date = Field(..., alias="periodDate")
+    period_label: Optional[str] = Field(None, alias="periodLabel")
+    actual_value: Optional[float] = Field(None, alias="actualValue")
+    forecast_value: Optional[float] = Field(None, alias="forecastValue")
+    previous_value: Optional[float] = Field(None, alias="previousValue")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class M2ListResponse(BaseModel):
+    total: int
+    items: List[M2Record]
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
 
 
@@ -2199,6 +2287,74 @@ async def _run_macro_cpi_job(request: SyncMacroCpiRequest) -> None:  # noqa: ARG
     await loop.run_in_executor(None, job)
 
 
+async def _run_macro_pmi_job(request: SyncMacroPmiRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("pmi_monthly", message="Syncing PMI data", progress=0.0)
+        try:
+            result = sync_macro_pmi()
+            stats = MacroPmiDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "pmi_monthly",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} PMI rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "pmi_monthly",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_macro_m2_job(request: SyncMacroM2Request) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("m2_monthly", message="Syncing M2 money supply", progress=0.0)
+        try:
+            result = sync_macro_m2()
+            stats = MacroM2DAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "m2_monthly",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} M2 rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "m2_monthly",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_futures_realtime_job(request: SyncFuturesRealtimeRequest) -> None:  # noqa: ARG001
     loop = asyncio.get_running_loop()
 
@@ -2301,6 +2457,94 @@ async def _run_peripheral_insight_job(request: SyncPeripheralInsightRequest) -> 
             raise
 
     await loop.run_in_executor(None, job)
+
+
+async def _run_peripheral_aggregate_job(request: SyncPeripheralAggregateRequest) -> None:
+    started = time.perf_counter()
+    run_llm = request.run_llm
+    fed_limit = request.fed_limit
+
+    steps: List[Tuple[str, str, Callable[[BaseModel], Awaitable[None]], BaseModel]] = [
+        (
+            "global_index",
+            "Syncing global index snapshot",
+            _run_global_index_job,
+            SyncGlobalIndexRequest(),
+        ),
+        (
+            "dollar_index",
+            "Syncing dollar index history",
+            _run_dollar_index_job,
+            SyncDollarIndexRequest(),
+        ),
+        (
+            "rmb_midpoint",
+            "Syncing RMB midpoint rates",
+            _run_rmb_midpoint_job,
+            SyncRmbMidpointRequest(),
+        ),
+        (
+            "futures_realtime",
+            "Syncing futures realtime data",
+            _run_futures_realtime_job,
+            SyncFuturesRealtimeRequest(),
+        ),
+        (
+            "fed_statements",
+            "Syncing Federal Reserve statements",
+            _run_fed_statement_job,
+            SyncFedStatementRequest(limit=fed_limit),
+        ),
+        (
+            "peripheral_insight",
+            "Generating peripheral market insight",
+            _run_peripheral_insight_job,
+            SyncPeripheralInsightRequest(run_llm=run_llm),
+        ),
+    ]
+
+    total_steps = len(steps)
+
+    try:
+        for idx, (job_key, status_message, runner, runner_request) in enumerate(steps, start=1):
+            monitor.update(
+                "peripheral_aggregate",
+                progress=(idx - 1) / total_steps,
+                message=status_message,
+            )
+            monitor.start(job_key, message=status_message)
+            monitor.update(job_key, progress=0.0)
+            await runner(runner_request)
+            monitor.update(
+                "peripheral_aggregate",
+                progress=idx / total_steps,
+                message=status_message,
+            )
+
+        elapsed = time.perf_counter() - started
+        monitor.finish(
+            "peripheral_aggregate",
+            success=True,
+            total_rows=total_steps,
+            message="Peripheral aggregate sync completed",
+            last_duration=elapsed,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        elapsed = time.perf_counter() - started
+        completed_steps = 0
+        if 'idx' in locals():
+            try:
+                completed_steps = max(0, int(idx) - 1)
+            except Exception:  # pragma: no cover - defensive
+                completed_steps = 0
+        monitor.finish(
+            "peripheral_aggregate",
+            success=False,
+            total_rows=completed_steps or None,
+            error=str(exc),
+            last_duration=elapsed,
+        )
+        raise
 
 
 async def _run_industry_fund_flow_job(request: SyncIndustryFundFlowRequest) -> None:
@@ -2729,6 +2973,22 @@ async def start_macro_cpi_job(payload: SyncMacroCpiRequest) -> None:
     asyncio.create_task(_run_macro_cpi_job(payload))
 
 
+async def start_macro_pmi_job(payload: SyncMacroPmiRequest) -> None:
+    if _job_running("pmi_monthly"):
+        raise HTTPException(status_code=409, detail="PMI sync already running")
+    monitor.start("pmi_monthly", message="Syncing PMI data")
+    monitor.update("pmi_monthly", progress=0.0)
+    asyncio.create_task(_run_macro_pmi_job(payload))
+
+
+async def start_macro_m2_job(payload: SyncMacroM2Request) -> None:
+    if _job_running("m2_monthly"):
+        raise HTTPException(status_code=409, detail="M2 sync already running")
+    monitor.start("m2_monthly", message="Syncing M2 money supply")
+    monitor.update("m2_monthly", progress=0.0)
+    asyncio.create_task(_run_macro_m2_job(payload))
+
+
 async def start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
     if _job_running("futures_realtime"):
         raise HTTPException(status_code=409, detail="Futures realtime sync already running")
@@ -2751,6 +3011,28 @@ async def start_peripheral_insight_job(payload: SyncPeripheralInsightRequest) ->
     monitor.start("peripheral_insight", message="Generating peripheral market insight")
     monitor.update("peripheral_insight", progress=0.0)
     asyncio.create_task(_run_peripheral_insight_job(payload))
+
+
+async def start_peripheral_aggregate_job(payload: SyncPeripheralAggregateRequest) -> None:
+    if _job_running("peripheral_aggregate"):
+        raise HTTPException(status_code=409, detail="Peripheral aggregate sync already running")
+
+    dependent_jobs = [
+        ("global_index", "Global indices sync already running"),
+        ("dollar_index", "Dollar index sync already running"),
+        ("rmb_midpoint", "RMB midpoint sync already running"),
+        ("futures_realtime", "Futures realtime sync already running"),
+        ("fed_statements", "Fed statements sync already running"),
+        ("peripheral_insight", "Peripheral insight sync already running"),
+    ]
+
+    for job_key, error_message in dependent_jobs:
+        if _job_running(job_key):
+            raise HTTPException(status_code=409, detail=error_message)
+
+    monitor.start("peripheral_aggregate", message="Syncing peripheral data bundle")
+    monitor.update("peripheral_aggregate", progress=0.0)
+    asyncio.create_task(_run_peripheral_aggregate_job(payload))
 
 
 async def start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -2928,6 +3210,20 @@ async def safe_start_macro_cpi_job(payload: SyncMacroCpiRequest) -> None:
         logger.info("CPI sync skipped: %s", exc.detail)
 
 
+async def safe_start_macro_pmi_job(payload: SyncMacroPmiRequest) -> None:
+    try:
+        await start_macro_pmi_job(payload)
+    except HTTPException as exc:
+        logger.info("PMI sync skipped: %s", exc.detail)
+
+
+async def safe_start_macro_m2_job(payload: SyncMacroM2Request) -> None:
+    try:
+        await start_macro_m2_job(payload)
+    except HTTPException as exc:
+        logger.info("M2 sync skipped: %s", exc.detail)
+
+
 async def safe_start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
     try:
         await start_futures_realtime_job(payload)
@@ -2947,6 +3243,13 @@ async def safe_start_peripheral_insight_job(payload: SyncPeripheralInsightReques
         await start_peripheral_insight_job(payload)
     except HTTPException as exc:
         logger.info("Peripheral insight generation skipped: %s", exc.detail)
+
+
+async def safe_start_peripheral_aggregate_job(payload: SyncPeripheralAggregateRequest) -> None:
+    try:
+        await start_peripheral_aggregate_job(payload)
+    except HTTPException as exc:
+        logger.info("Peripheral aggregate sync skipped: %s", exc.detail)
 
 
 async def safe_start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -3095,50 +3398,10 @@ async def startup_event() -> None:
         )
         scheduler.add_job(
             lambda: asyncio.get_running_loop().create_task(
-                safe_start_global_index_job(SyncGlobalIndexRequest())
+                safe_start_peripheral_aggregate_job(SyncPeripheralAggregateRequest())
             ),
-            CronTrigger(hour="7,9,11,13,15,17", minute=0),
-            id="global_index_intraday",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
-                safe_start_dollar_index_job(SyncDollarIndexRequest())
-            ),
-            CronTrigger(hour="7,17", minute=10),
-            id="dollar_index_twice_daily",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
-                safe_start_rmb_midpoint_job(SyncRmbMidpointRequest())
-            ),
-            CronTrigger(hour=9, minute=20),
-            id="rmb_midpoint_daily",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
-                safe_start_futures_realtime_job(SyncFuturesRealtimeRequest())
-            ),
-            CronTrigger(hour="7,10,13,16,19", minute=5),
-            id="futures_realtime_intraday",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
-                safe_start_fed_statement_job(SyncFedStatementRequest())
-            ),
-            CronTrigger(hour="7,17", minute=15),
-            id="fed_statements_twice_daily",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
-                safe_start_peripheral_insight_job(SyncPeripheralInsightRequest())
-            ),
-            CronTrigger(hour=18, minute=10),
-            id="peripheral_insight_daily",
+            CronTrigger(hour=6, minute=0),
+            id="peripheral_aggregate_daily",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -3163,6 +3426,46 @@ async def startup_event() -> None:
             ),
             CronTrigger(day=10, hour=22, minute=0),
             id="macro_cpi_monthly_day10",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_macro_pmi_job(SyncMacroPmiRequest())
+            ),
+            CronTrigger(day=9, hour=22, minute=0),
+            id="macro_pmi_monthly_day9",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_macro_pmi_job(SyncMacroPmiRequest())
+            ),
+            CronTrigger(day=10, hour=22, minute=0),
+            id="macro_pmi_monthly_day10",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_macro_m2_job(SyncMacroM2Request())
+            ),
+            CronTrigger(day=10, hour=17, minute=1),
+            id="macro_m2_monthly_day10",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_macro_m2_job(SyncMacroM2Request())
+            ),
+            CronTrigger(day=11, hour=17, minute=1),
+            id="macro_m2_monthly_day11",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_macro_m2_job(SyncMacroM2Request())
+            ),
+            CronTrigger(day=12, hour=17, minute=1),
+            id="macro_m2_monthly_day12",
             replace_existing=True,
         )
 
@@ -4002,6 +4305,57 @@ def list_macro_cpi_api(
     )
 
 
+@app.get("/macro/pmi", response_model=PmiListResponse)
+def list_macro_pmi_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of PMI rows to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> PmiListResponse:
+    result = list_macro_pmi(limit=limit, offset=offset)
+    items: List[PmiRecord] = []
+    for entry in result.get("items", []):
+        items.append(
+            PmiRecord(
+                series=entry.get("series") or "manufacturing",
+                periodDate=entry.get("period_date"),
+                periodLabel=entry.get("period_label"),
+                actualValue=entry.get("actual_value"),
+                forecastValue=entry.get("forecast_value"),
+                previousValue=entry.get("previous_value"),
+                updatedAt=entry.get("updated_at"),
+            )
+        )
+    return PmiListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
+@app.get("/macro/m2", response_model=M2ListResponse)
+def list_macro_m2_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of M2 rows to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> M2ListResponse:
+    result = list_macro_m2(limit=limit, offset=offset)
+    items: List[M2Record] = []
+    for entry in result.get("items", []):
+        items.append(
+            M2Record(
+                periodDate=entry.get("period_date"),
+                periodLabel=entry.get("period_label"),
+                actualValue=entry.get("actual_value"),
+                forecastValue=entry.get("forecast_value"),
+                previousValue=entry.get("previous_value"),
+                updatedAt=entry.get("updated_at"),
+            )
+        )
+    return M2ListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
 @app.get("/peripheral/insights/latest", response_model=PeripheralInsightResponse)
 def get_latest_peripheral_insight_api() -> PeripheralInsightResponse:
     record = get_latest_peripheral_insight()
@@ -4287,6 +4641,16 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect cpi_monthly stats: %s", exc)
         stats_map["cpi_monthly"] = {}
     try:
+        stats_map["pmi_monthly"] = MacroPmiDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect pmi_monthly stats: %s", exc)
+        stats_map["pmi_monthly"] = {}
+    try:
+        stats_map["m2_monthly"] = MacroM2DAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect m2_monthly stats: %s", exc)
+        stats_map["m2_monthly"] = {}
+    try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
@@ -4484,6 +4848,18 @@ async def control_sync_cpi(payload: SyncMacroCpiRequest) -> dict[str, str]:
     return {"status": "started"}
 
 
+@app.post("/control/sync/pmi")
+async def control_sync_pmi(payload: SyncMacroPmiRequest) -> dict[str, str]:
+    await start_macro_pmi_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/m2")
+async def control_sync_m2(payload: SyncMacroM2Request) -> dict[str, str]:
+    await start_macro_m2_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/social-financing")
 async def control_sync_social_financing(payload: SyncSocialFinancingRequest) -> dict[str, str]:
     await start_social_financing_job(payload)
@@ -4499,6 +4875,12 @@ async def control_sync_futures_realtime(payload: SyncFuturesRealtimeRequest) -> 
 @app.post("/control/sync/fed-statements")
 async def control_sync_fed_statements(payload: SyncFedStatementRequest) -> dict[str, str]:
     await start_fed_statement_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/peripheral-aggregate")
+async def control_sync_peripheral_aggregate(payload: SyncPeripheralAggregateRequest) -> dict[str, str]:
+    await start_peripheral_aggregate_job(payload)
     return {"status": "started"}
 
 

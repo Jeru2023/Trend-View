@@ -31,6 +31,8 @@ from .akshare_api import (
     MACRO_LEVERAGE_COLUMN_MAP,
     MACRO_SOCIAL_FINANCING_COLUMN_MAP,
     MACRO_CPI_COLUMN_MAP,
+    MACRO_PMI_COLUMN_MAP,
+    MACRO_M2_COLUMN_MAP,
     PROFIT_FORECAST_BASE_COLUMN_MAP,
     fetch_finance_breakfast,
     fetch_performance_express_em,
@@ -49,6 +51,9 @@ from .akshare_api import (
     fetch_macro_leverage_ratios,
     fetch_macro_social_financing,
     fetch_macro_cpi_monthly,
+    fetch_macro_pmi_yearly,
+    fetch_macro_non_man_pmi,
+    fetch_macro_m2_yearly,
 )
 from .eastmoney_news import EastmoneyNewsDetail, fetch_eastmoney_detail
 from .deepseek_api import generate_finance_analysis
@@ -82,6 +87,8 @@ __all__ = [
     "MACRO_LEVERAGE_COLUMN_MAP",
     "MACRO_SOCIAL_FINANCING_COLUMN_MAP",
     "MACRO_CPI_COLUMN_MAP",
+    "MACRO_PMI_COLUMN_MAP",
+    "MACRO_M2_COLUMN_MAP",
     "PROFIT_FORECAST_BASE_COLUMN_MAP",
     "FINANCE_BREAKFAST_COLUMNS",
     "fetch_finance_breakfast",
@@ -101,6 +108,9 @@ __all__ = [
     "fetch_macro_leverage_ratios",
     "fetch_macro_social_financing",
     "fetch_macro_cpi_monthly",
+    "fetch_macro_pmi_yearly",
+    "fetch_macro_non_man_pmi",
+    "fetch_macro_m2_yearly",
     "EastmoneyNewsDetail",
     "fetch_eastmoney_detail",
     "generate_finance_analysis",

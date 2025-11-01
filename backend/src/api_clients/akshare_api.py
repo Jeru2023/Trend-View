@@ -252,6 +252,22 @@ MACRO_CPI_COLUMN_MAP: Final[dict[str, str]] = {
     "前值": "previous_value",
 }
 
+MACRO_PMI_COLUMN_MAP: Final[dict[str, str]] = {
+    "商品": "category",
+    "日期": "period_label",
+    "今值": "actual_value",
+    "预测值": "forecast_value",
+    "前值": "previous_value",
+}
+
+MACRO_M2_COLUMN_MAP: Final[dict[str, str]] = {
+    "商品": "category",
+    "日期": "period_label",
+    "今值": "actual_value",
+    "预测值": "forecast_value",
+    "前值": "previous_value",
+}
+
 FUTURES_REALTIME_COLUMN_MAP: Final[dict[str, str]] = {
     "名称": "name",
     "最新价": "last_price",
@@ -682,6 +698,69 @@ def fetch_macro_cpi_monthly() -> pd.DataFrame:
     return renamed.loc[:, list(MACRO_CPI_COLUMN_MAP.values())]
 
 
+def fetch_macro_pmi_yearly() -> pd.DataFrame:
+    """Fetch official manufacturing PMI data from Jin10."""
+
+    try:
+        dataframe = ak.macro_china_pmi_yearly()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch PMI data via AkShare: %s", exc)
+        return pd.DataFrame(columns=list(MACRO_PMI_COLUMN_MAP.values()))
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no PMI data.")
+        return pd.DataFrame(columns=list(MACRO_PMI_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=MACRO_PMI_COLUMN_MAP)
+    for column in MACRO_PMI_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_PMI_COLUMN_MAP.values())]
+
+
+def fetch_macro_non_man_pmi() -> pd.DataFrame:
+    """Fetch official non-manufacturing PMI data from Jin10."""
+
+    try:
+        dataframe = ak.macro_china_non_man_pmi()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch non-manufacturing PMI data via AkShare: %s", exc)
+        return pd.DataFrame(columns=list(MACRO_PMI_COLUMN_MAP.values()))
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no non-manufacturing PMI data.")
+        return pd.DataFrame(columns=list(MACRO_PMI_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=MACRO_PMI_COLUMN_MAP)
+    for column in MACRO_PMI_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_PMI_COLUMN_MAP.values())]
+
+
+def fetch_macro_m2_yearly() -> pd.DataFrame:
+    """Fetch M2 money supply YoY data from Jin10."""
+
+    try:
+        dataframe = ak.macro_china_m2_yearly()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch M2 data via AkShare: %s", exc)
+        return pd.DataFrame(columns=list(MACRO_M2_COLUMN_MAP.values()))
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no M2 data.")
+        return pd.DataFrame(columns=list(MACRO_M2_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=MACRO_M2_COLUMN_MAP)
+    for column in MACRO_M2_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_M2_COLUMN_MAP.values())]
+
+
 def fetch_futures_realtime(symbols: Optional[Sequence[str]] = None) -> pd.DataFrame:
     """Fetch realtime foreign commodity futures quotes for selected symbols."""
 
@@ -883,6 +962,8 @@ __all__ = [
     "MACRO_LEVERAGE_COLUMN_MAP",
     "MACRO_SOCIAL_FINANCING_COLUMN_MAP",
     "MACRO_CPI_COLUMN_MAP",
+    "MACRO_PMI_COLUMN_MAP",
+    "MACRO_M2_COLUMN_MAP",
     "fetch_finance_breakfast",
     "fetch_performance_express_em",
     "fetch_performance_forecast_em",
@@ -895,4 +976,7 @@ __all__ = [
     "fetch_macro_leverage_ratios",
     "fetch_macro_social_financing",
     "fetch_macro_cpi_monthly",
+    "fetch_macro_pmi_yearly",
+    "fetch_macro_non_man_pmi",
+    "fetch_macro_m2_yearly",
 ]

@@ -84,6 +84,15 @@ const elements = {
     progress: document.getElementById("fundamental-metrics-progress"),
     button: document.getElementById("run-fundamental-metrics"),
   },
+  peripheralAggregate: {
+    status: document.getElementById("peripheral-aggregate-status"),
+    updated: document.getElementById("peripheral-aggregate-updated"),
+    duration: document.getElementById("peripheral-aggregate-duration"),
+    rows: document.getElementById("peripheral-aggregate-rows"),
+    message: document.getElementById("peripheral-aggregate-message"),
+    progress: document.getElementById("peripheral-aggregate-progress"),
+    button: document.getElementById("run-peripheral-aggregate"),
+  },
   dailyIndicator: {
     status: document.getElementById("daily-indicator-status"),
     updated: document.getElementById("daily-indicator-updated"),
@@ -158,6 +167,26 @@ const elements = {
     progress: document.getElementById("cpi-progress"),
     button: document.getElementById("run-cpi"),
     infoButton: document.querySelector("[data-cpi-info]"),
+  },
+  pmiMonthly: {
+    status: document.getElementById("pmi-status"),
+    updated: document.getElementById("pmi-updated"),
+    duration: document.getElementById("pmi-duration"),
+    rows: document.getElementById("pmi-rows"),
+    message: document.getElementById("pmi-message"),
+    progress: document.getElementById("pmi-progress"),
+    button: document.getElementById("run-pmi"),
+    infoButton: document.querySelector("[data-pmi-info]"),
+  },
+  m2Monthly: {
+    status: document.getElementById("m2-status"),
+    updated: document.getElementById("m2-updated"),
+    duration: document.getElementById("m2-duration"),
+    rows: document.getElementById("m2-rows"),
+    message: document.getElementById("m2-message"),
+    progress: document.getElementById("m2-progress"),
+    button: document.getElementById("run-m2"),
+    infoButton: document.querySelector("[data-m2-info]"),
   },
   dollarIndex: {
     status: document.getElementById("dollar-index-status"),
@@ -365,6 +394,16 @@ function applyTranslations() {
     elements.cpiMonthly.infoButton.setAttribute("title", tooltip);
     elements.cpiMonthly.infoButton.setAttribute("aria-label", tooltip || "Info");
   }
+  if (elements.pmiMonthly.infoButton) {
+    const tooltip = dict.pmiTooltip || "";
+    elements.pmiMonthly.infoButton.setAttribute("title", tooltip);
+    elements.pmiMonthly.infoButton.setAttribute("aria-label", tooltip || "Info");
+  }
+  if (elements.m2Monthly.infoButton) {
+    const tooltip = dict.m2Tooltip || "";
+    elements.m2Monthly.infoButton.setAttribute("title", tooltip);
+    elements.m2Monthly.infoButton.setAttribute("aria-label", tooltip || "Info");
+  }
 }
 
 function jobStatusLabel(status) {
@@ -435,6 +474,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const peripheralAggregateSnapshot = jobs.peripheral_aggregate || {
+      status: "idle",
+      progress: 0,
+    };
     const indicatorSnapshot = jobs.daily_indicator || {
       status: "idle",
       progress: 0,
@@ -472,6 +515,14 @@ async function loadStatus() {
       progress: 0,
     };
     const cpiSnapshot = jobs.cpi_monthly || {
+      status: "idle",
+      progress: 0,
+    };
+    const pmiSnapshot = jobs.pmi_monthly || {
+      status: "idle",
+      progress: 0,
+    };
+    const m2Snapshot = jobs.m2_monthly || {
       status: "idle",
       progress: 0,
     };
@@ -529,6 +580,7 @@ async function loadStatus() {
     updateJobCard(elements.dailyTradeMetrics, metricsSnapshot);
     updateJobCard(elements.dailyIndicator, indicatorSnapshot);
     updateJobCard(elements.fundamentalMetrics, fundamentalSnapshot);
+    updateJobCard(elements.peripheralAggregate, peripheralAggregateSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.performanceExpress, expressSnapshot);
@@ -537,6 +589,8 @@ async function loadStatus() {
     updateJobCard(elements.macroLeverage, leverageSnapshot);
     updateJobCard(elements.socialFinancing, socialFinancingSnapshot);
     updateJobCard(elements.cpiMonthly, cpiSnapshot);
+    updateJobCard(elements.pmiMonthly, pmiSnapshot);
+    updateJobCard(elements.m2Monthly, m2Snapshot);
     updateJobCard(elements.rmbMidpoint, rmbMidpointSnapshot);
     updateJobCard(elements.futuresRealtime, futuresRealtimeSnapshot);
     updateJobCard(elements.peripheralInsight, peripheralInsightSnapshot);
@@ -567,6 +621,7 @@ async function loadStatus() {
       metricsSnapshot,
       indicatorSnapshot,
       fundamentalSnapshot,
+      peripheralAggregateSnapshot,
       incomeSnapshot,
       financialSnapshot,
       expressSnapshot,
@@ -575,6 +630,8 @@ async function loadStatus() {
       leverageSnapshot,
       socialFinancingSnapshot,
       cpiSnapshot,
+      pmiSnapshot,
+      m2Snapshot,
       rmbMidpointSnapshot,
       futuresRealtimeSnapshot,
       peripheralInsightSnapshot,
@@ -779,6 +836,11 @@ function initActions() {
       triggerJob("/control/sync/big-deal-fund-flow", {})
     );
   }
+  if (elements.peripheralAggregate.button) {
+    elements.peripheralAggregate.button.addEventListener("click", () =>
+      triggerJob("/control/sync/peripheral-aggregate", {})
+    );
+  }
   if (elements.globalIndex.button) {
     elements.globalIndex.button.addEventListener("click", () =>
       triggerJob("/control/sync/global-indices", {})
@@ -799,6 +861,16 @@ function initActions() {
       triggerJob("/control/sync/cpi", {})
     );
   }
+  if (elements.pmiMonthly.button) {
+    elements.pmiMonthly.button.addEventListener("click", () =>
+      triggerJob("/control/sync/pmi", {})
+    );
+  }
+  if (elements.m2Monthly.button) {
+    elements.m2Monthly.button.addEventListener("click", () =>
+      triggerJob("/control/sync/m2", {})
+    );
+  }
   if (elements.macroLeverage.infoButton) {
     elements.macroLeverage.infoButton.addEventListener("click", () => {
       const dict = translations[currentLang] || translations.en;
@@ -816,6 +888,26 @@ function initActions() {
         (dict && dict.cpiTooltip) ||
         (translations.en && translations.en.cpiTooltip) ||
         "Monthly release: NBS publishes CPI around the 9th-10th of the following month.";
+      window.alert(message);
+    });
+  }
+  if (elements.pmiMonthly.infoButton) {
+    elements.pmiMonthly.infoButton.addEventListener("click", () => {
+      const dict = translations[currentLang] || translations.en;
+      const message =
+        (dict && dict.pmiTooltip) ||
+        (translations.en && translations.en.pmiTooltip) ||
+        "Monthly release: NBS publishes PMI around the 9th-10th of the following month.";
+      window.alert(message);
+    });
+  }
+  if (elements.m2Monthly.infoButton) {
+    elements.m2Monthly.infoButton.addEventListener("click", () => {
+      const dict = translations[currentLang] || translations.en;
+      const message =
+        (dict && dict.m2Tooltip) ||
+        (translations.en && translations.en.m2Tooltip) ||
+        "Monthly release: M2 data typically arrives between the 10th-12th around 16:00.";
       window.alert(message);
     });
   }

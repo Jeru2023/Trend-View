@@ -63,6 +63,8 @@ class PostgresSettings:
     leverage_ratio_table: str
     social_financing_table: str
     cpi_table: str
+    pmi_table: str
+    m2_table: str
     connect_timeout: int = 3
     application_name: str = DEFAULT_APPLICATION_NAME
     statement_timeout_ms: Optional[int] = None
@@ -230,6 +232,12 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             cpi_table=str(
                 postgres_config.get("cpi_table", "macro_cpi_monthly")
+            ),
+            pmi_table=str(
+                postgres_config.get("pmi_table", "macro_pmi")
+            ),
+            m2_table=str(
+                postgres_config.get("m2_table", "macro_m2")
             ),
             connect_timeout=int(postgres_config.get("connect_timeout", 3)),
             application_name=str(application_name).strip() if isinstance(application_name, str) and application_name.strip() else DEFAULT_APPLICATION_NAME,

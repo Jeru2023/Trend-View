@@ -45,6 +45,8 @@
         "fed_statement_table": "fed_statements",
         "leverage_ratio_table": "macro_leverage_ratio",
         "social_financing_table": "macro_social_financing",
-        "cpi_table": "macro_cpi_monthly"
+        "cpi_table": "macro_cpi_monthly",
+        "pmi_table": "macro_pmi",
+        "m2_table": "macro_m2"
     }
 }

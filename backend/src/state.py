@@ -52,6 +52,7 @@ class SyncMonitor:
             "rmb_midpoint": JobProgress(),
             "futures_realtime": JobProgress(),
             "fed_statements": JobProgress(),
+            "peripheral_aggregate": JobProgress(),
             "peripheral_insight": JobProgress(),
             "industry_fund_flow": JobProgress(),
             "concept_fund_flow": JobProgress(),
@@ -62,6 +63,8 @@ class SyncMonitor:
             "leverage_ratio": JobProgress(),
             "social_financing": JobProgress(),
             "cpi_monthly": JobProgress(),
+            "pmi_monthly": JobProgress(),
+            "m2_monthly": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():

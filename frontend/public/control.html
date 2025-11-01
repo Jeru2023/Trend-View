@@ -52,28 +52,117 @@
           </header>
 
           <nav class="control-tabs" aria-label="Job category shortcuts">
-            <a class="control-tabs__link" href="#group-base-data" data-i18n="baseDataGroupTitle">
-              Base Data Jobs
-            </a>
-            <a class="control-tabs__link" href="#group-trading" data-i18n="tradeGroupTitle">
-              Trading Data Jobs
-            </a>
-            <a class="control-tabs__link" href="#group-fundamentals" data-i18n="fundamentalsGroupTitle">
-              Fundamental Data Jobs
-            </a>
-            <a class="control-tabs__link" href="#group-funds" data-i18n="fundsGroupTitle">
-              Fund Flow Jobs
-            </a>
-            <a class="control-tabs__link" href="#group-macro" data-i18n="macroGroupTitle">
-              Peripheral Data Jobs
-            </a>
             <a class="control-tabs__link" href="#group-aggregate" data-i18n="aggregateGroupTitle">
               Aggregate Tasks
+            </a>
+            <a class="control-tabs__link" href="#group-base-data" data-i18n="baseDataGroupTitle">
+              Base Data
+            </a>
+            <a class="control-tabs__link" href="#group-trading" data-i18n="tradeGroupTitle">
+              Trading Data
+            </a>
+            <a class="control-tabs__link" href="#group-fundamentals" data-i18n="fundamentalsGroupTitle">
+              Fundamentals
+            </a>
+            <a class="control-tabs__link" href="#group-funds" data-i18n="fundsGroupTitle">
+              Fund Flow
+            </a>
+            <a class="control-tabs__link" href="#group-macro" data-i18n="macroGroupTitle">
+              Macro Data
+            </a>
+            <a class="control-tabs__link" href="#group-peripheral" data-i18n="peripheralGroupTitle">
+              Peripheral Data
             </a>
             <a class="control-tabs__link" href="#group-news" data-i18n="newsGroupTitle">
               News & Insights
             </a>
           </nav>
+
+          <div class="control-group" id="group-aggregate">
+            <header class="control-group__header">
+              <h3 data-i18n="aggregateGroupTitle">Aggregate Tasks</h3>
+            </header>
+            <div class="control-grid">
+              <div class="card" id="peripheral-aggregate-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="peripheralAggregateTitle">Peripheral Bundle Sync</h3>
+                    <p class="card__subtitle" data-i18n="peripheralAggregateSubtitle">
+                      Sequentially run all peripheral data sync jobs (indices, FX, futures, Fed statements, insight).
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-peripheral-aggregate" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="peripheral-aggregate-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="peripheral-aggregate-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="peripheral-aggregate-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="peripheral-aggregate-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="peripheral-aggregate-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="peripheral-aggregate-message"></p>
+              </div>
+              <div class="card" id="peripheral-insight-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="peripheralInsightTitle">Peripheral Insight</h3>
+                    <p class="card__subtitle" data-i18n="peripheralInsightSubtitle">
+                      Aggregate overseas market metrics and request a DeepSeek summary.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-peripheral-insight" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="peripheral-insight-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="peripheral-insight-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="peripheral-insight-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="peripheral-insight-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="peripheral-insight-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="peripheral-insight-message"></p>
+              </div>
+            </div>
+          </div>
 
           <div class="control-group" id="group-base-data">
             <header class="control-group__header">
@@ -196,45 +285,6 @@
                   </div>
                 </div>
                 <p class="job-message" id="stock-main-composition-message"></p>
-              </div>
-              <div class="card" id="profit-forecast-card">
-                <div class="card__header">
-                  <div>
-                    <h3 data-i18n="profitForecastTitle">Profit Forecast</h3>
-                    <p class="card__subtitle" data-i18n="profitForecastSubtitle">
-                      Pull Eastmoney profit forecast snapshots (stock_profit_forecast_em) to monitor EPS expectations.
-                    </p>
-                  </div>
-                  <button class="primary-btn" id="run-profit-forecast" data-i18n="runNow">
-                    Run
-                  </button>
-                </div>
-                <div class="progress" aria-hidden="true">
-                  <div class="progress__bar" id="profit-forecast-progress"></div>
-                </div>
-                <div class="job-meta">
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="lastStatus">Status</span>
-                      <strong id="profit-forecast-status">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="records">Records</span>
-                      <strong id="profit-forecast-rows">&mdash;</strong>
-                    </div>
-                  </div>
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="dataUpdated">Data Updated</span>
-                      <strong id="profit-forecast-updated">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="lastDuration">Last Duration</span>
-                      <strong id="profit-forecast-duration">&mdash;</strong>
-                    </div>
-                  </div>
-                </div>
-                <p class="job-message" id="profit-forecast-message"></p>
               </div>
             </div>
           </div>
@@ -367,10 +417,50 @@
           </div>
 
           <div class="control-group" id="group-fundamentals">
+
             <header class="control-group__header">
-              <h3 data-i18n="fundamentalsGroupTitle">Fundamental Data Jobs</h3>
+              <h3 data-i18n="fundamentalsGroupTitle">Fundamentals</h3>
             </header>
             <div class="control-grid">
+              <div class="card" id="profit-forecast-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="profitForecastTitle">Profit Forecast</h3>
+                    <p class="card__subtitle" data-i18n="profitForecastSubtitle">
+                      Pull Eastmoney profit forecast snapshots (stock_profit_forecast_em) to monitor EPS expectations.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-profit-forecast" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="profit-forecast-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="profit-forecast-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="profit-forecast-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="profit-forecast-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="profit-forecast-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="profit-forecast-message"></p>
+              </div>
               <div class="card" id="income-statement-card">
                 <div class="card__header">
                   <div>
@@ -795,56 +885,6 @@
                 <p class="job-message" id="macro-leverage-message"></p>
               </div>
 
-              <div class="card" id="social-financing-card">
-                <div class="card__header">
-                  <div>
-                    <h3 data-i18n="socialFinancingTitle">Social Financing Increment</h3>
-                    <p class="card__subtitle" data-i18n="socialFinancingSubtitle">
-                      Monthly social financing flows published by MOFCOM.
-                    </p>
-                  </div>
-                  <div class="card__actions">
-                    <button
-                      class="info-icon"
-                      type="button"
-                      data-social-financing-info
-                      aria-label="Social financing release schedule"
-                    >
-                      ?
-                    </button>
-                    <button class="primary-btn" id="run-social-financing" data-i18n="runNow">
-                      Run
-                    </button>
-                  </div>
-                </div>
-                <div class="progress" aria-hidden="true">
-                  <div class="progress__bar" id="social-financing-progress"></div>
-                </div>
-                <div class="job-meta">
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="lastStatus">Status</span>
-                      <strong id="social-financing-status">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="records">Records</span>
-                      <strong id="social-financing-rows">&mdash;</strong>
-                    </div>
-                  </div>
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="dataUpdated">Data Updated</span>
-                      <strong id="social-financing-updated">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="lastDuration">Last Duration</span>
-                      <strong id="social-financing-duration">&mdash;</strong>
-                    </div>
-                  </div>
-                </div>
-                <p class="job-message" id="social-financing-message"></p>
-              </div>
-
               <div class="card" id="cpi-card">
                 <div class="card__header">
                   <div>
@@ -895,6 +935,106 @@
                 <p class="job-message" id="cpi-message"></p>
               </div>
 
+              <div class="card" id="pmi-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="pmiTitle">PMI</h3>
+                    <p class="card__subtitle" data-i18n="pmiSubtitle">
+                      Official manufacturing and non-manufacturing PMI released by the National Bureau of Statistics.
+                    </p>
+                  </div>
+                  <div class="card__actions">
+                    <button
+                      class="info-icon"
+                      type="button"
+                      data-pmi-info
+                      aria-label="PMI release schedule"
+                    >
+                      ?
+                    </button>
+                    <button class="primary-btn" id="run-pmi" data-i18n="runNow">
+                      Run
+                    </button>
+                  </div>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="pmi-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="pmi-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="pmi-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="pmi-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="pmi-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="pmi-message"></p>
+              </div>
+
+              <div class="card" id="m2-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="m2Title">M2 Money Supply YoY</h3>
+                    <p class="card__subtitle" data-i18n="m2Subtitle">
+                      Broad money (M2) YoY growth released by the People's Bank of China.
+                    </p>
+                  </div>
+                  <div class="card__actions">
+                    <button
+                      class="info-icon"
+                      type="button"
+                      data-m2-info
+                      aria-label="M2 release schedule"
+                    >
+                      ?
+                    </button>
+                    <button class="primary-btn" id="run-m2" data-i18n="runNow">
+                      Run
+                    </button>
+                  </div>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="m2-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="m2-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="m2-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="m2-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="m2-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="m2-message"></p>
+              </div>
+
               <div class="card" id="social-financing-card">
                 <div class="card__header">
                   <div>
@@ -944,7 +1084,14 @@
                 </div>
                 <p class="job-message" id="social-financing-message"></p>
               </div>
+            </div>
+          </div>
 
+          <div class="control-group" id="group-peripheral">
+            <header class="control-group__header">
+              <h3 data-i18n="peripheralGroupTitle">Peripheral Data Jobs</h3>
+            </header>
+            <div class="control-grid">
               <div class="card" id="global-index-card">
                 <div class="card__header">
                   <div>
@@ -1148,53 +1295,6 @@
             </div>
           </div>
 
-          <div class="control-group" id="group-aggregate">
-            <header class="control-group__header">
-              <h3 data-i18n="aggregateGroupTitle">Aggregate Tasks</h3>
-            </header>
-            <div class="control-grid">
-              <div class="card" id="peripheral-insight-card">
-                <div class="card__header">
-                  <div>
-                    <h3 data-i18n="peripheralInsightTitle">Peripheral Insight</h3>
-                    <p class="card__subtitle" data-i18n="peripheralInsightSubtitle">
-                      Aggregate overseas market metrics and request a DeepSeek summary.
-                    </p>
-                  </div>
-                  <button class="primary-btn" id="run-peripheral-insight" data-i18n="runNow">
-                    Run
-                  </button>
-                </div>
-                <div class="progress" aria-hidden="true">
-                  <div class="progress__bar" id="peripheral-insight-progress"></div>
-                </div>
-                <div class="job-meta">
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="lastStatus">Status</span>
-                      <strong id="peripheral-insight-status">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="records">Records</span>
-                      <strong id="peripheral-insight-rows">&mdash;</strong>
-                    </div>
-                  </div>
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="dataUpdated">Data Updated</span>
-                      <strong id="peripheral-insight-updated">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="lastDuration">Last Duration</span>
-                      <strong id="peripheral-insight-duration">&mdash;</strong>
-                    </div>
-                  </div>
-                </div>
-                <p class="job-message" id="peripheral-insight-message"></p>
-              </div>
-            </div>
-          </div>
-
           <div class="control-group" id="group-news">
             <header class="control-group__header">
               <h3 data-i18n="newsGroupTitle">News & Insights</h3>
@@ -1246,8 +1346,8 @@
       </main>
     </div>
 
-    <script src="i18n.js?v=20251226"></script>
-    <script src="sidebar.js?v=20260306"></script>
-    <script src="control.js?v=20260306"></script>
+    <script src="i18n.js?v=20261102"></script>
+    <script src="sidebar.js?v=20260309"></script>
+    <script src="control.js?v=20261102"></script>
   </body>
 </html>

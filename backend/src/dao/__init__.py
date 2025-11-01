@@ -28,6 +28,8 @@ from .peripheral_insight_dao import PeripheralInsightDAO
 from .macro_leverage_dao import MacroLeverageDAO
 from .macro_social_financing_dao import MacroSocialFinancingDAO
 from .macro_cpi_dao import MacroCpiDAO
+from .macro_m2_dao import MacroM2DAO
+from .macro_pmi_dao import MacroPmiDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -58,4 +60,6 @@ __all__ = [
     "MacroLeverageDAO",
     "MacroSocialFinancingDAO",
     "MacroCpiDAO",
+    "MacroPmiDAO",
+    "MacroM2DAO",
 ]
