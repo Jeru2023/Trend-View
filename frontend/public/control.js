@@ -129,6 +129,36 @@ const elements = {
     progress: document.getElementById("global-index-progress"),
     button: document.getElementById("run-global-index"),
   },
+  macroLeverage: {
+    status: document.getElementById("macro-leverage-status"),
+    updated: document.getElementById("macro-leverage-updated"),
+    duration: document.getElementById("macro-leverage-duration"),
+    rows: document.getElementById("macro-leverage-rows"),
+    message: document.getElementById("macro-leverage-message"),
+    progress: document.getElementById("macro-leverage-progress"),
+    button: document.getElementById("run-macro-leverage"),
+    infoButton: document.querySelector("[data-leverage-info]"),
+  },
+  socialFinancing: {
+    status: document.getElementById("social-financing-status"),
+    updated: document.getElementById("social-financing-updated"),
+    duration: document.getElementById("social-financing-duration"),
+    rows: document.getElementById("social-financing-rows"),
+    message: document.getElementById("social-financing-message"),
+    progress: document.getElementById("social-financing-progress"),
+    button: document.getElementById("run-social-financing"),
+    infoButton: document.querySelector("[data-social-financing-info]"),
+  },
+  cpiMonthly: {
+    status: document.getElementById("cpi-status"),
+    updated: document.getElementById("cpi-updated"),
+    duration: document.getElementById("cpi-duration"),
+    rows: document.getElementById("cpi-rows"),
+    message: document.getElementById("cpi-message"),
+    progress: document.getElementById("cpi-progress"),
+    button: document.getElementById("run-cpi"),
+    infoButton: document.querySelector("[data-cpi-info]"),
+  },
   dollarIndex: {
     status: document.getElementById("dollar-index-status"),
     updated: document.getElementById("dollar-index-updated"),
@@ -319,6 +349,22 @@ function applyTranslations() {
         el.textContent = value;
       }
     });
+
+  if (elements.macroLeverage.infoButton) {
+    const tooltip = dict.macroLeverageTooltip || "";
+    elements.macroLeverage.infoButton.setAttribute("title", tooltip);
+    elements.macroLeverage.infoButton.setAttribute("aria-label", tooltip || "Info");
+  }
+  if (elements.socialFinancing.infoButton) {
+    const tooltip = dict.socialFinancingTooltip || "";
+    elements.socialFinancing.infoButton.setAttribute("title", tooltip);
+    elements.socialFinancing.infoButton.setAttribute("aria-label", tooltip || "Info");
+  }
+  if (elements.cpiMonthly.infoButton) {
+    const tooltip = dict.cpiTooltip || "";
+    elements.cpiMonthly.infoButton.setAttribute("title", tooltip);
+    elements.cpiMonthly.infoButton.setAttribute("aria-label", tooltip || "Info");
+  }
 }
 
 function jobStatusLabel(status) {
@@ -417,6 +463,18 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const leverageSnapshot = jobs.leverage_ratio || {
+      status: "idle",
+      progress: 0,
+    };
+    const socialFinancingSnapshot = jobs.social_financing || {
+      status: "idle",
+      progress: 0,
+    };
+    const cpiSnapshot = jobs.cpi_monthly || {
+      status: "idle",
+      progress: 0,
+    };
     const dollarIndexSnapshot = jobs.dollar_index || {
       status: "idle",
       progress: 0,
@@ -441,30 +499,30 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
-  const conceptFundFlowSnapshot = jobs.concept_fund_flow || {
-    status: "idle",
-    progress: 0,
-  };
-  const individualFundFlowSnapshot = jobs.individual_fund_flow || {
-    status: "idle",
-    progress: 0,
-  };
-  const bigDealFundFlowSnapshot = jobs.big_deal_fund_flow || {
-    status: "idle",
-    progress: 0,
-  };
-  const mainBusinessSnapshot = jobs.stock_main_business || {
-    status: "idle",
-    progress: 0,
-  };
-  const mainCompositionSnapshot = jobs.stock_main_composition || {
-    status: "idle",
-    progress: 0,
-  };
-  const breakfastSnapshot = jobs.finance_breakfast || {
-    status: "idle",
-    progress: 0,
-  };
+    const conceptFundFlowSnapshot = jobs.concept_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
+    const individualFundFlowSnapshot = jobs.individual_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
+    const bigDealFundFlowSnapshot = jobs.big_deal_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
+    const mainBusinessSnapshot = jobs.stock_main_business || {
+      status: "idle",
+      progress: 0,
+    };
+    const mainCompositionSnapshot = jobs.stock_main_composition || {
+      status: "idle",
+      progress: 0,
+    };
+    const breakfastSnapshot = jobs.finance_breakfast || {
+      status: "idle",
+      progress: 0,
+    };
 
     updateJobCard(elements.stockBasic, stockSnapshot);
     updateJobCard(elements.dailyTrade, dailySnapshot);
@@ -476,6 +534,9 @@ async function loadStatus() {
     updateJobCard(elements.performanceExpress, expressSnapshot);
     updateJobCard(elements.performanceForecast, forecastSnapshot);
     updateJobCard(elements.globalIndex, globalIndexSnapshot);
+    updateJobCard(elements.macroLeverage, leverageSnapshot);
+    updateJobCard(elements.socialFinancing, socialFinancingSnapshot);
+    updateJobCard(elements.cpiMonthly, cpiSnapshot);
     updateJobCard(elements.rmbMidpoint, rmbMidpointSnapshot);
     updateJobCard(elements.futuresRealtime, futuresRealtimeSnapshot);
     updateJobCard(elements.peripheralInsight, peripheralInsightSnapshot);
@@ -511,6 +572,9 @@ async function loadStatus() {
       expressSnapshot,
       forecastSnapshot,
       globalIndexSnapshot,
+      leverageSnapshot,
+      socialFinancingSnapshot,
+      cpiSnapshot,
       rmbMidpointSnapshot,
       futuresRealtimeSnapshot,
       peripheralInsightSnapshot,
@@ -719,6 +783,51 @@ function initActions() {
     elements.globalIndex.button.addEventListener("click", () =>
       triggerJob("/control/sync/global-indices", {})
     );
+  }
+  if (elements.macroLeverage.button) {
+    elements.macroLeverage.button.addEventListener("click", () =>
+      triggerJob("/control/sync/leverage-ratio", {})
+    );
+  }
+  if (elements.socialFinancing.button) {
+    elements.socialFinancing.button.addEventListener("click", () =>
+      triggerJob("/control/sync/social-financing", {})
+    );
+  }
+  if (elements.cpiMonthly.button) {
+    elements.cpiMonthly.button.addEventListener("click", () =>
+      triggerJob("/control/sync/cpi", {})
+    );
+  }
+  if (elements.macroLeverage.infoButton) {
+    elements.macroLeverage.infoButton.addEventListener("click", () => {
+      const dict = translations[currentLang] || translations.en;
+      const message =
+        (dict && dict.macroLeverageTooltip) ||
+        (translations.en && translations.en.macroLeverageTooltip) ||
+        "Quarterly release: macro leverage reports are published about 1-2 months after each quarter ends.";
+      window.alert(message);
+    });
+  }
+  if (elements.cpiMonthly.infoButton) {
+    elements.cpiMonthly.infoButton.addEventListener("click", () => {
+      const dict = translations[currentLang] || translations.en;
+      const message =
+        (dict && dict.cpiTooltip) ||
+        (translations.en && translations.en.cpiTooltip) ||
+        "Monthly release: NBS publishes CPI around the 9th-10th of the following month.";
+      window.alert(message);
+    });
+  }
+  if (elements.socialFinancing.infoButton) {
+    elements.socialFinancing.infoButton.addEventListener("click", () => {
+      const dict = translations[currentLang] || translations.en;
+      const message =
+        (dict && dict.socialFinancingTooltip) ||
+        (translations.en && translations.en.socialFinancingTooltip) ||
+        "Monthly release: social financing data usually arrives around the 10th-12th each month.";
+      window.alert(message);
+    });
   }
   if (elements.rmbMidpoint.button) {
     elements.rmbMidpoint.button.addEventListener("click", () =>

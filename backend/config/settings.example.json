@@ -32,9 +32,19 @@
         "idle_in_transaction_session_timeout_ms": 300000,
         "performance_express_table": "performance_express",
         "performance_forecast_table": "performance_forecast",
+        "profit_forecast_table": "profit_forecast",
+        "global_index_table": "global_indices",
         "industry_fund_flow_table": "industry_fund_flow",
         "concept_fund_flow_table": "concept_fund_flow",
         "individual_fund_flow_table": "individual_fund_flow",
-        "big_deal_fund_flow_table": "big_deal_fund_flow"
+        "big_deal_fund_flow_table": "big_deal_fund_flow",
+        "peripheral_insight_table": "peripheral_insights",
+        "dollar_index_table": "dollar_index_history",
+        "rmb_midpoint_table": "rmb_midpoint_rates",
+        "futures_realtime_table": "futures_realtime_quotes",
+        "fed_statement_table": "fed_statements",
+        "leverage_ratio_table": "macro_leverage_ratio",
+        "social_financing_table": "macro_social_financing",
+        "cpi_table": "macro_cpi_monthly"
     }
 }

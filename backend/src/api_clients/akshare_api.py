@@ -220,6 +220,38 @@ RMB_MIDPOINT_COLUMN_MAP: Final[dict[str, str]] = {
     "泰铢": "thb",
 }
 
+MACRO_LEVERAGE_COLUMN_MAP: Final[dict[str, str]] = {
+    "年份": "period_label",
+    "居民部门": "household_ratio",
+    "非金融企业部门": "non_financial_corporate_ratio",
+    "政府部门": "government_ratio",
+    "中央政府": "central_government_ratio",
+    "地方政府": "local_government_ratio",
+    "实体经济部门": "real_economy_ratio",
+    "金融部门资产方": "financial_assets_ratio",
+    "金融部门负债方": "financial_liabilities_ratio",
+}
+
+MACRO_SOCIAL_FINANCING_COLUMN_MAP: Final[dict[str, str]] = {
+    "月份": "period_label",
+    "社会融资规模增量": "total_financing",
+    "其中-人民币贷款": "renminbi_loans",
+    "其中-委托贷款外币贷款": "entrusted_and_fx_loans",
+    "其中-委托贷款": "entrusted_loans",
+    "其中-信托贷款": "trust_loans",
+    "其中-未贴现银行承兑汇票": "undiscounted_bankers_acceptance",
+    "其中-企业债券": "corporate_bonds",
+    "其中-非金融企业境内股票融资": "domestic_equity_financing",
+}
+
+MACRO_CPI_COLUMN_MAP: Final[dict[str, str]] = {
+    "商品": "category",
+    "日期": "period_label",
+    "今值": "actual_value",
+    "预测值": "forecast_value",
+    "前值": "previous_value",
+}
+
 FUTURES_REALTIME_COLUMN_MAP: Final[dict[str, str]] = {
     "名称": "name",
     "最新价": "last_price",
@@ -575,6 +607,81 @@ def _empty_futures_realtime_frame() -> pd.DataFrame:
     return pd.DataFrame(columns=list(FUTURES_REALTIME_COLUMN_MAP.values()))
 
 
+def _empty_macro_leverage_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(MACRO_LEVERAGE_COLUMN_MAP.values()))
+
+
+def fetch_macro_leverage_ratios() -> pd.DataFrame:
+    """Fetch macro leverage ratios from National Finance and Development Lab."""
+
+    try:
+        dataframe = ak.macro_cnbs()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch macro leverage ratios via AkShare: %s", exc)
+        return _empty_macro_leverage_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no macro leverage ratio data.")
+        return _empty_macro_leverage_frame()
+
+    renamed = dataframe.rename(columns=MACRO_LEVERAGE_COLUMN_MAP)
+    for column in MACRO_LEVERAGE_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_LEVERAGE_COLUMN_MAP.values())]
+
+
+def _empty_macro_social_financing_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(MACRO_SOCIAL_FINANCING_COLUMN_MAP.values()))
+
+
+def fetch_macro_social_financing() -> pd.DataFrame:
+    """Fetch social financing incremental statistics from MOFCOM."""
+
+    try:
+        dataframe = ak.macro_china_shrzgm()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch social financing data via AkShare: %s", exc)
+        return _empty_macro_social_financing_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no social financing data.")
+        return _empty_macro_social_financing_frame()
+
+    renamed = dataframe.rename(columns=MACRO_SOCIAL_FINANCING_COLUMN_MAP)
+    for column in MACRO_SOCIAL_FINANCING_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_SOCIAL_FINANCING_COLUMN_MAP.values())]
+
+
+def _empty_macro_cpi_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(MACRO_CPI_COLUMN_MAP.values()))
+
+
+def fetch_macro_cpi_monthly() -> pd.DataFrame:
+    """Fetch monthly CPI report data from Jin10."""
+
+    try:
+        dataframe = ak.macro_china_cpi_monthly()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch CPI data via AkShare: %s", exc)
+        return _empty_macro_cpi_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no CPI data.")
+        return _empty_macro_cpi_frame()
+
+    renamed = dataframe.rename(columns=MACRO_CPI_COLUMN_MAP)
+    for column in MACRO_CPI_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_CPI_COLUMN_MAP.values())]
+
+
 def fetch_futures_realtime(symbols: Optional[Sequence[str]] = None) -> pd.DataFrame:
     """Fetch realtime foreign commodity futures quotes for selected symbols."""
 
@@ -773,6 +880,9 @@ __all__ = [
     "INDIVIDUAL_FUND_FLOW_COLUMN_MAP",
     "STOCK_MAIN_BUSINESS_COLUMN_MAP",
     "STOCK_MAIN_COMPOSITION_COLUMN_MAP",
+    "MACRO_LEVERAGE_COLUMN_MAP",
+    "MACRO_SOCIAL_FINANCING_COLUMN_MAP",
+    "MACRO_CPI_COLUMN_MAP",
     "fetch_finance_breakfast",
     "fetch_performance_express_em",
     "fetch_performance_forecast_em",
@@ -782,4 +892,7 @@ __all__ = [
     "fetch_big_deal_fund_flow",
     "fetch_stock_main_business",
     "fetch_stock_main_composition",
+    "fetch_macro_leverage_ratios",
+    "fetch_macro_social_financing",
+    "fetch_macro_cpi_monthly",
 ]

@@ -37,6 +37,9 @@ from .dao import (
     FuturesRealtimeDAO,
     FedStatementDAO,
     PeripheralInsightDAO,
+    MacroLeverageDAO,
+    MacroSocialFinancingDAO,
+    MacroCpiDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
@@ -62,6 +65,12 @@ from .services import (
     list_futures_realtime,
     list_fed_statements,
     get_latest_peripheral_insight,
+    list_macro_leverage_ratios,
+    sync_macro_leverage_ratios,
+    list_social_financing_ratios,
+    sync_social_financing_ratios,
+    list_macro_cpi,
+    sync_macro_cpi,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_individual_fund_flow,
@@ -682,7 +691,38 @@ class SyncRmbMidpointRequest(BaseModel):
         extra = "forbid"
 
 
+class SyncMacroLeverageRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncSocialFinancingRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
 class SyncRmbMidpointResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncSocialFinancingResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMacroCpiRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncMacroCpiResponse(BaseModel):
     rows: int
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
@@ -1051,6 +1091,70 @@ class RmbMidpointRecord(BaseModel):
 class RmbMidpointListResponse(BaseModel):
     total: int
     items: List[RmbMidpointRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class MacroLeverageRecord(BaseModel):
+    period_date: date = Field(..., alias="periodDate")
+    period_label: Optional[str] = Field(None, alias="periodLabel")
+    household_ratio: Optional[float] = Field(None, alias="householdRatio")
+    non_financial_corporate_ratio: Optional[float] = Field(None, alias="nonFinancialCorporateRatio")
+    government_ratio: Optional[float] = Field(None, alias="governmentRatio")
+    central_government_ratio: Optional[float] = Field(None, alias="centralGovernmentRatio")
+    local_government_ratio: Optional[float] = Field(None, alias="localGovernmentRatio")
+    real_economy_ratio: Optional[float] = Field(None, alias="realEconomyRatio")
+    financial_assets_ratio: Optional[float] = Field(None, alias="financialAssetsRatio")
+    financial_liabilities_ratio: Optional[float] = Field(None, alias="financialLiabilitiesRatio")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MacroLeverageListResponse(BaseModel):
+    total: int
+    items: List[MacroLeverageRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class SocialFinancingRecord(BaseModel):
+    period_date: date = Field(..., alias="periodDate")
+    period_label: Optional[str] = Field(None, alias="periodLabel")
+    total_financing: Optional[float] = Field(None, alias="totalFinancing")
+    renminbi_loans: Optional[float] = Field(None, alias="renminbiLoans")
+    entrusted_and_fx_loans: Optional[float] = Field(None, alias="entrustedAndFxLoans")
+    entrusted_loans: Optional[float] = Field(None, alias="entrustedLoans")
+    trust_loans: Optional[float] = Field(None, alias="trustLoans")
+    undiscounted_bankers_acceptance: Optional[float] = Field(None, alias="undiscountedBankersAcceptance")
+    corporate_bonds: Optional[float] = Field(None, alias="corporateBonds")
+    domestic_equity_financing: Optional[float] = Field(None, alias="domesticEquityFinancing")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SocialFinancingListResponse(BaseModel):
+    total: int
+    items: List[SocialFinancingRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class CpiRecord(BaseModel):
+    period_date: date = Field(..., alias="periodDate")
+    period_label: Optional[str] = Field(None, alias="periodLabel")
+    actual_value: Optional[float] = Field(None, alias="actualValue")
+    forecast_value: Optional[float] = Field(None, alias="forecastValue")
+    previous_value: Optional[float] = Field(None, alias="previousValue")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class CpiListResponse(BaseModel):
+    total: int
+    items: List[CpiRecord]
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
 
 
@@ -1993,6 +2097,108 @@ async def _run_rmb_midpoint_job(request: SyncRmbMidpointRequest) -> None:  # noq
     await loop.run_in_executor(None, job)
 
 
+async def _run_macro_leverage_job(request: SyncMacroLeverageRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("leverage_ratio", message="Syncing macro leverage ratios", progress=0.0)
+        try:
+            result = sync_macro_leverage_ratios()
+            stats = MacroLeverageDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "leverage_ratio",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} macro leverage rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "leverage_ratio",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_social_financing_job(request: SyncSocialFinancingRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("social_financing", message="Syncing social financing data", progress=0.0)
+        try:
+            result = sync_social_financing_ratios()
+            stats = MacroSocialFinancingDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "social_financing",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} social financing rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "social_financing",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_macro_cpi_job(request: SyncMacroCpiRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("cpi_monthly", message="Syncing CPI data", progress=0.0)
+        try:
+            result = sync_macro_cpi()
+            stats = MacroCpiDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "cpi_monthly",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} CPI rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "cpi_monthly",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_futures_realtime_job(request: SyncFuturesRealtimeRequest) -> None:  # noqa: ARG001
     loop = asyncio.get_running_loop()
 
@@ -2499,6 +2705,30 @@ async def start_rmb_midpoint_job(payload: SyncRmbMidpointRequest) -> None:
     asyncio.create_task(_run_rmb_midpoint_job(payload))
 
 
+async def start_macro_leverage_job(payload: SyncMacroLeverageRequest) -> None:
+    if _job_running("leverage_ratio"):
+        raise HTTPException(status_code=409, detail="Macro leverage sync already running")
+    monitor.start("leverage_ratio", message="Syncing macro leverage ratios")
+    monitor.update("leverage_ratio", progress=0.0)
+    asyncio.create_task(_run_macro_leverage_job(payload))
+
+
+async def start_social_financing_job(payload: SyncSocialFinancingRequest) -> None:
+    if _job_running("social_financing"):
+        raise HTTPException(status_code=409, detail="Social financing sync already running")
+    monitor.start("social_financing", message="Syncing social financing data")
+    monitor.update("social_financing", progress=0.0)
+    asyncio.create_task(_run_social_financing_job(payload))
+
+
+async def start_macro_cpi_job(payload: SyncMacroCpiRequest) -> None:
+    if _job_running("cpi_monthly"):
+        raise HTTPException(status_code=409, detail="CPI sync already running")
+    monitor.start("cpi_monthly", message="Syncing CPI data")
+    monitor.update("cpi_monthly", progress=0.0)
+    asyncio.create_task(_run_macro_cpi_job(payload))
+
+
 async def start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
     if _job_running("futures_realtime"):
         raise HTTPException(status_code=409, detail="Futures realtime sync already running")
@@ -2675,6 +2905,27 @@ async def safe_start_rmb_midpoint_job(payload: SyncRmbMidpointRequest) -> None:
         await start_rmb_midpoint_job(payload)
     except HTTPException as exc:
         logger.info("RMB midpoint sync skipped: %s", exc.detail)
+
+
+async def safe_start_macro_leverage_job(payload: SyncMacroLeverageRequest) -> None:
+    try:
+        await start_macro_leverage_job(payload)
+    except HTTPException as exc:
+        logger.info("Macro leverage sync skipped: %s", exc.detail)
+
+
+async def safe_start_social_financing_job(payload: SyncSocialFinancingRequest) -> None:
+    try:
+        await start_social_financing_job(payload)
+    except HTTPException as exc:
+        logger.info("Social financing sync skipped: %s", exc.detail)
+
+
+async def safe_start_macro_cpi_job(payload: SyncMacroCpiRequest) -> None:
+    try:
+        await start_macro_cpi_job(payload)
+    except HTTPException as exc:
+        logger.info("CPI sync skipped: %s", exc.detail)
 
 
 async def safe_start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
@@ -2896,6 +3147,22 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=19, minute=45),
             id="profit_forecast_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_macro_cpi_job(SyncMacroCpiRequest())
+            ),
+            CronTrigger(day=9, hour=22, minute=0),
+            id="macro_cpi_monthly_day9",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: asyncio.get_running_loop().create_task(
+                safe_start_macro_cpi_job(SyncMacroCpiRequest())
+            ),
+            CronTrigger(day=10, hour=22, minute=0),
+            id="macro_cpi_monthly_day10",
             replace_existing=True,
         )
 
@@ -3650,6 +3917,91 @@ def list_fed_statements_api(
     )
 
 
+@app.get("/macro/leverage-ratio", response_model=MacroLeverageListResponse)
+def list_macro_leverage_ratios_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of leverage entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> MacroLeverageListResponse:
+    result = list_macro_leverage_ratios(limit=limit, offset=offset)
+    items = []
+    for entry in result.get("items", []):
+        items.append(
+            MacroLeverageRecord(
+                period_date=entry.get("period_date"),
+                period_label=entry.get("period_label"),
+                household_ratio=entry.get("household_ratio"),
+                non_financial_corporate_ratio=entry.get("non_financial_corporate_ratio"),
+                government_ratio=entry.get("government_ratio"),
+                central_government_ratio=entry.get("central_government_ratio"),
+                local_government_ratio=entry.get("local_government_ratio"),
+                real_economy_ratio=entry.get("real_economy_ratio"),
+                financial_assets_ratio=entry.get("financial_assets_ratio"),
+                financial_liabilities_ratio=entry.get("financial_liabilities_ratio"),
+                updated_at=entry.get("updated_at"),
+            )
+        )
+    return MacroLeverageListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
+@app.get("/macro/social-financing", response_model=SocialFinancingListResponse)
+def list_social_financing_ratios_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of social financing rows to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> SocialFinancingListResponse:
+    result = list_social_financing_ratios(limit=limit, offset=offset)
+    items: List[SocialFinancingRecord] = []
+    for entry in result.get("items", []):
+        items.append(
+            SocialFinancingRecord(
+                periodDate=entry.get("period_date"),
+                periodLabel=entry.get("period_label"),
+                totalFinancing=entry.get("total_financing"),
+                renminbiLoans=entry.get("renminbi_loans"),
+                entrustedAndFxLoans=entry.get("entrusted_and_fx_loans"),
+                entrustedLoans=entry.get("entrusted_loans"),
+                trustLoans=entry.get("trust_loans"),
+                undiscountedBankersAcceptance=entry.get("undiscounted_bankers_acceptance"),
+                corporateBonds=entry.get("corporate_bonds"),
+                domesticEquityFinancing=entry.get("domestic_equity_financing"),
+                updatedAt=entry.get("updated_at"),
+            )
+        )
+    return SocialFinancingListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
+@app.get("/macro/cpi", response_model=CpiListResponse)
+def list_macro_cpi_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of CPI rows to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> CpiListResponse:
+    result = list_macro_cpi(limit=limit, offset=offset)
+    items: List[CpiRecord] = []
+    for entry in result.get("items", []):
+        items.append(
+            CpiRecord(
+                periodDate=entry.get("period_date"),
+                periodLabel=entry.get("period_label"),
+                actualValue=entry.get("actual_value"),
+                forecastValue=entry.get("forecast_value"),
+                previousValue=entry.get("previous_value"),
+                updatedAt=entry.get("updated_at"),
+            )
+        )
+    return CpiListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
 @app.get("/peripheral/insights/latest", response_model=PeripheralInsightResponse)
 def get_latest_peripheral_insight_api() -> PeripheralInsightResponse:
     record = get_latest_peripheral_insight()
@@ -3920,6 +4272,21 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect peripheral_insight stats: %s", exc)
         stats_map["peripheral_insight"] = {}
     try:
+        stats_map["leverage_ratio"] = MacroLeverageDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect leverage_ratio stats: %s", exc)
+        stats_map["leverage_ratio"] = {}
+    try:
+        stats_map["social_financing"] = MacroSocialFinancingDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect social_financing stats: %s", exc)
+        stats_map["social_financing"] = {}
+    try:
+        stats_map["cpi_monthly"] = MacroCpiDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect cpi_monthly stats: %s", exc)
+        stats_map["cpi_monthly"] = {}
+    try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
@@ -4102,6 +4469,24 @@ async def control_sync_dollar_index(payload: SyncDollarIndexRequest) -> dict[str
 @app.post("/control/sync/rmb-midpoint")
 async def control_sync_rmb_midpoint(payload: SyncRmbMidpointRequest) -> dict[str, str]:
     await start_rmb_midpoint_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/leverage-ratio")
+async def control_sync_leverage_ratio(payload: SyncMacroLeverageRequest) -> dict[str, str]:
+    await start_macro_leverage_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/cpi")
+async def control_sync_cpi(payload: SyncMacroCpiRequest) -> dict[str, str]:
+    await start_macro_cpi_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/social-financing")
+async def control_sync_social_financing(payload: SyncSocialFinancingRequest) -> dict[str, str]:
+    await start_social_financing_job(payload)
     return {"status": "started"}
 
 

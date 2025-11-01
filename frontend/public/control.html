@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh">
   <head>
     <meta charset="UTF-8" />
@@ -742,9 +742,209 @@
 
           <div class="control-group" id="group-macro">
             <header class="control-group__header">
-              <h3 data-i18n="macroGroupTitle">Peripheral Data Jobs</h3>
+              <h3 data-i18n="macroGroupTitle">Macro & Peripheral Data Jobs</h3>
             </header>
             <div class="control-grid">
+              <div class="card" id="macro-leverage-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="macroLeverageTitle">Macro Leverage Ratios</h3>
+                    <p class="card__subtitle" data-i18n="macroLeverageSubtitle">
+                      Quarterly leverage ratios published by the National Institution for Finance and Development.
+                    </p>
+                  </div>
+                  <div class="card__actions">
+                    <button
+                      class="info-icon"
+                      type="button"
+                      data-leverage-info
+                      aria-label="Macro leverage release schedule"
+                    >
+                      ?
+                    </button>
+                    <button class="primary-btn" id="run-macro-leverage" data-i18n="runNow">
+                      Run
+                    </button>
+                  </div>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="macro-leverage-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="macro-leverage-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="macro-leverage-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="macro-leverage-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="macro-leverage-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="macro-leverage-message"></p>
+              </div>
+
+              <div class="card" id="social-financing-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="socialFinancingTitle">Social Financing Increment</h3>
+                    <p class="card__subtitle" data-i18n="socialFinancingSubtitle">
+                      Monthly social financing flows published by MOFCOM.
+                    </p>
+                  </div>
+                  <div class="card__actions">
+                    <button
+                      class="info-icon"
+                      type="button"
+                      data-social-financing-info
+                      aria-label="Social financing release schedule"
+                    >
+                      ?
+                    </button>
+                    <button class="primary-btn" id="run-social-financing" data-i18n="runNow">
+                      Run
+                    </button>
+                  </div>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="social-financing-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="social-financing-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="social-financing-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="social-financing-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="social-financing-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="social-financing-message"></p>
+              </div>
+
+              <div class="card" id="cpi-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="cpiTitle">China CPI</h3>
+                    <p class="card__subtitle" data-i18n="cpiSubtitle">
+                      Monthly CPI data released by the National Bureau of Statistics.
+                    </p>
+                  </div>
+                  <div class="card__actions">
+                    <button
+                      class="info-icon"
+                      type="button"
+                      data-cpi-info
+                      aria-label="CPI release schedule"
+                    >
+                      ?
+                    </button>
+                    <button class="primary-btn" id="run-cpi" data-i18n="runNow">
+                      Run
+                    </button>
+                  </div>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="cpi-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="cpi-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="cpi-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="cpi-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="cpi-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="cpi-message"></p>
+              </div>
+
+              <div class="card" id="social-financing-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="socialFinancingTitle">Social Financing Increment</h3>
+                    <p class="card__subtitle" data-i18n="socialFinancingSubtitle">
+                      Monthly social financing flows published by MOFCOM.
+                    </p>
+                  </div>
+                  <div class="card__actions">
+                    <button
+                      class="info-icon"
+                      type="button"
+                      data-social-financing-info
+                      aria-label="Social financing release schedule"
+                    >
+                      ?
+                    </button>
+                    <button class="primary-btn" id="run-social-financing" data-i18n="runNow">
+                      Run
+                    </button>
+                  </div>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="social-financing-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="social-financing-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="social-financing-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="social-financing-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="social-financing-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="social-financing-message"></p>
+              </div>
+
               <div class="card" id="global-index-card">
                 <div class="card__header">
                   <div>

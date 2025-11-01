@@ -25,6 +25,9 @@ from .rmb_midpoint_dao import RmbMidpointDAO
 from .futures_realtime_dao import FuturesRealtimeDAO
 from .fed_statement_dao import FedStatementDAO
 from .peripheral_insight_dao import PeripheralInsightDAO
+from .macro_leverage_dao import MacroLeverageDAO
+from .macro_social_financing_dao import MacroSocialFinancingDAO
+from .macro_cpi_dao import MacroCpiDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -52,4 +55,7 @@ __all__ = [
     "FuturesRealtimeDAO",
     "FedStatementDAO",
     "PeripheralInsightDAO",
+    "MacroLeverageDAO",
+    "MacroSocialFinancingDAO",
+    "MacroCpiDAO",
 ]

@@ -1,4 +1,4 @@
-﻿## Session Boot Rules
+## Session Boot Rules
 Always run chcp 65001 in PowerShell as the first command so the console uses UTF-8. Apply UTF-8 encoding for all file and console read/write/print operations.
 Immediately set [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 and export PYTHONIOENCODING=utf-8 (plus similar flags for other runtimes) so downstream tools avoid mojibake.
 Use python virtual env "trend" for backend
@@ -79,6 +79,10 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-31 (FEATURE backend/frontend-028): Added global index snapshot ingestion via AkShare `index_global_spot_em`, control-panel automation, “外围” navigation group, language-aware refresh button, and a dedicated global indices dashboard.
 - 2025-10-31 (FEATURE backend/frontend-029): Delivered Dollar Index historical sync using AkShare `index_global_hist_em`, new control-panel card, peripheral menu link, and a Dollar Index page with localized one-year trend chart plus refreshed data table/controls.
 - 2025-10-31 (FEATURE backend/frontend-030): Added RMB central parity module via AkShare `currency_boc_safe`, including PostgreSQL schema/DAO/service, scheduled control-panel job, peripheral navigation entry, localized one-year trend visualization, and comprehensive exchange-rate table with quotation notes.
+- 2025-10-31 (FEATURE backend/frontend-034): Delivered social financing incremental statistics (AkShare macro_china_shrzgm) with new PostgreSQL schema/DAO/service, control panel card and monthly release guidance, macro navigation entry, dedicated dashboard with trend visual + table, and manual refresh workflow.
+- 2025-10-31 (FEATURE backend/frontend-033): Added macro leverage ratio module (AkShare macro_cnbs) including PostgreSQL schema/DAO/service, control panel automation with release guidance, macro navigation entry ahead of peripheral data, dedicated frontend dashboard with trend chart and data table, and manual refresh workflow.
+- 2025-10-31 (FEATURE backend/frontend-035): Introduced CPI monthly module (AkShare macro_china_cpi_monthly) with schema/DAO/service, dual nightly scheduler, control panel sync card with tooltip guidance, macro navigation entry, localized chart + table page, and manual refresh button.
+- 2025-10-31 (UPDATE frontend-036): Reworked control panel category layout with horizontal tab navigation, new aggregate section, tooltip icons on macro cards, and enforced default Chinese UI state with active language highlighting across new macro dashboards.
 - 2025-10-31 (FEATURE backend/frontend-032): Built peripheral market insight pipeline aggregating global indices, dollar index, RMB midpoint, and commodity quotes, persisted summaries with DeepSeek integration, added control-panel automation, and exposed the new Peripheral Insight dashboard.
 - 2025-10-31 (FEATURE backend/frontend-031): Added Federal Reserve statements ingestion (requests + BeautifulSoup crawler), new PostgreSQL schema/DAO/service with twice-daily scheduler, control-panel sync card, peripheral navigation entry, and a localized Fed Statements landing page with full-text rendering.
 

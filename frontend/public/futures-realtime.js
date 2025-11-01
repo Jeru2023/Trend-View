@@ -7,6 +7,30 @@ const API_BASE =
     ? "http://localhost:8000"
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 
+const ECHARTS_CDN = "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js";
+let echartsLoader = null;
+
+function ensureEchartsLoaded() {
+  if (window.echarts) {
+    return Promise.resolve();
+  }
+  if (echartsLoader) {
+    return echartsLoader;
+  }
+  echartsLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = ECHARTS_CDN;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      echartsLoader = null;
+      reject(new Error("Failed to load chart library"));
+    };
+    document.head.appendChild(script);
+  });
+  return echartsLoader;
+}
+
 let currentLang = getInitialLanguage();
 let latestItems = [];
 let chartInstance = null;
@@ -370,6 +394,7 @@ async function fetchFuturesRealtime() {
   renderEmpty(dict.loading || "Loading...");
 
   try {
+    await ensureEchartsLoaded();
     const response = await fetch(`${API_BASE}/macro/futures-realtime`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);

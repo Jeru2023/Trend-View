@@ -1,4 +1,4 @@
-﻿"""
+"""
 Shared in-memory state for sync jobs and progress tracking.
 """
 
@@ -59,6 +59,9 @@ class SyncMonitor:
             "big_deal_fund_flow": JobProgress(),
             "stock_main_business": JobProgress(),
             "stock_main_composition": JobProgress(),
+            "leverage_ratio": JobProgress(),
+            "social_financing": JobProgress(),
+            "cpi_monthly": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():

@@ -13,6 +13,9 @@ from .rmb_midpoint_service import list_rmb_midpoint_rates, sync_rmb_midpoint_rat
 from .futures_realtime_service import list_futures_realtime, sync_futures_realtime
 from .fed_statement_service import list_fed_statements, sync_fed_statements
 from .peripheral_summary_service import generate_peripheral_insight, get_latest_peripheral_insight
+from .macro_leverage_service import list_macro_leverage_ratios, sync_macro_leverage_ratios
+from .social_financing_service import list_social_financing_ratios, sync_social_financing_ratios
+from .macro_cpi_service import list_macro_cpi, sync_macro_cpi
 from .daily_trade_service import sync_daily_trade
 from .daily_trade_metrics_service import sync_daily_trade_metrics
 from .stock_basic_service import get_stock_overview, get_stock_detail, sync_stock_basic
@@ -47,6 +50,9 @@ __all__ = [
     "sync_rmb_midpoint_rates",
     "sync_futures_realtime",
     "sync_fed_statements",
+    "sync_macro_leverage_ratios",
+    "sync_social_financing_ratios",
+    "sync_macro_cpi",
     "generate_peripheral_insight",
     "list_finance_breakfast",
     "list_performance_express",
@@ -57,6 +63,9 @@ __all__ = [
     "list_rmb_midpoint_rates",
     "list_futures_realtime",
     "list_fed_statements",
+    "list_macro_leverage_ratios",
+    "list_social_financing_ratios",
+    "list_macro_cpi",
     "get_latest_peripheral_insight",
     "list_industry_fund_flow",
     "list_concept_fund_flow",
