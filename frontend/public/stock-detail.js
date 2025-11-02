@@ -8,6 +8,9 @@ const LANG_STORAGE_KEY = "trend-view-lang";
 const FAVORITES_GROUP_NONE = "__ungrouped__";
 const FAVORITES_GROUP_NEW_OPTION = "__new__";
 
+const ECHARTS_CDN = "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js";
+let echartsLoader = null;
+
 let currentLang = document.documentElement.getAttribute("data-pref-lang") || getInitialLanguage();
 let candlestickData = [];
 let currentDetail = null;
@@ -226,6 +229,27 @@ const favoriteGroupsCache = {
   loaded: false,
   loading: null,
 };
+
+function ensureEchartsLoaded() {
+  if (window.echarts) {
+    return Promise.resolve();
+  }
+  if (echartsLoader) {
+    return echartsLoader;
+  }
+  echartsLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = ECHARTS_CDN;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      echartsLoader = null;
+      reject(new Error("Failed to load chart library"));
+    };
+    document.head.appendChild(script);
+  });
+  return echartsLoader;
+}
 
 function normalizeCode(value) {
   const raw = (value || "").trim().toUpperCase();
@@ -2362,6 +2386,10 @@ function hideCandlestickChart() {
   }
   if (elements.candlestickEmpty) {
     elements.candlestickEmpty.classList.remove("hidden");
+    elements.candlestickEmpty.style.position = "static";
+    elements.candlestickEmpty.style.inset = "auto";
+    elements.candlestickEmpty.style.pointerEvents = "none";
+    elements.candlestickEmpty.style.zIndex = "auto";
   }
 }
 
@@ -2377,10 +2405,13 @@ function renderCandlestickChart() {
   }
 
   if (!window.echarts) {
-    candlestickRenderTimeout = window.setTimeout(() => {
-      candlestickRenderTimeout = null;
-      renderCandlestickChart();
-    }, 150);
+    ensureEchartsLoaded()
+      .then(() => {
+        renderCandlestickChart();
+      })
+      .catch((error) => {
+        console.error("Failed to load candlestick chart library:", error);
+      });
     if (elements.candlestickContainer) {
       elements.candlestickContainer.classList.add("hidden");
     }
@@ -2397,6 +2428,12 @@ function renderCandlestickChart() {
 
   elements.candlestickContainer.classList.remove("hidden");
   elements.candlestickEmpty.classList.add("hidden");
+  if (elements.candlestickEmpty) {
+    elements.candlestickEmpty.style.position = "";
+    elements.candlestickEmpty.style.inset = "";
+    elements.candlestickEmpty.style.pointerEvents = "";
+    elements.candlestickEmpty.style.zIndex = "";
+  }
 
   const dict = translations[currentLang];
   const categories = candlestickData.map((item) => {
@@ -2880,11 +2917,13 @@ function showDetail() {
   elements.status.classList.add("hidden");
   elements.grid.classList.remove("hidden");
   elements.hero.classList.remove("hidden");
-  if (elements.candlestickEmpty) {
-    elements.candlestickEmpty.classList.add("hidden");
-  }
   if (candlestickData && candlestickData.length) {
+    if (elements.candlestickEmpty) {
+      elements.candlestickEmpty.classList.add("hidden");
+    }
     renderCandlestickChart();
+  } else {
+    hideCandlestickChart();
   }
   resizeCandlestickChart();
 }
