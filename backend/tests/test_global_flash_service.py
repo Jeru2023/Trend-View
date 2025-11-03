@@ -1,11 +1,10 @@
 import pandas as pd
-import pytest
 from pandas.api.types import is_datetime64_any_dtype
 
 from backend.src.services.global_flash_service import (
     GLOBAL_FLASH_COLUMNS,
     _prepare_global_flash_frame,
-    _parse_classification_response,
+    _frame_to_pipeline_records,
 )
 
 
@@ -41,37 +40,30 @@ def test_prepare_global_flash_frame_returns_empty_for_none_input():
     assert prepared.empty
 
 
-def test_parse_classification_response_returns_structured_payload():
-    payload = (
-        '{"impact": true, "confidence": 0.72, "reason": "央行政策利好", '
-        '"subject_level": "国家级", "impact_scope": ["上证指数","银行板块"], '
-        '"event_type": "政策/监管", "time_sensitivity": "短期", "quant_signal": "央行降准预期", '
-        '"impact_levels": ["market","sector","stock"], '
-        '"impact_markets": ["上证指数"], '
-        '"impact_sectors": ["银行"], '
-        '"impact_stocks": ["601398.SH","工商银行"], '
-        '"impact_themes": ["金融科技"], '
-        '"impact_industries": ["非银金融"]}'
+def test_frame_to_pipeline_records_produces_unique_ids():
+    frame = pd.DataFrame(
+        [
+            {"title": "Headline A", "summary": "Summary A", "url": "https://example.com/a", "published_at": "2024-01-01T08:00:00"},
+            {"title": "Headline B", "summary": "Summary B", "url": "https://example.com/b", "published_at": "2024-01-01T09:00:00"},
+        ]
     )
-    parsed = _parse_classification_response(payload)
-    assert parsed["impact"] is True
-    assert parsed["confidence"] == pytest.approx(0.72)
-    assert parsed["reason"] == "央行政策利好"
-    assert parsed["subject_level"] == "国家级"
-    assert parsed["impact_scope"] == "上证指数、银行板块"
-    assert parsed["event_type"] == "政策/监管"
-    assert parsed["time_sensitivity"] == "短期"
-    assert parsed["quant_signal"] == "央行降准预期"
-    assert parsed["impact_levels"] == ["market", "sector", "stock"]
-    assert parsed["impact_markets"] == ["上证指数"]
-    assert parsed["impact_sectors"] == ["银行"]
-    assert parsed["impact_stocks"] == ["601398.SH", "工商银行"]
-    assert parsed["impact_themes"] == ["金融科技"]
-    assert parsed["impact_industries"] == ["非银金融"]
+    records = _frame_to_pipeline_records(frame)
+    assert len(records) == 2
+    article_ids = {record["article_id"] for record in records}
+    assert len(article_ids) == 2
+    for record in records:
+        payload = record["payload"]
+        assert payload["title"] in {"Headline A", "Headline B"}
+        assert payload["url"].startswith("https://example.com/")
+        assert payload["published_at"].startswith("2024-01-01T")
 
 
-def test_parse_classification_response_handles_invalid_json():
-    parsed = _parse_classification_response("not-json")
-    assert parsed["impact"] is False
-    assert "not-json"[:20] in parsed["reason"]
-    assert parsed["impact_levels"] == []
+def test_frame_to_pipeline_records_skips_invalid_entries():
+    frame = pd.DataFrame(
+        [
+            {"title": None, "summary": "Summary A", "url": "https://example.com/a", "published_at": "2024-01-01T08:00:00"},
+            {"title": "Headline B", "summary": "Summary B", "url": None, "published_at": "2024-01-01T09:00:00"},
+        ]
+    )
+    records = _frame_to_pipeline_records(frame)
+    assert records == []

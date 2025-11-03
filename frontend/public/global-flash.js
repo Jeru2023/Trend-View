@@ -1,4 +1,4 @@
-console.info("Global Flash bundle v20261108");
+console.info("Global Flash bundle v20261110");
 
 const translations = getTranslations("globalFlash");
 const MAX_FETCH_ATTEMPTS = 3;
@@ -64,6 +64,16 @@ function pickString(source, fields) {
       if (trimmed) {
         return trimmed;
       }
+    } else if (Array.isArray(candidate)) {
+      const joined = candidate
+        .map((item) => String(item).trim())
+        .filter(Boolean)
+        .join("、");
+      if (joined) {
+        return joined;
+      }
+    } else if (typeof candidate === "number" && !Number.isNaN(candidate)) {
+      return String(candidate);
     }
   }
   return "";
@@ -71,7 +81,8 @@ function pickString(source, fields) {
 
 function normalizeEntry(raw) {
   const title = pickString(raw, ["title", "Title"]);
-  const summary = sanitizeSummary(pickString(raw, ["summary", "Summary"]));
+  let summary = sanitizeSummary(pickString(raw, ["summary", "Summary"]));
+  const content = pickString(raw, ["content", "Content"]);
   const url = pickString(raw, ["url", "Url", "URL", "link", "Link"]);
   const publishedAt = pickString(raw, [
     "publishedAt",
@@ -79,58 +90,90 @@ function normalizeEntry(raw) {
     "PublishedAt",
     "Published_at",
   ]);
-  const rawImpact =
-    raw.ifExtract ?? raw.if_extract ?? raw.impact ?? raw.Impact ?? null;
-  let impact = null;
-  if (typeof rawImpact === "boolean") {
-    impact = rawImpact;
-  } else if (typeof rawImpact === "string") {
-    const flag = rawImpact.trim().toLowerCase();
-    if (["true", "yes", "1", "y"].includes(flag)) {
-      impact = true;
-    } else if (["false", "no", "0", "n"].includes(flag)) {
-      impact = false;
+
+  const relevance = (raw && typeof raw === "object" && raw.relevance) || {};
+  const impactInfo = (raw && typeof raw === "object" && raw.impact) || {};
+  const metadata = parseMetadata(impactInfo.metadata);
+
+  if (!summary) {
+    summary = sanitizeSummary(pickString(impactInfo, ["summary", "impact_summary"]));
+  }
+
+  let impactLevels = normalizeArray(impactInfo.levels || impactInfo.impactLevels || impactInfo.impact_levels);
+  let impactMarkets = normalizeArray(impactInfo.markets || impactInfo.impactMarkets || impactInfo.impact_markets);
+  let impactIndustries = normalizeArray(
+    impactInfo.industries || impactInfo.impactIndustries || impactInfo.impact_industries,
+  );
+  let impactSectors = normalizeArray(impactInfo.sectors || impactInfo.impactSectors || impactInfo.impact_sectors);
+  let impactThemes = normalizeArray(impactInfo.themes || impactInfo.impactThemes || impactInfo.impact_themes);
+  let impactStocks = normalizeArray(impactInfo.stocks || impactInfo.impactStocks || impactInfo.impact_stocks);
+
+  if (metadata && typeof metadata === "object") {
+    const scopeDetails = metadata.impact_scope_details;
+    if (scopeDetails && typeof scopeDetails === "object") {
+      impactMarkets = mergeUnique(impactMarkets, normalizeArray(scopeDetails.market || scopeDetails["大盘"]));
+      impactIndustries = mergeUnique(impactIndustries, normalizeArray(scopeDetails.industry || scopeDetails["行业"]));
+      impactSectors = mergeUnique(impactSectors, normalizeArray(scopeDetails.sector || scopeDetails["板块"]));
+      impactThemes = mergeUnique(
+        impactThemes,
+        normalizeArray(scopeDetails.theme || scopeDetails["概念"] || scopeDetails["题材"]),
+      );
+      impactStocks = mergeUnique(impactStocks, normalizeArray(scopeDetails.stock || scopeDetails["个股"] || scopeDetails["公司"]));
     }
   }
-  const reasonRaw = pickString(raw, ["extractReason", "extract_reason"]);
-  const extractReason = reasonRaw ? reasonRaw.replace(/\s+/g, " ").trim() : "";
-  const extractCheckedAt = pickString(raw, [
-    "extractCheckedAt",
-    "extract_checked_at",
-  ]);
-  const subjectLevel = pickString(raw, [
-    "subjectLevel",
-    "subject_level",
-    "SubjectLevel",
-  ]);
-  const impactScope = pickString(raw, [
-    "impactScope",
-    "impact_scope",
-    "ImpactScope",
-  ]);
-  const eventType = pickString(raw, ["eventType", "event_type", "EventType"]);
-  const timeSensitivity = pickString(raw, [
-    "timeSensitivity",
-    "time_sensitivity",
-    "TimeSensitivity",
-  ]);
-  const quantSignal = pickString(raw, [
-    "quantSignal",
-    "quant_signal",
-    "QuantSignal",
-  ]);
-  const impactLevels = normalizeArray(raw.impactLevels || raw.impact_levels || raw.ImpactLevels);
-  const impactMarkets = normalizeArray(raw.impactMarkets || raw.impact_markets);
-  const impactIndustries = normalizeArray(raw.impactIndustries || raw.impact_industries);
-  const impactSectors = normalizeArray(raw.impactSectors || raw.impact_sectors);
-  const impactThemes = normalizeArray(raw.impactThemes || raw.impact_themes);
-  const impactStocks = normalizeArray(raw.impactStocks || raw.impact_stocks);
+
+  const impactScope = metadata
+    ? pickString(metadata, ["impact_scope", "impactScope"]) ||
+      (Array.isArray(metadata.impact_scope_levels)
+        ? metadata.impact_scope_levels.map((item) => String(item).trim()).filter(Boolean).join("、")
+        : "")
+    : "";
+
+  const subjectLevel = metadata ? pickString(metadata, ["subject_level", "subjectLevel"]) : "";
+  const eventType = metadata ? pickString(metadata, ["event_type", "eventType"]) : "";
+  const timeSensitivity = metadata ? pickString(metadata, ["time_sensitivity", "timeSensitivity"]) : "";
+  const quantSignal = metadata ? pickString(metadata, ["quant_signal", "quantSignal"]) : "";
+  const focusTopicsValue = metadata && metadata.focus_topics;
+  const focusTopics = Array.isArray(focusTopicsValue)
+    ? focusTopicsValue.map((item) => String(item).trim()).filter(Boolean)
+    : normalizeArray(focusTopicsValue);
+
+  let impact = null;
+  if (typeof relevance.isRelevant === "boolean") {
+    impact = relevance.isRelevant;
+  } else if (typeof relevance.is_relevant === "boolean") {
+    impact = relevance.is_relevant;
+  }
+
+  const relevanceConfidence =
+    typeof relevance.relevance_confidence === "number"
+      ? relevance.relevance_confidence
+      : typeof relevance.confidence === "number"
+      ? relevance.confidence
+      : null;
+  const extractReason = sanitizeSummary(pickString(relevance, ["reason", "relevance_reason"]));
+  const extractCheckedAt = pickString(relevance, ["checkedAt", "checked_at", "relevance_checked_at"]);
+
+  const impactConfidence =
+    typeof impactInfo.impact_confidence === "number"
+      ? impactInfo.impact_confidence
+      : typeof impactInfo.confidence === "number"
+      ? impactInfo.confidence
+      : null;
+  const impactCheckedAt = pickString(impactInfo, ["impact_checked_at", "checked_at", "checkedAt"]);
+  const impactSummary = sanitizeSummary(pickString(impactInfo, ["impact_summary", "summary"]));
+  const impactAnalysis = sanitizeSummary(pickString(impactInfo, ["impact_analysis", "analysis"]));
+
   return {
+    id: raw.articleId || raw.article_id || "",
+    source: raw.source || "",
     title,
     summary,
+    content,
     publishedAt,
     url,
     impact,
+    relevanceConfidence,
     extractReason,
     extractCheckedAt,
     subjectLevel,
@@ -138,12 +181,17 @@ function normalizeEntry(raw) {
     eventType,
     timeSensitivity,
     quantSignal,
+    focusTopics,
     impactLevels,
     impactMarkets,
     impactIndustries,
     impactSectors,
     impactThemes,
     impactStocks,
+    impactSummary,
+    impactAnalysis,
+    impactConfidence,
+    impactCheckedAt,
     raw,
   };
 }
@@ -151,7 +199,7 @@ function normalizeEntry(raw) {
 function normalizeArray(value) {
   if (!value) return [];
   if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
+    return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))];
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -166,12 +214,55 @@ function normalizeArray(value) {
         // fall back to splitting
       }
     }
-    return trimmed
+    return [...new Set(trimmed
       .split(/[,，\/]/)
       .map((item) => item.trim())
-      .filter(Boolean);
+      .filter(Boolean))];
   }
   return [];
+}
+
+function mergeUnique(base, additions) {
+  const combined = Array.isArray(base) ? [...base] : [];
+  (additions || []).forEach((item) => {
+    const value = String(item).trim();
+    if (value && !combined.includes(value)) {
+      combined.push(value);
+    }
+  });
+  return combined;
+}
+
+function parseMetadata(value) {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch (error) {
+      console.debug("Failed to parse metadata JSON", error);
+    }
+  }
+  return null;
+}
+
+function formatConfidence(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "";
+  }
+  const percentage = Math.round(value * 100);
+  return `${percentage}%`;
 }
 
 function filterEntries(entries) {
@@ -292,24 +383,29 @@ function createCard(entry) {
   const card = document.createElement("article");
   card.className = "news-card";
 
+  const header = document.createElement("div");
+  header.className = "news-card__header";
+
   if (entry.impact === true) {
     card.classList.add("news-card--impact-positive");
     const badge = document.createElement("span");
     badge.className = "news-card__badge news-card__badge--positive";
     badge.textContent = dict.impactBadge || "Market Focus";
-    card.appendChild(badge);
+    header.appendChild(badge);
   } else if (entry.impact === false) {
     card.classList.add("news-card--impact-negative");
     const badge = document.createElement("span");
     badge.className = "news-card__badge news-card__badge--neutral";
     badge.textContent = dict.impactBadgeNegative || "Reviewed";
-    card.appendChild(badge);
+    header.appendChild(badge);
   }
 
   const title = document.createElement("h2");
   title.className = "news-card__title";
   title.textContent = entry.title || "--";
-  card.appendChild(title);
+  header.appendChild(title);
+
+  card.appendChild(header);
 
   if (entry.summary) {
     const summary = document.createElement("p");
@@ -318,10 +414,13 @@ function createCard(entry) {
     card.appendChild(summary);
   }
 
-  const meta = document.createElement("div");
+  const footer = document.createElement("div");
+  footer.className = "news-card__footer";
+
+  const meta = document.createElement("span");
   meta.className = "news-card__meta";
   meta.textContent = `${dict.publishedAt || "Published"}: ${formatDate(entry.publishedAt)}`;
-  card.appendChild(meta);
+  footer.appendChild(meta);
 
   if (entry.url) {
     const link = document.createElement("a");
@@ -330,8 +429,10 @@ function createCard(entry) {
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.textContent = dict.readMore || "View source";
-    card.appendChild(link);
+    footer.appendChild(link);
   }
+
+  card.appendChild(footer);
 
   const hasInsight =
     entry.extractReason ||
@@ -340,6 +441,11 @@ function createCard(entry) {
     entry.eventType ||
     entry.timeSensitivity ||
     entry.quantSignal ||
+    entry.impactSummary ||
+    entry.impactAnalysis ||
+    formatConfidence(entry.relevanceConfidence) ||
+    formatConfidence(entry.impactConfidence) ||
+    (entry.focusTopics && entry.focusTopics.length) ||
     (entry.impactLevels && entry.impactLevels.length) ||
     (entry.impactMarkets && entry.impactMarkets.length) ||
     (entry.impactIndustries && entry.impactIndustries.length) ||
@@ -356,6 +462,20 @@ function createCard(entry) {
     header.className = "news-card__analysis-title";
     header.textContent = dict.aiInsightTitle || "AI Insight";
     insight.appendChild(header);
+
+    if (entry.impactSummary) {
+      const summary = document.createElement("p");
+      summary.className = "news-card__impact-summary";
+      summary.textContent = entry.impactSummary;
+      insight.appendChild(summary);
+    }
+
+    if (entry.impactAnalysis) {
+      const analysis = document.createElement("p");
+      analysis.className = "news-card__impact-analysis";
+      analysis.textContent = entry.impactAnalysis;
+      insight.appendChild(analysis);
+    }
 
     if (entry.extractReason) {
       const reason = document.createElement("p");
@@ -403,6 +523,14 @@ function createCard(entry) {
       { label: dict.aiEventLabel || "Event Type", value: entry.eventType },
       { label: dict.aiTimeLabel || "Time Sensitivity", value: entry.timeSensitivity },
       { label: dict.aiQuantLabel || "Quant Signal", value: entry.quantSignal },
+      {
+        label: dict.aiRelevanceConfidenceLabel || "Relevance Confidence",
+        value: formatConfidence(entry.relevanceConfidence),
+      },
+      {
+        label: dict.aiImpactConfidenceLabel || "Impact Confidence",
+        value: formatConfidence(entry.impactConfidence),
+      },
     ];
 
     rows
@@ -428,36 +556,51 @@ function createCard(entry) {
       insight.appendChild(list);
     }
 
-    const detailGroups = [
-      { label: dict.aiMarketsLabel || "Markets", items: entry.impactMarkets },
+    const buildChipGroup = (labelText, items) => {
+      if (!Array.isArray(items) || !items.length) {
+        return null;
+      }
+      const wrapper = document.createElement("div");
+      wrapper.className = "news-card__chip-group";
+
+      const label = document.createElement("span");
+      label.className = "news-card__chip-label";
+      label.textContent = labelText;
+      wrapper.appendChild(label);
+
+      const listEl = document.createElement("div");
+      listEl.className = "news-card__chip-list";
+      items.forEach((item) => {
+        const chip = document.createElement("span");
+        chip.className = "news-card__chip";
+        chip.textContent = item;
+        listEl.appendChild(chip);
+      });
+      wrapper.appendChild(listEl);
+      return wrapper;
+    };
+
+    const industryRowGroups = [
       { label: dict.aiIndustriesLabel || "Industries", items: entry.impactIndustries },
       { label: dict.aiSectorsLabel || "Sectors", items: entry.impactSectors },
       { label: dict.aiThemesLabel || "Themes", items: entry.impactThemes },
+    ].map((group) => buildChipGroup(group.label, group.items)).filter(Boolean);
+
+    if (industryRowGroups.length) {
+      const row = document.createElement("div");
+      row.className = "news-card__chip-row";
+      industryRowGroups.forEach((group) => row.appendChild(group));
+      insight.appendChild(row);
+    }
+
+    [
+      { label: dict.aiMarketsLabel || "Markets", items: entry.impactMarkets },
       { label: dict.aiStocksLabel || "Stocks", items: entry.impactStocks },
-    ];
-
-    detailGroups
-      .filter((group) => Array.isArray(group.items) && group.items.length)
-      .forEach((group) => {
-        const wrapper = document.createElement("div");
-        wrapper.className = "news-card__chip-group";
-
-        const label = document.createElement("span");
-        label.className = "news-card__chip-label";
-        label.textContent = group.label;
-        wrapper.appendChild(label);
-
-        const listEl = document.createElement("div");
-        listEl.className = "news-card__chip-list";
-        group.items.forEach((item) => {
-          const chip = document.createElement("span");
-          chip.className = "news-card__chip";
-          chip.textContent = item;
-          listEl.appendChild(chip);
-        });
-        wrapper.appendChild(listEl);
-        insight.appendChild(wrapper);
-      });
+      { label: dict.aiFocusTopicsLabel || "Focus Topics", items: entry.focusTopics },
+    ]
+      .map((group) => buildChipGroup(group.label, group.items))
+      .filter(Boolean)
+      .forEach((group) => insight.appendChild(group));
 
     card.appendChild(insight);
   }

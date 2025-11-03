@@ -28,7 +28,11 @@ def generate_finance_analysis(
     prompt_template: str,
     timeout: Optional[float] = None,
     temperature: float = 0.3,
-) -> Optional[str]:
+    model_override: Optional[str] = None,
+    response_format: Optional[dict] = None,
+    max_output_tokens: Optional[int] = None,
+    return_usage: bool = False,
+) -> Optional[object]:
     """Call the DeepSeek chat completion endpoint to analyse finance news content."""
     if not news_content:
         logger.debug("DeepSeek skipped empty news content")
@@ -46,8 +50,8 @@ def generate_finance_analysis(
         "Authorization": f"Bearer {settings.token}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": settings.model,
+    payload: dict[str, object] = {
+        "model": model_override or settings.model,
         "messages": [
             {
                 "role": "system",
@@ -59,8 +63,15 @@ def generate_finance_analysis(
             },
         ],
         "temperature": temperature,
-        "response_format": {"type": "json_object"},
     }
+
+    if response_format is not None:
+        payload["response_format"] = response_format
+    else:
+        payload["response_format"] = {"type": "json_object"}
+
+    if max_output_tokens is not None:
+        payload["max_output_tokens"] = int(max_output_tokens)
 
     request_timeout = float(timeout or getattr(settings, "request_timeout_seconds", _DEFAULT_TIMEOUT))
     request_timeout = max(request_timeout, 5.0)
@@ -120,18 +131,28 @@ def generate_finance_analysis(
     if not text:
         return None
 
+    normalized = None
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
         logger.warning("DeepSeek response is not valid JSON; storing raw text")
-        return text
+    else:
+        try:
+            normalized = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError):
+            normalized = None
 
-    try:
-        normalized = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
-    except (TypeError, ValueError):
-        return text
+    result_text = normalized or text
 
-    return normalized
+    if return_usage:
+        usage = data.get("usage") if isinstance(data, dict) else None
+        return {
+            "content": result_text,
+            "usage": usage or {},
+            "raw": text,
+        }
+
+    return result_text
 
 
 __all__ = ["generate_finance_analysis"]

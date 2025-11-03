@@ -11,7 +11,7 @@ from typing import Iterable, Iterator, Sequence
 
 import pandas as pd
 import psycopg2
-from psycopg2 import sql
+from psycopg2 import sql, errors
 from psycopg2.extras import execute_values
 
 from ..config.settings import PostgresSettings
@@ -88,9 +88,7 @@ class PostgresDAOBase:
         for column in date_columns:
             if column in frame.columns:
                 converted = pd.to_datetime(frame[column], errors="coerce")
-                frame[column] = converted.apply(
-                    lambda val: val.date() if isinstance(val, (pd.Timestamp, datetime)) and not pd.isna(val) else None
-                )
+                frame[column] = converted
         return frame.where(pd.notnull(frame), None)
 
     @staticmethod
@@ -100,20 +98,61 @@ class PostgresDAOBase:
         *,
         schema: str,
         table: str,
+        **extra_identifiers: str,
     ) -> None:
         """Run a schema creation SQL template with formatted identifiers."""
-        table_sql = sql.SQL(template_sql).format(
-            schema=sql.Identifier(schema),
-            table=sql.Identifier(table),
-        )
+
+        format_args: dict[str, sql.Composable] = {
+            "schema": sql.Identifier(schema),
+            "table": sql.Identifier(table),
+        }
+
+        for key, value in extra_identifiers.items():
+            format_args[key] = sql.Identifier(value)
+
+        table_sql = sql.SQL(template_sql).format(**format_args)
+
+        schema_name = schema
+        table_name = table
 
         with conn.cursor() as cur:
             cur.execute(
                 sql.SQL("CREATE SCHEMA IF NOT EXISTS {schema_name}").format(
-                    schema_name=sql.Identifier(schema)
+                    schema_name=sql.Identifier(schema_name)
                 )
             )
-            cur.execute(table_sql)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = %s AND table_name = %s
+                """,
+                (schema_name, table_name),
+            )
+            table_exists = cur.fetchone() is not None
+
+        rendered_sql = table_sql.as_string(conn)
+        statements = [stmt.strip() for stmt in rendered_sql.split(";") if stmt.strip()]
+
+        for statement in statements:
+            upper_stmt = statement.lstrip().upper()
+            if table_exists and upper_stmt.startswith("CREATE TABLE"):
+                continue
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(statement)
+            except (errors.UniqueViolation, errors.DuplicateTable, errors.DuplicateObject):
+                conn.rollback()
+                table_exists = True
+                continue
+            except Exception:
+                conn.rollback()
+                raise
+            else:
+                if upper_stmt.startswith("CREATE TABLE"):
+                    table_exists = True
 
     @staticmethod
     def _upsert_dataframe(
@@ -132,6 +171,22 @@ class PostgresDAOBase:
             date_columns=date_columns,
         )
         records = normalized.to_dict(orient="records")
+        for record in records:
+            for column in date_columns:
+                if column not in record:
+                    continue
+                value = record[column]
+                if value is None:
+                    continue
+                if pd.isna(value):
+                    record[column] = None
+                    continue
+                if isinstance(value, pd.Timestamp):
+                    value = value.to_pydatetime()
+                if isinstance(value, datetime):
+                    record[column] = value.replace(tzinfo=None)
+                else:
+                    record[column] = value
         if not records:
             return 0
 

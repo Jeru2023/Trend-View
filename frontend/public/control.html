@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="title">Trend View – Control Panel</title>
-    <link rel="stylesheet" href="styles.css?v=20251226" />
+    <link rel="stylesheet" href="styles.css?v=20270415" />
     <script>
       (function () {
         var key = "trend-view-lang";
@@ -122,11 +122,91 @@
                 </div>
                 <p class="job-message" id="peripheral-aggregate-message"></p>
               </div>
-              <div class="card" id="peripheral-insight-card">
+              <div class="card" id="macro-aggregate-card">
                 <div class="card__header">
                   <div>
-                    <h3 data-i18n="peripheralInsightTitle">Peripheral Insight</h3>
-                    <p class="card__subtitle" data-i18n="peripheralInsightSubtitle">
+                    <h3 data-i18n="macroAggregateTitle">Macro Bundle Sync</h3>
+                    <p class="card__subtitle" data-i18n="macroAggregateSubtitle">
+                      Run all macro data pipelines sequentially (leverage, financing, CPI, PPI, PMI, M2, PBC rate).
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-macro-aggregate" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="macro-aggregate-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="macro-aggregate-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="steps">Steps</span>
+                      <strong id="macro-aggregate-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="macro-aggregate-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="macro-aggregate-duration">&mdash;</strong>
+                    </div>
+                  </div>
+              </div>
+              <p class="job-message" id="macro-aggregate-message"></p>
+            </div>
+
+            <div class="card" id="fund-flow-aggregate-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="fundFlowAggregateTitle">Fund Flow Bundle Sync</h3>
+                  <p class="card__subtitle" data-i18n="fundFlowAggregateSubtitle">
+                    Run industry, concept, individual, HSGT, margin account, and big-deal fund flow jobs sequentially.
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-fund-flow-aggregate" data-i18n="runNow">
+                  Run
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="fund-flow-aggregate-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="lastStatus">Status</span>
+                    <strong id="fund-flow-aggregate-status">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="steps">Steps</span>
+                    <strong id="fund-flow-aggregate-rows">&mdash;</strong>
+                  </div>
+                </div>
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="dataUpdated">Data Updated</span>
+                    <strong id="fund-flow-aggregate-updated">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="lastDuration">Last Duration</span>
+                    <strong id="fund-flow-aggregate-duration">&mdash;</strong>
+                  </div>
+                </div>
+              </div>
+              <p class="job-message" id="fund-flow-aggregate-message"></p>
+            </div>
+
+            <div class="card" id="peripheral-insight-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="peripheralInsightTitle">Peripheral Insight</h3>
+                  <p class="card__subtitle" data-i18n="peripheralInsightSubtitle">
                       Aggregate overseas market metrics and request a DeepSeek summary.
                     </p>
                   </div>
@@ -410,11 +490,91 @@
                       <strong id="daily-indicator-duration">&mdash;</strong>
                     </div>
                   </div>
-                </div>
-                <p class="job-message" id="daily-indicator-message"></p>
               </div>
+              <p class="job-message" id="daily-indicator-message"></p>
+            </div>
+
+            <div class="card" id="index-history-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="indexHistoryTitle">Index History (A-Share)</h3>
+                  <p class="card__subtitle" data-i18n="indexHistorySubtitle">
+                    Sync SSE, SZSE Component, ChiNext, and STAR 50 index history (auto 17:00).
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-index-history" data-i18n="runNow">
+                  Run
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="index-history-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="lastStatus">Status</span>
+                    <strong id="index-history-status">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="records">Records</span>
+                    <strong id="index-history-rows">&mdash;</strong>
+                  </div>
+                </div>
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="dataUpdated">Data Updated</span>
+                    <strong id="index-history-updated">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="lastDuration">Last Duration</span>
+                    <strong id="index-history-duration">&mdash;</strong>
+                  </div>
+                </div>
+              </div>
+              <p class="job-message" id="index-history-message"></p>
+            </div>
+
+            <div class="card" id="realtime-index-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="realtimeIndexTitle">Realtime China Indices</h3>
+                  <p class="card__subtitle" data-i18n="realtimeIndexSubtitle">
+                    Manual trigger to refresh Sina Finance realtime China index snapshot.
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-realtime-index" data-i18n="runNow">
+                  Run
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="realtime-index-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="lastStatus">Status</span>
+                    <strong id="realtime-index-status">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="records">Records</span>
+                    <strong id="realtime-index-rows">&mdash;</strong>
+                  </div>
+                </div>
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="dataUpdated">Data Updated</span>
+                    <strong id="realtime-index-updated">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="lastDuration">Last Duration</span>
+                    <strong id="realtime-index-duration">&mdash;</strong>
+                  </div>
+                </div>
+              </div>
+              <p class="job-message" id="realtime-index-message"></p>
             </div>
           </div>
+        </div>
 
           <div class="control-group" id="group-fundamentals">
 
@@ -784,13 +944,93 @@
                       <strong id="individual-fund-flow-duration">&mdash;</strong>
                     </div>
                   </div>
-                </div>
-                <p class="job-message" id="individual-fund-flow-message"></p>
               </div>
+              <p class="job-message" id="individual-fund-flow-message"></p>
+            </div>
 
-              <div class="card" id="big-deal-fund-flow-card">
-                <div class="card__header">
-                  <div>
+            <div class="card" id="hsgt-fund-flow-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="hsgtFundFlowTitle">HSGT Fund Flow</h3>
+                  <p class="card__subtitle" data-i18n="hsgtFundFlowSubtitle">
+                    Ingest Eastmoney Shanghai/Shenzhen-Hong Kong connect fund flow summary snapshots.
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-hsgt-fund-flow" data-i18n="runNow">
+                  Run
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="hsgt-fund-flow-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="lastStatus">Status</span>
+                    <strong id="hsgt-fund-flow-status">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="records">Records</span>
+                    <strong id="hsgt-fund-flow-rows">&mdash;</strong>
+                  </div>
+                </div>
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="dataUpdated">Data Updated</span>
+                    <strong id="hsgt-fund-flow-updated">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="lastDuration">Last Duration</span>
+                    <strong id="hsgt-fund-flow-duration">&mdash;</strong>
+                  </div>
+                </div>
+              </div>
+              <p class="job-message" id="hsgt-fund-flow-message"></p>
+            </div>
+
+            <div class="card" id="margin-account-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="marginAccountTitle">Margin Account Stats</h3>
+                  <p class="card__subtitle" data-i18n="marginAccountSubtitle">
+                    Refresh Eastmoney financing & securities lending account statistics (两融账户信息).
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-margin-account" data-i18n="runNow">
+                  Run
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="margin-account-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="lastStatus">Status</span>
+                    <strong id="margin-account-status">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="records">Records</span>
+                    <strong id="margin-account-rows">&mdash;</strong>
+                  </div>
+                </div>
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="dataUpdated">Data Updated</span>
+                    <strong id="margin-account-updated">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="lastDuration">Last Duration</span>
+                    <strong id="margin-account-duration">&mdash;</strong>
+                  </div>
+                </div>
+              </div>
+              <p class="job-message" id="margin-account-message"></p>
+            </div>
+
+            <div class="card" id="big-deal-fund-flow-card">
+              <div class="card__header">
+                <div>
                     <h3 data-i18n="bigDealFundFlowTitle">Big Deal Tracking</h3>
                     <p class="card__subtitle" data-i18n="bigDealFundFlowSubtitle">
                       Fetch Tonghuashun large order transactions (大单追踪) for intraday monitoring.
@@ -1529,8 +1769,8 @@
       </main>
     </div>
 
-    <script src="i18n.js?v=20260408"></script>
-    <script src="sidebar.js?v=20260408"></script>
-    <script src="control.js?v=20261102"></script>
+    <script src="i18n.js?v=20270415"></script>
+    <script src="sidebar.js?v=20270415"></script>
+    <script src="control.js?v=20270415"></script>
   </body>
 </html>

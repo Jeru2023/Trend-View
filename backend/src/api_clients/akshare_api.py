@@ -118,6 +118,38 @@ BIG_DEAL_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
     "涨跌额": "price_change",
 }
 
+HSGT_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
+    "日期": "trade_date",
+    "当日成交净买额": "net_buy_amount",
+    "买入成交额": "buy_amount",
+    "卖出成交额": "sell_amount",
+    "历史累计净买额": "net_buy_amount_cumulative",
+    "当日资金流入": "fund_inflow",
+    "当日余额": "balance",
+    "持股市值": "market_value",
+    "领涨股": "leading_stock",
+    "领涨股-涨跌幅": "leading_stock_change_percent",
+    "沪深300": "hs300_index",
+    "沪深300-涨跌幅": "hs300_change_percent",
+    "领涨股-代码": "leading_stock_code",
+}
+
+MARGIN_ACCOUNT_COLUMN_MAP: Final[dict[str, str]] = {
+    "日期": "trade_date",
+    "融资余额": "financing_balance",
+    "融券余额": "securities_lending_balance",
+    "融资买入额": "financing_purchase_amount",
+    "融券卖出额": "securities_lending_sell_amount",
+    "证券公司数量": "securities_company_count",
+    "营业部数量": "business_department_count",
+    "个人投资者数量": "individual_investor_count",
+    "机构投资者数量": "institutional_investor_count",
+    "参与交易的投资者数量": "participating_investor_count",
+    "有融资融券负债的投资者数量": "liability_investor_count",
+    "担保物总价值": "collateral_value",
+    "平均维持担保比例": "average_collateral_ratio",
+}
+
 STOCK_MAIN_BUSINESS_COLUMN_MAP: Final[dict[str, str]] = {
     "股票代码": "symbol",
     "主营业务": "main_business",
@@ -1056,6 +1088,50 @@ def fetch_big_deal_fund_flow() -> pd.DataFrame:
 
     return renamed.loc[:, list(BIG_DEAL_FUND_FLOW_COLUMN_MAP.values())]
 
+
+def _empty_hsgt_fund_flow_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(HSGT_FUND_FLOW_COLUMN_MAP.values()))
+
+
+def fetch_hsgt_fund_flow_history(symbol: str = "北向资金") -> pd.DataFrame:
+    """Fetch Eastmoney HSGT historical fund flow data for the specified symbol."""
+    try:
+        dataframe = ak.stock_hsgt_hist_em(symbol=symbol)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch HSGT fund flow history via AkShare: %s", exc)
+        return _empty_hsgt_fund_flow_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no HSGT fund flow history for %s", symbol)
+        return _empty_hsgt_fund_flow_frame()
+
+    renamed = dataframe.rename(columns=HSGT_FUND_FLOW_COLUMN_MAP)
+    for column in HSGT_FUND_FLOW_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(HSGT_FUND_FLOW_COLUMN_MAP.values())]
+
+
+def fetch_margin_account_info() -> pd.DataFrame:
+    """Fetch Eastmoney margin (融资融券) account statistics."""
+    try:
+        dataframe = ak.stock_margin_account_info()
+    except Exception as exc:  # pragma: no cover - network call
+        logger.error("Failed to fetch margin account info via AkShare: %s", exc)
+        return pd.DataFrame(columns=list(MARGIN_ACCOUNT_COLUMN_MAP.values()))
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no margin account info data.")
+        return pd.DataFrame(columns=list(MARGIN_ACCOUNT_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=MARGIN_ACCOUNT_COLUMN_MAP)
+    for column in MARGIN_ACCOUNT_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MARGIN_ACCOUNT_COLUMN_MAP.values())]
+
 def _empty_stock_main_business_frame() -> pd.DataFrame:
     return pd.DataFrame(columns=list(STOCK_MAIN_BUSINESS_COLUMN_MAP.values()))
 
@@ -1119,6 +1195,9 @@ __all__ = [
     "INDUSTRY_FUND_FLOW_COLUMN_MAP",
     "CONCEPT_FUND_FLOW_COLUMN_MAP",
     "INDIVIDUAL_FUND_FLOW_COLUMN_MAP",
+    "BIG_DEAL_FUND_FLOW_COLUMN_MAP",
+    "HSGT_FUND_FLOW_COLUMN_MAP",
+    "MARGIN_ACCOUNT_COLUMN_MAP",
     "STOCK_MAIN_BUSINESS_COLUMN_MAP",
     "STOCK_MAIN_COMPOSITION_COLUMN_MAP",
     "MACRO_LEVERAGE_COLUMN_MAP",
@@ -1136,6 +1215,8 @@ __all__ = [
     "fetch_concept_fund_flow",
     "fetch_individual_fund_flow",
     "fetch_big_deal_fund_flow",
+    "fetch_hsgt_fund_flow_history",
+    "fetch_margin_account_info",
     "fetch_stock_main_business",
     "fetch_stock_main_composition",
     "fetch_macro_leverage_ratios",

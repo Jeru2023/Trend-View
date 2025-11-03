@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
+from zoneinfo import ZoneInfo
 
 
 @dataclass
@@ -29,6 +30,11 @@ class JobProgress:
 logger = logging.getLogger(__name__)
 
 STATE_FILE = Path(__file__).resolve().parents[1] / "config" / "control_state.json"
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _local_now() -> datetime:
+    return datetime.now(LOCAL_TZ).replace(tzinfo=None)
 
 
 class SyncMonitor:
@@ -45,6 +51,8 @@ class SyncMonitor:
             "finance_breakfast": JobProgress(),
             "global_flash": JobProgress(),
             "global_flash_classification": JobProgress(),
+            "realtime_index": JobProgress(),
+            "index_history": JobProgress(),
             "trade_calendar": JobProgress(),
             "fundamental_metrics": JobProgress(),
             "performance_express": JobProgress(),
@@ -57,10 +65,15 @@ class SyncMonitor:
             "fed_statements": JobProgress(),
             "peripheral_aggregate": JobProgress(),
             "peripheral_insight": JobProgress(),
+            "macro_aggregate": JobProgress(),
+            "fund_flow_aggregate": JobProgress(),
+            "market_insight": JobProgress(),
             "industry_fund_flow": JobProgress(),
             "concept_fund_flow": JobProgress(),
             "individual_fund_flow": JobProgress(),
             "big_deal_fund_flow": JobProgress(),
+            "hsgt_fund_flow": JobProgress(),
+            "margin_account": JobProgress(),
             "stock_main_business": JobProgress(),
             "stock_main_composition": JobProgress(),
             "leverage_ratio": JobProgress(),
@@ -135,14 +148,11 @@ class SyncMonitor:
         with self._lock:
             state = self._get(job)
             state.status = "running"
-            state.started_at = datetime.utcnow()
+            state.started_at = _local_now()
             state.finished_at = None
             state.progress = 0.0
             state.message = message
             state.error = None
-            state.total_rows = None
-            state.last_duration = None
-            state.last_market = None
 
     def update(
         self,
@@ -185,7 +195,9 @@ class SyncMonitor:
         with self._lock:
             state = self._get(job)
             state.status = "success" if success else "failed"
-            completed_at = finished_at or datetime.utcnow()
+            completed_at = finished_at or _local_now()
+            if completed_at.tzinfo is not None:
+                completed_at = completed_at.astimezone(LOCAL_TZ).replace(tzinfo=None)
             state.finished_at = completed_at
             if state.started_at is None:
                 state.started_at = completed_at

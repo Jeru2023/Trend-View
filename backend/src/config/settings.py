@@ -49,6 +49,10 @@ class PostgresSettings:
     finance_breakfast_table: str
     global_flash_table: str
     trade_calendar_table: str
+    news_articles_table: str
+    news_insights_table: str
+    news_market_insight_table: str
+    index_history_table: str
     fundamental_metrics_table: str
     favorites_table: str
     stock_main_business_table: str
@@ -57,10 +61,12 @@ class PostgresSettings:
     performance_forecast_table: str
     profit_forecast_table: str
     global_index_table: str
+    realtime_index_table: str
     industry_fund_flow_table: str
     concept_fund_flow_table: str
     individual_fund_flow_table: str
     big_deal_fund_flow_table: str
+    hsgt_fund_flow_table: str
     peripheral_insight_table: str
     leverage_ratio_table: str
     social_financing_table: str
@@ -195,6 +201,18 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             trade_calendar_table=str(
                 postgres_config.get("trade_calendar_table", "trade_calendar")
             ),
+            news_articles_table=str(
+                postgres_config.get("news_articles_table", "news_articles")
+            ),
+            news_insights_table=str(
+                postgres_config.get("news_insights_table", "news_insights")
+            ),
+            news_market_insight_table=str(
+                postgres_config.get("news_market_insight_table", "news_market_insights")
+            ),
+            index_history_table=str(
+                postgres_config.get("index_history_table", "index_history")
+            ),
             fundamental_metrics_table=str(
                 postgres_config.get("fundamental_metrics_table", "fundamental_metrics")
             ),
@@ -216,6 +234,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             global_index_table=str(
                 postgres_config.get("global_index_table", "global_indices")
             ),
+            realtime_index_table=str(
+                postgres_config.get("realtime_index_table", "realtime_indices")
+            ),
             profit_forecast_table=str(
                 postgres_config.get("profit_forecast_table", "profit_forecast")
             ),
@@ -230,6 +251,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             big_deal_fund_flow_table=str(
                 postgres_config.get("big_deal_fund_flow_table", "big_deal_fund_flow")
+            ),
+            hsgt_fund_flow_table=str(
+                postgres_config.get("hsgt_fund_flow_table", "hsgt_fund_flow")
             ),
             peripheral_insight_table=str(
                 postgres_config.get("peripheral_insight_table", "peripheral_insights")

@@ -16,6 +16,7 @@ from .industry_fund_flow_dao import IndustryFundFlowDAO
 from .concept_fund_flow_dao import ConceptFundFlowDAO
 from .individual_fund_flow_dao import IndividualFundFlowDAO
 from .big_deal_fund_flow_dao import BigDealFundFlowDAO
+from .hsgt_fund_flow_dao import HSGTFundFlowDAO
 from .stock_main_business_dao import StockMainBusinessDAO
 from .stock_main_composition_dao import StockMainCompositionDAO
 from .profit_forecast_dao import ProfitForecastDAO
@@ -34,6 +35,12 @@ from .macro_ppi_dao import MacroPpiDAO
 from .macro_pbc_rate_dao import MacroPbcRateDAO
 from .global_flash_dao import GlobalFlashDAO
 from .trade_calendar_dao import TradeCalendarDAO
+from .news_article_dao import NewsArticleDAO
+from .news_insight_dao import NewsInsightDAO
+from .news_market_insight_dao import NewsMarketInsightDAO
+from .index_history_dao import IndexHistoryDAO
+from .realtime_index_dao import RealtimeIndexDAO
+from .margin_account_dao import MarginAccountDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -52,6 +59,7 @@ __all__ = [
     "ConceptFundFlowDAO",
     "IndividualFundFlowDAO",
     "BigDealFundFlowDAO",
+    "HSGTFundFlowDAO",
     "StockMainBusinessDAO",
     "StockMainCompositionDAO",
     "ProfitForecastDAO",
@@ -70,4 +78,10 @@ __all__ = [
     "MacroPbcRateDAO",
     "GlobalFlashDAO",
     "TradeCalendarDAO",
+    "NewsArticleDAO",
+    "NewsInsightDAO",
+    "NewsMarketInsightDAO",
+    "IndexHistoryDAO",
+    "RealtimeIndexDAO",
+    "MarginAccountDAO",
 ]

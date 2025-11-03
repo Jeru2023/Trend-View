@@ -5,6 +5,7 @@ FastAPI application exposing Trend View backend services and control panel APIs.
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import logging
 import time
@@ -25,8 +26,9 @@ from .dao import (
     DailyTradeDAO,
     DailyTradeMetricsDAO,
     FinancialIndicatorDAO,
-    FinanceBreakfastDAO,
-    GlobalFlashDAO,
+    NewsArticleDAO,
+    NewsMarketInsightDAO,
+    IndexHistoryDAO,
     TradeCalendarDAO,
     IncomeStatementDAO,
     FundamentalMetricsDAO,
@@ -34,6 +36,7 @@ from .dao import (
     PerformanceForecastDAO,
     ProfitForecastDAO,
     GlobalIndexDAO,
+    RealtimeIndexDAO,
     DollarIndexDAO,
     RmbMidpointDAO,
     FuturesRealtimeDAO,
@@ -50,6 +53,8 @@ from .dao import (
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
     BigDealFundFlowDAO,
+    HSGTFundFlowDAO,
+    MarginAccountDAO,
     StockBasicDAO,
     StockMainBusinessDAO,
     StockMainCompositionDAO,
@@ -60,13 +65,13 @@ from .services import (
     get_favorite_status,
     list_favorite_entries,
     list_favorite_groups,
-    list_finance_breakfast,
-    list_global_flash,
+    list_news_articles,
     list_fundamental_metrics,
     list_performance_express,
     list_performance_forecast,
     list_profit_forecast,
     list_global_indices,
+    list_realtime_indices,
     list_dollar_index,
     list_rmb_midpoint_rates,
     list_futures_realtime,
@@ -90,12 +95,15 @@ from .services import (
     list_concept_fund_flow,
     list_individual_fund_flow,
     list_big_deal_fund_flow,
+    list_hsgt_fund_flow,
+    list_margin_account_info,
     set_favorite_state,
     sync_daily_indicator,
     sync_financial_indicators,
     sync_finance_breakfast,
     sync_global_flash,
-    classify_global_flash_batch,
+    classify_relevance_batch,
+    classify_impact_batch,
     sync_trade_calendar,
     sync_income_statements,
     sync_daily_trade,
@@ -105,24 +113,36 @@ from .services import (
     sync_performance_forecast,
     sync_profit_forecast,
     sync_global_indices,
+    sync_realtime_indices,
     sync_dollar_index,
     sync_rmb_midpoint_rates,
     sync_futures_realtime,
     sync_fed_statements,
     generate_peripheral_insight,
+    generate_market_insight_summary,
+    collect_recent_market_headlines,
+    get_latest_market_insight,
+    list_market_insights,
+    list_index_history,
+    sync_index_history,
     sync_industry_fund_flow,
     sync_concept_fund_flow,
     sync_individual_fund_flow,
     sync_big_deal_fund_flow,
+    sync_hsgt_fund_flow,
+    sync_margin_account_info,
     sync_stock_basic,
     sync_stock_main_business,
     sync_stock_main_composition,
     get_stock_main_composition,
     is_trading_day,
+    INDEX_CONFIG,
 )
 from .state import monitor
 
-scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Shanghai"))
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+
+scheduler = AsyncIOScheduler(timezone=LOCAL_TZ)
 scheduler_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
@@ -182,6 +202,33 @@ def _validate_favorite_group_name(value: Optional[str]) -> Optional[str]:
             detail="Favorite group name contains invalid control characters.",
         )
     return normalized
+
+
+
+def _local_now() -> datetime:
+    return datetime.now(LOCAL_TZ)
+
+
+def _localize_datetime(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=LOCAL_TZ)
+        return value.astimezone(LOCAL_TZ)
+    return None
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return _localize_datetime(value)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except Exception:
+        return None
+    return _localize_datetime(parsed)
 
 
 def _parse_favorite_group_query(value: Optional[str]) -> tuple[Optional[str], bool]:
@@ -658,32 +705,61 @@ class SyncGlobalFlashClassifyRequest(BaseModel):
 
 class SyncGlobalFlashClassifyResponse(BaseModel):
     rows: int
+    relevance_rows: int = Field(..., alias="relevanceRows")
+    relevance_requested: int = Field(..., alias="relevanceRequested")
+    impact_rows: int = Field(..., alias="impactRows")
+    impact_requested: int = Field(..., alias="impactRequested")
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
-    requested: int = Field(..., alias="requested")
 
     class Config:
         allow_population_by_field_name = True
 
 
-class GlobalFlashItem(BaseModel):
+class NewsRelevancePayload(BaseModel):
+    is_relevant: Optional[bool] = Field(None, alias="isRelevant")
+    confidence: Optional[float] = None
+    reason: Optional[str] = None
+    checked_at: Optional[datetime] = Field(None, alias="checkedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class NewsImpactPayload(BaseModel):
+    summary: Optional[str] = None
+    analysis: Optional[str] = None
+    confidence: Optional[float] = None
+    checked_at: Optional[datetime] = Field(None, alias="checkedAt")
+    levels: List[str] = Field(default_factory=list)
+    markets: List[str] = Field(default_factory=list)
+    industries: List[str] = Field(default_factory=list)
+    sectors: List[str] = Field(default_factory=list)
+    themes: List[str] = Field(default_factory=list)
+    stocks: List[str] = Field(default_factory=list)
+    metadata: Optional[Dict[str, Any]] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class NewsArticleItem(BaseModel):
+    article_id: str = Field(..., alias="articleId")
+    source: str
     title: str
     summary: Optional[str] = None
+    content: Optional[str] = None
+    content_type: Optional[str] = Field(None, alias="contentType")
     published_at: Optional[datetime] = Field(None, alias="publishedAt")
-    url: str
-    if_extract: Optional[bool] = Field(None, alias="ifExtract")
-    extract_checked_at: Optional[datetime] = Field(None, alias="extractCheckedAt")
-    extract_reason: Optional[str] = Field(None, alias="extractReason")
-    subject_level: Optional[str] = Field(None, alias="subjectLevel")
-    impact_scope: Optional[str] = Field(None, alias="impactScope")
-    event_type: Optional[str] = Field(None, alias="eventType")
-    time_sensitivity: Optional[str] = Field(None, alias="timeSensitivity")
-    quant_signal: Optional[str] = Field(None, alias="quantSignal")
-    impact_levels: List[str] = Field(default_factory=list, alias="impactLevels")
-    impact_markets: List[str] = Field(default_factory=list, alias="impactMarkets")
-    impact_industries: List[str] = Field(default_factory=list, alias="impactIndustries")
-    impact_sectors: List[str] = Field(default_factory=list, alias="impactSectors")
-    impact_themes: List[str] = Field(default_factory=list, alias="impactThemes")
-    impact_stocks: List[str] = Field(default_factory=list, alias="impactStocks")
+    url: Optional[str] = None
+    language: Optional[str] = None
+    processing_status: Optional[str] = Field(None, alias="processingStatus")
+    content_fetched: Optional[bool] = Field(None, alias="contentFetched")
+    content_fetched_at: Optional[datetime] = Field(None, alias="contentFetchedAt")
+    relevance_attempts: Optional[int] = Field(None, alias="relevanceAttempts")
+    impact_attempts: Optional[int] = Field(None, alias="impactAttempts")
+    last_error: Optional[str] = Field(None, alias="lastError")
+    relevance: NewsRelevancePayload
+    impact: NewsImpactPayload
 
     class Config:
         allow_population_by_field_name = True
@@ -706,6 +782,102 @@ class SyncPerformanceExpressRequest(BaseModel):
         alias="lookbackDays",
         description="Legacy parameter retained for compatibility; ignored.",
     )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMarketInsightRequest(BaseModel):
+    lookback_hours: int = Field(24, ge=1, le=72, alias="lookbackHours")
+    article_limit: int = Field(40, ge=5, le=50, alias="articleLimit")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncIndexHistoryRequest(BaseModel):
+    index_codes: Optional[List[str]] = Field(
+        None,
+        alias="indexCodes",
+        description="Optional subset of index codes to refresh (defaults to all core indices).",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+        extra = "forbid"
+
+
+class MarketInsightArticleItem(BaseModel):
+    article_id: Optional[str] = Field(None, alias="articleId")
+    source: Optional[str] = None
+    title: Optional[str] = None
+    impact_summary: Optional[str] = Field(None, alias="impactSummary")
+    impact_analysis: Optional[str] = Field(None, alias="impactAnalysis")
+    impact_confidence: Optional[float] = Field(None, alias="impactConfidence")
+    markets: List[str] = Field(default_factory=list)
+    published_at: Optional[datetime] = Field(None, alias="publishedAt")
+    url: Optional[str] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketInsightSummaryPayload(BaseModel):
+    summary_id: str = Field(..., alias="summaryId")
+    generated_at: datetime = Field(..., alias="generatedAt")
+    window_start: datetime = Field(..., alias="windowStart")
+    window_end: datetime = Field(..., alias="windowEnd")
+    headline_count: int = Field(..., alias="headlineCount")
+    summary: Optional[Dict[str, Any]] = None
+    raw_response: Optional[str] = Field(None, alias="rawResponse")
+    prompt_tokens: Optional[int] = Field(None, alias="promptTokens")
+    completion_tokens: Optional[int] = Field(None, alias="completionTokens")
+    total_tokens: Optional[int] = Field(None, alias="totalTokens")
+    elapsed_seconds: Optional[float] = Field(None, alias="elapsedSeconds")
+    model_used: Optional[str] = Field(None, alias="modelUsed")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketInsightResponse(BaseModel):
+    summary: Optional[MarketInsightSummaryPayload]
+    articles: List[MarketInsightArticleItem]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndexHistoryRecord(BaseModel):
+    index_code: str = Field(..., alias="indexCode")
+    index_name: Optional[str] = Field(None, alias="indexName")
+    trade_date: date = Field(..., alias="tradeDate")
+    open: Optional[float] = None
+    close: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    volume: Optional[float] = None
+    amount: Optional[float] = None
+    amplitude: Optional[float] = None
+    pct_change: Optional[float] = Field(None, alias="pctChange")
+    change_amount: Optional[float] = Field(None, alias="changeAmount")
+    turnover: Optional[float] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndexOption(BaseModel):
+    code: str
+    name: str
+    symbol: str
+
+
+class IndexHistoryListResponse(BaseModel):
+    index_code: str = Field(..., alias="indexCode")
+    index_name: Optional[str] = Field(None, alias="indexName")
+    items: List[IndexHistoryRecord]
+    available_indices: List[IndexOption] = Field(..., alias="availableIndices")
 
     class Config:
         allow_population_by_field_name = True
@@ -791,6 +963,11 @@ class SyncGlobalIndexResponse(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+
+
+class SyncRealtimeIndexRequest(BaseModel):
+    class Config:
+        extra = "forbid"
 
 
 class SyncDollarIndexRequest(BaseModel):
@@ -974,6 +1151,18 @@ class SyncPeripheralAggregateRequest(BaseModel):
         extra = "forbid"
 
 
+class SyncMacroAggregateRequest(BaseModel):
+    class Config:
+        allow_population_by_field_name = True
+        extra = "forbid"
+
+
+class SyncFundFlowAggregateRequest(BaseModel):
+    class Config:
+        allow_population_by_field_name = True
+        extra = "forbid"
+
+
 class SyncIndustryFundFlowRequest(BaseModel):
     symbols: Optional[List[str]] = Field(
         None,
@@ -1041,6 +1230,39 @@ class SyncBigDealFundFlowRequest(BaseModel):
 
 class SyncBigDealFundFlowResponse(BaseModel):
     rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncHsgtFundFlowRequest(BaseModel):
+    symbol: Optional[str] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncHsgtFundFlowResponse(BaseModel):
+    rows: int
+    trade_dates: List[str] = Field(default_factory=list, alias="tradeDates")
+    trade_date_count: int = Field(..., alias="tradeDateCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    symbol: Optional[str] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMarginAccountRequest(BaseModel):
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMarginAccountResponse(BaseModel):
+    rows: int
+    trade_dates: List[str] = Field(default_factory=list, alias="tradeDates")
+    trade_date_count: int = Field(..., alias="tradeDateCount")
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
     class Config:
@@ -1232,6 +1454,33 @@ class GlobalIndexListResponse(BaseModel):
     total: int
     items: List[GlobalIndexRecord]
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class RealtimeIndexRecord(BaseModel):
+    code: str
+    name: Optional[str] = None
+    latest_price: Optional[float] = Field(None, alias="latestPrice")
+    change_amount: Optional[float] = Field(None, alias="changeAmount")
+    change_percent: Optional[float] = Field(None, alias="changePercent")
+    prev_close: Optional[float] = Field(None, alias="prevClose")
+    open_price: Optional[float] = Field(None, alias="openPrice")
+    high_price: Optional[float] = Field(None, alias="highPrice")
+    low_price: Optional[float] = Field(None, alias="lowPrice")
+    volume: Optional[float] = None
+    turnover: Optional[float] = None
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class RealtimeIndexListResponse(BaseModel):
+    total: int
+    items: List[RealtimeIndexRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class DollarIndexRecord(BaseModel):
@@ -1592,23 +1841,70 @@ class BigDealFundFlowListResponse(BaseModel):
     items: List[BigDealFundFlowRecord]
 
 
-class SyncFinanceBreakfastResponse(BaseModel):
-    rows: int
-    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
-
-class FinanceBreakfastItem(BaseModel):
-    title: str
-    summary: Optional[str] = None
-    content: Optional[str] = None
-    ai_extract: Optional[Union[str, Dict[str, Any]]] = Field(None, alias="aiExtract")
-    ai_extract_summary: Optional[Union[str, Dict[str, Any]]] = Field(None, alias="aiExtractSummary")
-    ai_extract_detail: Optional[Union[str, List[Any], Dict[str, Any]]] = Field(None, alias="aiExtractDetail")
-    published_at: Optional[datetime] = Field(None, alias="publishedAt")
-    url: Optional[str] = None
+class HsgtFundFlowRecord(BaseModel):
+    trade_date: Optional[date] = Field(None, alias="tradeDate")
+    symbol: Optional[str] = None
+    net_buy_amount: Optional[float] = Field(None, alias="netBuyAmount")
+    buy_amount: Optional[float] = Field(None, alias="buyAmount")
+    sell_amount: Optional[float] = Field(None, alias="sellAmount")
+    net_buy_amount_cumulative: Optional[float] = Field(None, alias="netBuyAmountCumulative")
+    fund_inflow: Optional[float] = Field(None, alias="fundInflow")
+    balance: Optional[float] = None
+    market_value: Optional[float] = Field(None, alias="marketValue")
+    leading_stock: Optional[str] = Field(None, alias="leadingStock")
+    leading_stock_change_percent: Optional[float] = Field(None, alias="leadingStockChangePercent")
+    leading_stock_code: Optional[str] = Field(None, alias="leadingStockCode")
+    hs300_index: Optional[float] = Field(None, alias="hs300Index")
+    hs300_change_percent: Optional[float] = Field(None, alias="hs300ChangePercent")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     class Config:
         allow_population_by_field_name = True
 
+
+class HsgtFundFlowListResponse(BaseModel):
+    total: int
+    items: List[HsgtFundFlowRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    available_years: List[int] = Field(default_factory=list, alias="availableYears")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarginAccountRecord(BaseModel):
+    trade_date: Optional[date] = Field(None, alias="tradeDate")
+    financing_balance: Optional[float] = Field(None, alias="financingBalance")
+    securities_lending_balance: Optional[float] = Field(None, alias="securitiesLendingBalance")
+    financing_purchase_amount: Optional[float] = Field(None, alias="financingPurchaseAmount")
+    securities_lending_sell_amount: Optional[float] = Field(None, alias="securitiesLendingSellAmount")
+    securities_company_count: Optional[float] = Field(None, alias="securitiesCompanyCount")
+    business_department_count: Optional[float] = Field(None, alias="businessDepartmentCount")
+    individual_investor_count: Optional[float] = Field(None, alias="individualInvestorCount")
+    institutional_investor_count: Optional[float] = Field(None, alias="institutionalInvestorCount")
+    participating_investor_count: Optional[float] = Field(None, alias="participatingInvestorCount")
+    liability_investor_count: Optional[float] = Field(None, alias="liabilityInvestorCount")
+    collateral_value: Optional[float] = Field(None, alias="collateralValue")
+    average_collateral_ratio: Optional[float] = Field(None, alias="averageCollateralRatio")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarginAccountListResponse(BaseModel):
+    total: int
+    items: List[MarginAccountRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    available_years: List[int] = Field(default_factory=list, alias="availableYears")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncFinanceBreakfastResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
 class RuntimeConfigPayload(BaseModel):
     include_st: bool = Field(..., alias="includeST")
@@ -1811,7 +2107,7 @@ async def _run_daily_trade_metrics_job(request: SyncDailyTradeMetricsRequest) ->
                 stats = DailyTradeMetricsDAO(load_settings().postgres).stats()
             except Exception as stats_exc:  # pragma: no cover - defensive
                 logger.warning("Failed to refresh daily_trade_metrics stats: %s", stats_exc)
-            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            elapsed = float(result.get("elapsedSeconds", result.get("elapsed_seconds", time.perf_counter() - started)))
             total_rows = stats.get("count") if isinstance(stats, dict) else None
             if total_rows is None:
                 total_rows = result.get("rows")
@@ -1889,7 +2185,7 @@ async def _run_fundamental_metrics_job(request: SyncFundamentalMetricsRequest) -
                 stats = FundamentalMetricsDAO(load_settings().postgres).stats()
             except Exception as stats_exc:  # pragma: no cover - defensive
                 logger.warning("Failed to refresh fundamental_metrics stats: %s", stats_exc)
-            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            elapsed = float(result.get("elapsedSeconds", result.get("elapsed_seconds", time.perf_counter() - started)))
             total_rows = stats.get("count") if isinstance(stats, dict) else None
             if total_rows is None:
                 total_rows = result.get("rows")
@@ -1937,7 +2233,7 @@ async def _run_daily_indicator_job(request: SyncDailyIndicatorRequest) -> None:
                 stats = DailyIndicatorDAO(load_settings().postgres).stats()
             except Exception as stats_exc:  # pragma: no cover - defensive
                 logger.warning("Failed to refresh daily_indicator stats: %s", stats_exc)
-            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            elapsed = float(result.get("elapsedSeconds", result.get("elapsed_seconds", time.perf_counter() - started)))
             total_rows = stats.get("count") if isinstance(stats, dict) else None
             if total_rows is None:
                 total_rows = result.get("rows")
@@ -1987,7 +2283,7 @@ async def _run_income_statement_job(request: SyncIncomeStatementRequest) -> None
                 stats = IncomeStatementDAO(load_settings().postgres).stats()
             except Exception as stats_exc:  # pragma: no cover - defensive
                 logger.warning("Failed to refresh income_statement stats: %s", stats_exc)
-            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            elapsed = float(result.get("elapsedSeconds", result.get("elapsed_seconds", time.perf_counter() - started)))
             total_rows = stats.get("count") if isinstance(stats, dict) else None
             if total_rows is None:
                 total_rows = result.get("rows")
@@ -2055,7 +2351,7 @@ async def _run_financial_indicator_job(request: SyncFinancialIndicatorRequest) -
                 stats = FinancialIndicatorDAO(load_settings().postgres).stats()
             except Exception as stats_exc:  # pragma: no cover - defensive
                 logger.warning("Failed to refresh financial_indicator stats: %s", stats_exc)
-            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
+            elapsed = float(result.get("elapsedSeconds", result.get("elapsed_seconds", time.perf_counter() - started)))
             total_rows = stats.get("count") if isinstance(stats, dict) else None
             if total_rows is None:
                 total_rows = result.get("rows")
@@ -2102,30 +2398,22 @@ async def _run_financial_indicator_job(request: SyncFinancialIndicatorRequest) -
 async def _run_finance_breakfast_job(request: SyncFinanceBreakfastRequest) -> None:
     loop = asyncio.get_running_loop()
 
-    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
-        monitor.update(
-            "finance_breakfast",
-            progress=progress,
-            message=message,
-            total_rows=total_rows,
-        )
-
     def job() -> None:
+        monitor.update("finance_breakfast", progress=0.0, message="Fetching finance breakfast feed")
         started = time.perf_counter()
         try:
-            result = sync_finance_breakfast(
-                progress_callback=progress_callback,
-            )
+            result = sync_finance_breakfast()
             stats: Dict[str, object] = {}
             try:
-                stats = FinanceBreakfastDAO(load_settings().postgres).stats()
+                stats = NewsArticleDAO(load_settings().postgres).stats(source="finance_breakfast")
             except Exception as stats_exc:  # pragma: no cover - defensive
                 logger.warning("Failed to refresh finance_breakfast stats: %s", stats_exc)
-            elapsed = float(result.get("elapsed_seconds", time.perf_counter() - started))
-            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            elapsed = float(result.get("elapsedSeconds", result.get("elapsed_seconds", time.perf_counter() - started)))
+            total_rows = stats.get("total") if isinstance(stats, dict) else None
             if total_rows is None:
                 total_rows = result.get("rows")
             finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
+            monitor.update("finance_breakfast", progress=1.0, message="Finance breakfast sync completed")
             monitor.finish(
                 "finance_breakfast",
                 success=True,
@@ -2147,6 +2435,50 @@ async def _run_finance_breakfast_job(request: SyncFinanceBreakfastRequest) -> No
             logger.error("Finance breakfast sync failed: %s", error_message)
 
     await loop.run_in_executor(None, job)
+async def _run_market_insight_job(request: SyncMarketInsightRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update(
+            "market_insight",
+            progress=0.1,
+            message="Collecting market-impact headlines",
+        )
+        try:
+            result = generate_market_insight_summary(
+                lookback_hours=request.lookback_hours,
+                limit=request.article_limit,
+            )
+            elapsed = time.perf_counter() - started
+            headline_count = int(result.get("headline_count", 0) or 0)
+            generated_at = result.get("generated_at")
+            monitor.update(
+                "market_insight",
+                progress=1.0,
+                message=f"Generated summary from {headline_count} headlines",
+            )
+            monitor.finish(
+                "market_insight",
+                success=True,
+                total_rows=headline_count,
+                message=f"Generated summary from {headline_count} headlines",
+                finished_at=generated_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            error_message = str(exc)
+            monitor.finish(
+                "market_insight",
+                success=False,
+                message=error_message,
+                error=error_message,
+                last_duration=elapsed,
+            )
+            logger.error("Market insight generation failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
 
 
 async def _run_global_flash_job(request: SyncGlobalFlashRequest) -> None:
@@ -2158,7 +2490,7 @@ async def _run_global_flash_job(request: SyncGlobalFlashRequest) -> None:
             result = sync_global_flash()
             stats: Dict[str, object] = {}
             try:
-                stats = GlobalFlashDAO(load_settings().postgres).stats()
+                stats = NewsArticleDAO(load_settings().postgres).stats(source="global_flash")
             except Exception as stats_exc:  # pragma: no cover - defensive
                 logger.warning("Failed to refresh global_flash stats: %s", stats_exc)
             elapsed = float(result.get("elapsedSeconds", result.get("elapsed_seconds", time.perf_counter() - started)))
@@ -2243,15 +2575,29 @@ async def _run_global_flash_classification_job(request: SyncGlobalFlashClassifyR
         started = time.perf_counter()
         monitor.update("global_flash_classification", message="Classifying global flash entries", progress=0.0)
         try:
-            result = classify_global_flash_batch(batch_size=request.batch_size)
-            elapsed = float(result.get("elapsedSeconds", time.perf_counter() - started))
-            rows = int(result.get("rows", 0) or 0)
-            requested = int(result.get("requested", rows) or rows)
-            skipped = bool(result.get("skipped"))
+            relevance_result = classify_relevance_batch(batch_size=request.batch_size)
+            impact_result = classify_impact_batch(batch_size=request.batch_size)
+
+            relevance_rows = int(relevance_result.get("rows", 0) or 0)
+            impact_rows = int(impact_result.get("rows", 0) or 0)
+            relevance_requested = int(relevance_result.get("requested", relevance_rows) or relevance_rows)
+            impact_requested = int(impact_result.get("requested", impact_rows) or impact_rows)
+            skipped = bool(relevance_result.get("skipped")) and bool(impact_result.get("skipped"))
+
+            elapsed_relevance = float(relevance_result.get("elapsedSeconds", 0.0) or 0.0)
+            elapsed_impact = float(impact_result.get("elapsedSeconds", 0.0) or 0.0)
+            elapsed = elapsed_relevance + elapsed_impact
+            if elapsed <= 0:
+                elapsed = time.perf_counter() - started
+
+            rows = relevance_rows + impact_rows
             message = (
                 "DeepSeek configuration missing; classification skipped"
                 if skipped
-                else f"Classified {rows}/{requested} global flash entries"
+                else (
+                    f"Relevance {relevance_rows}/{relevance_requested}; "
+                    f"Impact {impact_rows}/{impact_requested}"
+                )
             )
             monitor.finish(
                 "global_flash_classification",
@@ -2435,6 +2781,102 @@ async def _run_global_index_job(request: SyncGlobalIndexRequest) -> None:  # noq
                 error=str(exc),
                 last_duration=elapsed,
             )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_realtime_index_job(request: SyncRealtimeIndexRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("realtime_index", message="Syncing realtime China indices", progress=0.0)
+        try:
+            result = sync_realtime_indices()
+            stats = RealtimeIndexDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "realtime_index",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} realtime index rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "realtime_index",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_index_history_job(request: SyncIndexHistoryRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        normalized_codes: Optional[List[str]] = None
+        if request.index_codes:
+            filtered = []
+            for code in request.index_codes:
+                if not code:
+                    continue
+                normalized = str(code).strip().upper()
+                if normalized:
+                    filtered.append(normalized)
+            if filtered:
+                normalized_codes = filtered
+
+        display_codes = ", ".join(normalized_codes) if normalized_codes else "core indices"
+        monitor.update(
+            "index_history",
+            message=f"Syncing index history ({display_codes})",
+            progress=0.0,
+        )
+
+        started = time.perf_counter()
+        try:
+            result = sync_index_history(index_codes=normalized_codes)
+            stats: Dict[str, object] = {}
+            try:
+                stats = IndexHistoryDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to collect index_history stats: %s", stats_exc)
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            finished_at = None
+            latest_date = stats.get("latest") if isinstance(stats, dict) else None
+            if isinstance(latest_date, date):
+                finished_at = datetime.combine(latest_date, datetime.min.time())
+            rows_synced = int(result.get("rows", 0) or 0)
+            monitor.finish(
+                "index_history",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {rows_synced} index history rows",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "index_history",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            logger.error("Index history sync failed: %s", exc)
             raise
 
     await loop.run_in_executor(None, job)
@@ -2851,6 +3293,98 @@ async def _run_peripheral_insight_job(request: SyncPeripheralInsightRequest) -> 
     await loop.run_in_executor(None, job)
 
 
+async def _run_macro_aggregate_job(request: SyncMacroAggregateRequest) -> None:
+    started = time.perf_counter()
+
+    steps: List[Tuple[str, str, Callable[[BaseModel], Awaitable[None]], BaseModel]] = [
+        (
+            "leverage_ratio",
+            "Syncing macro leverage ratios",
+            _run_macro_leverage_job,
+            SyncMacroLeverageRequest(),
+        ),
+        (
+            "social_financing",
+            "Syncing social financing data",
+            _run_social_financing_job,
+            SyncSocialFinancingRequest(),
+        ),
+        (
+            "cpi_monthly",
+            "Syncing CPI data",
+            _run_macro_cpi_job,
+            SyncMacroCpiRequest(),
+        ),
+        (
+            "ppi_monthly",
+            "Syncing PPI data",
+            _run_macro_ppi_job,
+            SyncMacroPpiRequest(),
+        ),
+        (
+            "pmi_monthly",
+            "Syncing PMI data",
+            _run_macro_pmi_job,
+            SyncMacroPmiRequest(),
+        ),
+        (
+            "m2_monthly",
+            "Syncing M2 money supply",
+            _run_macro_m2_job,
+            SyncMacroM2Request(),
+        ),
+        (
+            "pbc_rate",
+            "Syncing PBC interest rate data",
+            _run_macro_pbc_rate_job,
+            SyncMacroPbcRateRequest(),
+        ),
+    ]
+
+    total_steps = len(steps)
+
+    try:
+        for idx, (job_key, status_message, runner, runner_request) in enumerate(steps, start=1):
+            monitor.update(
+                "macro_aggregate",
+                progress=(idx - 1) / total_steps,
+                message=status_message,
+            )
+            monitor.start(job_key, message=status_message)
+            monitor.update(job_key, progress=0.0)
+            await runner(runner_request)
+            monitor.update(
+                "macro_aggregate",
+                progress=idx / total_steps,
+                message=status_message,
+            )
+
+        elapsed = time.perf_counter() - started
+        monitor.finish(
+            "macro_aggregate",
+            success=True,
+            total_rows=total_steps,
+            message="Macro aggregate sync completed",
+            last_duration=elapsed,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        elapsed = time.perf_counter() - started
+        completed_steps = 0
+        if "idx" in locals():
+            try:
+                completed_steps = max(0, int(idx) - 1)
+            except Exception:  # pragma: no cover - defensive
+                completed_steps = 0
+        monitor.finish(
+            "macro_aggregate",
+            success=False,
+            total_rows=completed_steps or None,
+            error=str(exc),
+            last_duration=elapsed,
+        )
+        raise
+
+
 async def _run_peripheral_aggregate_job(request: SyncPeripheralAggregateRequest) -> None:
     started = time.perf_counter()
     run_llm = request.run_llm
@@ -2931,6 +3465,92 @@ async def _run_peripheral_aggregate_job(request: SyncPeripheralAggregateRequest)
                 completed_steps = 0
         monitor.finish(
             "peripheral_aggregate",
+            success=False,
+            total_rows=completed_steps or None,
+            error=str(exc),
+            last_duration=elapsed,
+        )
+        raise
+
+
+async def _run_fund_flow_aggregate_job(request: SyncFundFlowAggregateRequest) -> None:
+    started = time.perf_counter()
+
+    steps: List[Tuple[str, str, Callable[[BaseModel], Awaitable[None]], BaseModel]] = [
+        (
+            "industry_fund_flow",
+            "Syncing industry fund flow data",
+            _run_industry_fund_flow_job,
+            SyncIndustryFundFlowRequest(),
+        ),
+        (
+            "concept_fund_flow",
+            "Syncing concept fund flow data",
+            _run_concept_fund_flow_job,
+            SyncConceptFundFlowRequest(),
+        ),
+        (
+            "individual_fund_flow",
+            "Syncing individual fund flow data",
+            _run_individual_fund_flow_job,
+            SyncIndividualFundFlowRequest(),
+        ),
+        (
+            "hsgt_fund_flow",
+            "Syncing HSGT fund flow summary",
+            _run_hsgt_fund_flow_job,
+            SyncHsgtFundFlowRequest(),
+        ),
+        (
+            "margin_account",
+            "Syncing margin account statistics",
+            _run_margin_account_job,
+            SyncMarginAccountRequest(),
+        ),
+        (
+            "big_deal_fund_flow",
+            "Syncing big deal fund flow data",
+            _run_big_deal_fund_flow_job,
+            SyncBigDealFundFlowRequest(),
+        ),
+    ]
+
+    total_steps = len(steps)
+
+    try:
+        for idx, (job_key, status_message, runner, runner_request) in enumerate(steps, start=1):
+            monitor.update(
+                "fund_flow_aggregate",
+                progress=(idx - 1) / total_steps,
+                message=status_message,
+            )
+            monitor.start(job_key, message=status_message)
+            monitor.update(job_key, progress=0.0)
+            await runner(runner_request)
+            monitor.update(
+                "fund_flow_aggregate",
+                progress=idx / total_steps,
+                message=status_message,
+            )
+
+        elapsed = time.perf_counter() - started
+        monitor.finish(
+            "fund_flow_aggregate",
+            success=True,
+            total_rows=total_steps,
+            message="Fund flow aggregate sync completed",
+            last_duration=elapsed,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        elapsed = time.perf_counter() - started
+        completed_steps = 0
+        if "idx" in locals():
+            try:
+                completed_steps = max(0, int(idx) - 1)
+            except Exception:  # pragma: no cover - defensive
+                completed_steps = 0
+        monitor.finish(
+            "fund_flow_aggregate",
             success=False,
             total_rows=completed_steps or None,
             error=str(exc),
@@ -3111,6 +3731,94 @@ async def _run_big_deal_fund_flow_job(request: SyncBigDealFundFlowRequest) -> No
             elapsed = time.perf_counter() - started
             monitor.finish(
                 "big_deal_fund_flow",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_hsgt_fund_flow_job(request: SyncHsgtFundFlowRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "hsgt_fund_flow",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        default_symbol = "北向资金"
+        symbol = (request.symbol or default_symbol).strip() if hasattr(request, "symbol") else default_symbol
+        monitor.update("hsgt_fund_flow", message=f"Collecting HSGT fund flow data ({symbol})")
+        try:
+            result = sync_hsgt_fund_flow(symbol=symbol, progress_callback=progress_callback)
+            stats = HSGTFundFlowDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            message_text = f"Synced {result.get('rows', 0)} HSGT fund flow rows ({symbol})"
+            monitor.finish(
+                "hsgt_fund_flow",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "hsgt_fund_flow",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_margin_account_job(request: SyncMarginAccountRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
+        monitor.update(
+            "margin_account",
+            progress=progress,
+            message=message,
+            total_rows=total_rows,
+        )
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("margin_account", message="Collecting margin account statistics")
+        try:
+            result = sync_margin_account_info(progress_callback=progress_callback)
+            stats = MarginAccountDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            message_text = f"Synced {result.get('rows', 0)} margin account rows"
+            monitor.finish(
+                "margin_account",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "margin_account",
                 success=False,
                 error=str(exc),
                 last_duration=elapsed,
@@ -3309,12 +4017,12 @@ async def start_performance_forecast_job(payload: SyncPerformanceForecastRequest
     asyncio.create_task(_run_performance_forecast_job(payload))
 
 
-async def start_profit_forecast_job(payload: SyncProfitForecastRequest) -> None:
-    if _job_running("profit_forecast"):
-        raise HTTPException(status_code=409, detail="Profit forecast sync already running")
-    monitor.start("profit_forecast", message="Syncing profit forecast data")
-    monitor.update("profit_forecast", progress=0.0)
-    asyncio.create_task(_run_profit_forecast_job(payload))
+async def start_market_insight_job(payload: SyncMarketInsightRequest) -> None:
+    if _job_running("market_insight"):
+        raise HTTPException(status_code=409, detail="Market insight job already running")
+    monitor.start("market_insight", message="Generating market insight summary")
+    monitor.update("market_insight", progress=0.0)
+    asyncio.create_task(_run_market_insight_job(payload))
 
 
 async def start_global_index_job(payload: SyncGlobalIndexRequest) -> None:  # noqa: ARG001
@@ -3323,6 +4031,45 @@ async def start_global_index_job(payload: SyncGlobalIndexRequest) -> None:  # no
     monitor.start("global_index", message="Syncing global index snapshot")
     monitor.update("global_index", progress=0.0)
     asyncio.create_task(_run_global_index_job(payload))
+
+
+async def start_realtime_index_job(payload: SyncRealtimeIndexRequest) -> None:  # noqa: ARG001
+    if _job_running("realtime_index"):
+        raise HTTPException(status_code=409, detail="Realtime index sync already running")
+    monitor.start("realtime_index", message="Syncing realtime China indices")
+    monitor.update("realtime_index", progress=0.0)
+    asyncio.create_task(_run_realtime_index_job(payload))
+
+
+async def start_index_history_job(payload: SyncIndexHistoryRequest) -> None:
+    if _job_running("index_history"):
+        raise HTTPException(status_code=409, detail="Index history sync already running")
+
+    normalized_codes: Optional[List[str]] = None
+    if payload.index_codes:
+        filtered = []
+        for code in payload.index_codes:
+            if not code:
+                continue
+            normalized = str(code).strip().upper()
+            if normalized:
+                filtered.append(normalized)
+        if filtered:
+            normalized_codes = filtered
+
+    request = payload
+    if normalized_codes is not None:
+        request = payload.copy(update={"index_codes": normalized_codes})
+
+    if normalized_codes:
+        monitor.start(
+            "index_history",
+            message=f"Syncing index history ({', '.join(normalized_codes)})",
+        )
+    else:
+        monitor.start("index_history", message="Syncing index history (core indices)")
+    monitor.update("index_history", progress=0.0)
+    asyncio.create_task(_run_index_history_job(request))
 
 
 async def start_dollar_index_job(payload: SyncDollarIndexRequest) -> None:
@@ -3421,6 +4168,29 @@ async def start_peripheral_insight_job(payload: SyncPeripheralInsightRequest) ->
     asyncio.create_task(_run_peripheral_insight_job(payload))
 
 
+async def start_macro_aggregate_job(payload: SyncMacroAggregateRequest) -> None:
+    if _job_running("macro_aggregate"):
+        raise HTTPException(status_code=409, detail="Macro aggregate sync already running")
+
+    dependent_jobs = [
+        ("leverage_ratio", "Macro leverage sync already running"),
+        ("social_financing", "Social financing sync already running"),
+        ("cpi_monthly", "CPI sync already running"),
+        ("ppi_monthly", "PPI sync already running"),
+        ("pmi_monthly", "PMI sync already running"),
+        ("m2_monthly", "M2 sync already running"),
+        ("pbc_rate", "PBC rate sync already running"),
+    ]
+
+    for job_key, detail in dependent_jobs:
+        if _job_running(job_key):
+            raise HTTPException(status_code=409, detail=detail)
+
+    monitor.start("macro_aggregate", message="Syncing macro data bundle")
+    monitor.update("macro_aggregate", progress=0.0)
+    asyncio.create_task(_run_macro_aggregate_job(payload))
+
+
 async def start_peripheral_aggregate_job(payload: SyncPeripheralAggregateRequest) -> None:
     if _job_running("peripheral_aggregate"):
         raise HTTPException(status_code=409, detail="Peripheral aggregate sync already running")
@@ -3441,6 +4211,28 @@ async def start_peripheral_aggregate_job(payload: SyncPeripheralAggregateRequest
     monitor.start("peripheral_aggregate", message="Syncing peripheral data bundle")
     monitor.update("peripheral_aggregate", progress=0.0)
     asyncio.create_task(_run_peripheral_aggregate_job(payload))
+
+
+async def start_fund_flow_aggregate_job(payload: SyncFundFlowAggregateRequest) -> None:
+    if _job_running("fund_flow_aggregate"):
+        raise HTTPException(status_code=409, detail="Fund flow aggregate sync already running")
+
+    dependent_jobs = [
+        ("industry_fund_flow", "Industry fund flow sync already running"),
+        ("concept_fund_flow", "Concept fund flow sync already running"),
+        ("individual_fund_flow", "Individual fund flow sync already running"),
+        ("hsgt_fund_flow", "HSGT fund flow sync already running"),
+        ("margin_account", "Margin account sync already running"),
+        ("big_deal_fund_flow", "Big deal fund flow sync already running"),
+    ]
+
+    for job_key, error_message in dependent_jobs:
+        if _job_running(job_key):
+            raise HTTPException(status_code=409, detail=error_message)
+
+    monitor.start("fund_flow_aggregate", message="Syncing fund flow bundle")
+    monitor.update("fund_flow_aggregate", progress=0.0)
+    asyncio.create_task(_run_fund_flow_aggregate_job(payload))
 
 
 async def start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -3473,6 +4265,23 @@ async def start_big_deal_fund_flow_job(payload: SyncBigDealFundFlowRequest) -> N
     monitor.start("big_deal_fund_flow", message="Syncing big deal fund flow data")
     monitor.update("big_deal_fund_flow", progress=0.0)
     asyncio.create_task(_run_big_deal_fund_flow_job(payload))
+
+
+async def start_hsgt_fund_flow_job(payload: SyncHsgtFundFlowRequest) -> None:
+    if _job_running("hsgt_fund_flow"):
+        raise HTTPException(status_code=409, detail="HSGT fund flow sync already running")
+    symbol = (payload.symbol or "北向资金").strip() if getattr(payload, "symbol", None) else "北向资金"
+    monitor.start("hsgt_fund_flow", message=f"Syncing HSGT fund flow data ({symbol})")
+    monitor.update("hsgt_fund_flow", progress=0.0)
+    asyncio.create_task(_run_hsgt_fund_flow_job(payload))
+
+
+async def start_margin_account_job(payload: SyncMarginAccountRequest) -> None:
+    if _job_running("margin_account"):
+        raise HTTPException(status_code=409, detail="Margin account sync already running")
+    monitor.start("margin_account", message="Syncing margin account statistics")
+    monitor.update("margin_account", progress=0.0)
+    asyncio.create_task(_run_margin_account_job(payload))
 
 
 async def start_stock_main_business_job(payload: SyncStockMainBusinessRequest) -> None:
@@ -3621,6 +4430,13 @@ async def safe_start_global_index_job(payload: SyncGlobalIndexRequest) -> None:
         logger.info("Global index sync skipped: %s", exc.detail)
 
 
+async def safe_start_realtime_index_job(payload: SyncRealtimeIndexRequest) -> None:
+    try:
+        await start_realtime_index_job(payload)
+    except HTTPException as exc:
+        logger.info("Realtime index sync skipped: %s", exc.detail)
+
+
 async def safe_start_dollar_index_job(payload: SyncDollarIndexRequest) -> None:
     try:
         await start_dollar_index_job(payload)
@@ -3698,11 +4514,25 @@ async def safe_start_peripheral_insight_job(payload: SyncPeripheralInsightReques
         logger.info("Peripheral insight generation skipped: %s", exc.detail)
 
 
+async def safe_start_macro_aggregate_job(payload: SyncMacroAggregateRequest) -> None:
+    try:
+        await start_macro_aggregate_job(payload)
+    except HTTPException as exc:
+        logger.info("Macro aggregate sync skipped: %s", exc.detail)
+
+
 async def safe_start_peripheral_aggregate_job(payload: SyncPeripheralAggregateRequest) -> None:
     try:
         await start_peripheral_aggregate_job(payload)
     except HTTPException as exc:
         logger.info("Peripheral aggregate sync skipped: %s", exc.detail)
+
+
+async def safe_start_fund_flow_aggregate_job(payload: SyncFundFlowAggregateRequest) -> None:
+    try:
+        await start_fund_flow_aggregate_job(payload)
+    except HTTPException as exc:
+        logger.info("Fund flow aggregate sync skipped: %s", exc.detail)
 
 
 async def safe_start_industry_fund_flow_job(payload: SyncIndustryFundFlowRequest) -> None:
@@ -3865,6 +4695,20 @@ async def safe_start_big_deal_fund_flow_job(payload: SyncBigDealFundFlowRequest)
         logger.info("Big deal fund flow sync skipped: %s", exc.detail)
 
 
+async def safe_start_hsgt_fund_flow_job(payload: SyncHsgtFundFlowRequest) -> None:
+    try:
+        await start_hsgt_fund_flow_job(payload)
+    except HTTPException as exc:
+        logger.info("HSGT fund flow sync skipped: %s", exc.detail)
+
+
+async def safe_start_margin_account_job(payload: SyncMarginAccountRequest) -> None:
+    try:
+        await start_margin_account_job(payload)
+    except HTTPException as exc:
+        logger.info("Margin account sync skipped: %s", exc.detail)
+
+
 async def safe_start_stock_main_business_job(payload: SyncStockMainBusinessRequest) -> None:
     try:
         await start_stock_main_business_job(payload)
@@ -3884,6 +4728,20 @@ async def safe_start_global_flash_job(payload: SyncGlobalFlashRequest) -> None:
         await start_global_flash_job(payload)
     except HTTPException as exc:
         logger.info("Global flash sync skipped: %s", exc.detail)
+
+
+async def safe_start_market_insight_job(payload: SyncMarketInsightRequest) -> None:
+    try:
+        await start_market_insight_job(payload)
+    except HTTPException as exc:
+        logger.info("Market insight job skipped: %s", exc.detail)
+
+
+async def safe_start_index_history_job(payload: SyncIndexHistoryRequest) -> None:
+    try:
+        await start_index_history_job(payload)
+    except HTTPException as exc:
+        logger.info("Index history sync skipped: %s", exc.detail)
 
 
 @app.on_event("startup")
@@ -3915,6 +4773,14 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=17, minute=5),
             id="daily_indicator_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: _submit_scheduler_task(
+                safe_start_index_history_job(SyncIndexHistoryRequest())
+            ),
+            CronTrigger(hour=17, minute=0),
+            id="index_history_daily",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -3969,9 +4835,25 @@ async def startup_event() -> None:
         )
         scheduler.add_job(
             lambda: _submit_scheduler_task(
-                safe_start_big_deal_fund_flow_job(SyncBigDealFundFlowRequest())
+                safe_start_hsgt_fund_flow_job(SyncHsgtFundFlowRequest())
+            ),
+            CronTrigger(hour=19, minute=36),
+            id="hsgt_fund_flow_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: _submit_scheduler_task(
+                safe_start_margin_account_job(SyncMarginAccountRequest())
             ),
             CronTrigger(hour=19, minute=37),
+            id="margin_account_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: _submit_scheduler_task(
+                safe_start_big_deal_fund_flow_job(SyncBigDealFundFlowRequest())
+            ),
+            CronTrigger(hour=19, minute=38),
             id="big_deal_fund_flow_daily",
             replace_existing=True,
         )
@@ -4668,7 +5550,7 @@ def list_profit_forecast_entries(
 
 @app.get("/macro/global-indices", response_model=GlobalIndexListResponse)
 def list_global_indices_api(
-    limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
+    limit: int = Query(500, ge=1, le=2000, description="Maximum number of entries to return."),
     offset: int = Query(0, ge=0, description="Offset for pagination."),
 ) -> GlobalIndexListResponse:
     result = list_global_indices(limit=limit, offset=offset)
@@ -4697,9 +5579,116 @@ def list_global_indices_api(
     )
 
 
+@app.get("/markets/realtime-indices", response_model=RealtimeIndexListResponse)
+def list_realtime_indices_api(
+    limit: int = Query(500, ge=1, le=1000, description="Maximum number of realtime indices to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> RealtimeIndexListResponse:
+    result = list_realtime_indices(limit=limit, offset=offset)
+    items = [
+        RealtimeIndexRecord(
+            code=entry.get("code"),
+            name=entry.get("name"),
+            latestPrice=entry.get("latest_price"),
+            changeAmount=entry.get("change_amount"),
+            changePercent=entry.get("change_percent"),
+            prevClose=entry.get("prev_close"),
+            openPrice=entry.get("open_price"),
+            highPrice=entry.get("high_price"),
+            lowPrice=entry.get("low_price"),
+            volume=entry.get("volume"),
+            turnover=entry.get("turnover"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return RealtimeIndexListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        last_synced_at=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
+    )
+
+
+@app.get("/markets/index-history", response_model=IndexHistoryListResponse)
+def get_index_history_api(
+    index_code: Optional[str] = Query(
+        None,
+        alias="indexCode",
+        description="Index code with exchange suffix (e.g. 000001.SH). Defaults to the first configured index.",
+    ),
+    limit: int = Query(
+        500,
+        ge=50,
+        le=2000,
+        description="Maximum number of records to return (oldest to newest).",
+    ),
+    start_date: Optional[date] = Query(
+        None,
+        alias="startDate",
+        description="Optional filter to include records on or after this date.",
+    ),
+    end_date: Optional[date] = Query(
+        None,
+        alias="endDate",
+        description="Optional filter to include records on or before this date.",
+    ),
+) -> IndexHistoryListResponse:
+    default_code = next(iter(INDEX_CONFIG.keys()))
+    selected_code = (index_code or default_code).strip().upper()
+
+    history_rows = list_index_history(
+        index_code=selected_code,
+        limit=limit,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    inferred_name: Optional[str] = None
+    if history_rows:
+        inferred_name = history_rows[-1].get("index_name") or history_rows[0].get("index_name")
+    index_meta = INDEX_CONFIG.get(selected_code)
+    if not inferred_name and index_meta:
+        inferred_name = index_meta.get("name")
+
+    items_payload = [
+        {
+            "indexCode": row.get("index_code") or selected_code,
+            "indexName": row.get("index_name") or inferred_name,
+            "tradeDate": row.get("trade_date"),
+            "open": row.get("open"),
+            "close": row.get("close"),
+            "high": row.get("high"),
+            "low": row.get("low"),
+            "volume": row.get("volume"),
+            "amount": row.get("amount"),
+            "amplitude": row.get("amplitude"),
+            "pctChange": row.get("pct_change"),
+            "changeAmount": row.get("change_amount"),
+            "turnover": row.get("turnover"),
+        }
+        for row in history_rows
+    ]
+
+    available_indices = [
+        {
+            "code": code,
+            "name": meta.get("name", code),
+            "symbol": meta.get("symbol", code),
+        }
+        for code, meta in INDEX_CONFIG.items()
+    ]
+
+    return IndexHistoryListResponse(
+        indexCode=selected_code,
+        indexName=inferred_name,
+        items=[IndexHistoryRecord(**item) for item in items_payload],
+        availableIndices=[IndexOption(**option) for option in available_indices],
+    )
+
+
 @app.get("/macro/dollar-index", response_model=DollarIndexListResponse)
 def list_dollar_index_api(
-    limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
+    limit: int = Query(500, ge=1, le=2000, description="Maximum number of entries to return."),
     offset: int = Query(0, ge=0, description="Offset for pagination."),
     start_date: Optional[date] = Query(None, alias="startDate", description="Filter results on or after this date."),
     end_date: Optional[date] = Query(None, alias="endDate", description="Filter results on or before this date."),
@@ -4728,7 +5717,7 @@ def list_dollar_index_api(
 
 @app.get("/macro/rmb-midpoint", response_model=RmbMidpointListResponse)
 def list_rmb_midpoint_api(
-    limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
+    limit: int = Query(500, ge=1, le=2000, description="Maximum number of entries to return."),
     offset: int = Query(0, ge=0, description="Offset for pagination."),
     start_date: Optional[date] = Query(None, alias="startDate", description="Filter results on or after this date."),
     end_date: Optional[date] = Query(None, alias="endDate", description="Filter results on or before this date."),
@@ -5170,39 +6159,143 @@ def list_big_deal_fund_flow_entries(
     return BigDealFundFlowListResponse(total=int(result.get("total", 0)), items=items)
 
 
-@app.get("/finance-breakfast", response_model=List[FinanceBreakfastItem])
+@app.get("/fund-flow/hsgt", response_model=HsgtFundFlowListResponse)
+def list_hsgt_fund_flow_entries(
+    symbol: Optional[str] = Query(
+        None,
+        description="Optional symbol selector (default 北向资金).",
+    ),
+    start_date: Optional[str] = Query(
+        None,
+        alias="startDate",
+        description="Optional start date filter (YYYY-MM-DD).",
+    ),
+    end_date: Optional[str] = Query(
+        None,
+        alias="endDate",
+        description="Optional end date filter (YYYY-MM-DD).",
+    ),
+    limit: int = Query(200, ge=1, le=2000, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> HsgtFundFlowListResponse:
+    result = list_hsgt_fund_flow(
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset,
+    )
+    items = [
+        HsgtFundFlowRecord(
+            tradeDate=entry.get("trade_date"),
+            symbol=entry.get("symbol"),
+            netBuyAmount=entry.get("net_buy_amount"),
+            buyAmount=entry.get("buy_amount"),
+            sellAmount=entry.get("sell_amount"),
+            netBuyAmountCumulative=entry.get("net_buy_amount_cumulative"),
+            fundInflow=entry.get("fund_inflow"),
+            balance=entry.get("balance"),
+            marketValue=entry.get("market_value"),
+            leadingStock=entry.get("leading_stock"),
+            leadingStockChangePercent=entry.get("leading_stock_change_percent"),
+            leadingStockCode=entry.get("leading_stock_code"),
+            hs300Index=entry.get("hs300_index"),
+            hs300ChangePercent=entry.get("hs300_change_percent"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return HsgtFundFlowListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        last_synced_at=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
+        availableYears=[int(year) for year in result.get("available_years", [])],
+    )
+
+
+@app.get("/margin/account", response_model=MarginAccountListResponse)
+def list_margin_account_entries(
+    start_date: Optional[str] = Query(
+        None,
+        alias="startDate",
+        description="Optional start date filter (YYYY-MM-DD).",
+    ),
+    end_date: Optional[str] = Query(
+        None,
+        alias="endDate",
+        description="Optional end date filter (YYYY-MM-DD).",
+    ),
+    limit: int = Query(200, ge=1, le=2000, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> MarginAccountListResponse:
+    result = list_margin_account_info(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset,
+    )
+    items = [
+        MarginAccountRecord(
+            tradeDate=entry.get("trade_date"),
+            financingBalance=entry.get("financing_balance"),
+            securitiesLendingBalance=entry.get("securities_lending_balance"),
+            financingPurchaseAmount=entry.get("financing_purchase_amount"),
+            securitiesLendingSellAmount=entry.get("securities_lending_sell_amount"),
+            securitiesCompanyCount=entry.get("securities_company_count"),
+            businessDepartmentCount=entry.get("business_department_count"),
+            individualInvestorCount=entry.get("individual_investor_count"),
+            institutionalInvestorCount=entry.get("institutional_investor_count"),
+            participatingInvestorCount=entry.get("participating_investor_count"),
+            liabilityInvestorCount=entry.get("liability_investor_count"),
+            collateralValue=entry.get("collateral_value"),
+            averageCollateralRatio=entry.get("average_collateral_ratio"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return MarginAccountListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        last_synced_at=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
+        availableYears=[int(year) for year in result.get("available_years", []) if year is not None],
+    )
+
+
+@app.get("/finance-breakfast", response_model=List[NewsArticleItem])
 async def list_finance_breakfast_entries(
     limit: int = Query(50, ge=1, le=200, description="Maximum number of entries to return."),
-) -> List[FinanceBreakfastItem]:
+) -> List[NewsArticleItem]:
     try:
-        entries = list_finance_breakfast(limit=limit)
+        entries = list_news_articles(source="finance_breakfast", limit=limit)
     except Exception as exc:
         logger.warning("Finance breakfast query failed: %s", exc)
         entries = []
     if not entries:
         if not _submit_scheduler_task(safe_start_finance_breakfast_job(SyncFinanceBreakfastRequest())):
             logger.debug("Finance breakfast sync could not be scheduled (no running loop).")
-    return [
-        FinanceBreakfastItem(
-            title=entry.get("title", ""),
-            summary=entry.get("summary"),
-            content=entry.get("content"),
-            ai_extract=entry.get("ai_extract"),
-            ai_extract_summary=entry.get("ai_extract_summary"),
-            ai_extract_detail=entry.get("ai_extract_detail"),
-            published_at=entry.get("published_at"),
-            url=entry.get("url"),
-        )
-        for entry in entries
-    ]
+    return [NewsArticleItem(**entry) for entry in entries]
 
 
-@app.get("/news/global-flash", response_model=List[GlobalFlashItem])
+@app.get("/news/articles", response_model=List[NewsArticleItem])
+def list_news_articles_endpoint(
+    source: Optional[str] = Query(None, description="Optional source filter (e.g. global_flash, finance_breakfast)."),
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of articles to return."),
+    only_relevant: bool = Query(
+        False,
+        alias="onlyRelevant",
+        description="Return only articles marked as relevant by the classifier.",
+    ),
+) -> List[NewsArticleItem]:
+    entries = list_news_articles(source=source, limit=limit, only_relevant=only_relevant)
+    return [NewsArticleItem(**entry) for entry in entries]
+
+
+@app.get("/news/global-flash", response_model=List[NewsArticleItem])
 async def list_global_flash_entries(
     limit: int = Query(100, ge=1, le=500, description="Maximum number of headlines to return."),
-) -> List[GlobalFlashItem]:
+) -> List[NewsArticleItem]:
     try:
-        entries = list_global_flash(limit=limit)
+        entries = list_news_articles(source="global_flash", limit=limit)
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Global flash query failed: %s", exc)
         entries = []
@@ -5211,29 +6304,54 @@ async def list_global_flash_entries(
         if not _submit_scheduler_task(safe_start_global_flash_job(SyncGlobalFlashRequest())):
             logger.debug("Global flash sync could not be scheduled (no running loop).")
 
-    return [
-        GlobalFlashItem(
-            title=entry.get("title", ""),
-            summary=entry.get("summary"),
-            published_at=entry.get("published_at"),
-            url=entry.get("url", ""),
-            if_extract=entry.get("if_extract"),
-            extract_checked_at=entry.get("extract_checked_at"),
-            extract_reason=entry.get("extract_reason"),
-            subject_level=entry.get("subject_level"),
-            impact_scope=entry.get("impact_scope"),
-            event_type=entry.get("event_type"),
-            time_sensitivity=entry.get("time_sensitivity"),
-            quant_signal=entry.get("quant_signal"),
-            impact_levels=entry.get("impact_levels") or [],
-            impact_markets=entry.get("impact_markets") or [],
-            impact_industries=entry.get("impact_industries") or [],
-            impact_sectors=entry.get("impact_sectors") or [],
-            impact_themes=entry.get("impact_themes") or [],
-            impact_stocks=entry.get("impact_stocks") or [],
-        )
-        for entry in entries
-    ]
+    return [NewsArticleItem(**entry) for entry in entries]
+
+
+@app.get("/news/market-insight", response_model=MarketInsightResponse)
+def get_market_insight(
+    lookback_hours: int = Query(24, ge=1, le=72, alias="lookbackHours", description="Hours to look back when no summary exists."),
+    article_limit: int = Query(40, ge=5, le=50, alias="articleLimit", description="Maximum referenced headlines when no summary exists."),
+) -> MarketInsightResponse:
+    summary_payload: Optional[MarketInsightSummaryPayload] = None
+    articles: List[MarketInsightArticleItem] = []
+
+    try:
+        summary = get_latest_market_insight()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to load latest market insight: %s", exc)
+        summary = None
+
+    if summary:
+        payload = _build_market_insight_payload(summary)
+        summary_payload = payload["summary"]
+        articles = payload["articles"]
+    else:
+        try:
+            recent_articles = collect_recent_market_headlines(
+                lookback_hours=lookback_hours,
+                limit=article_limit,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to collect recent market headlines: %s", exc)
+            recent_articles = []
+
+        for entry in recent_articles:
+            published_at = entry.get("published_at")
+            articles.append(
+                MarketInsightArticleItem(
+                    articleId=entry.get("article_id"),
+                    source=entry.get("source"),
+                    title=entry.get("title"),
+                    impactSummary=entry.get("impact_summary"),
+                    impactAnalysis=entry.get("impact_analysis"),
+                    impactConfidence=entry.get("impact_confidence"),
+                    markets=list(entry.get("impact_markets") or []),
+                    publishedAt=_localize_datetime(published_at) if isinstance(published_at, datetime) else None,
+                    url=entry.get("url"),
+                )
+            )
+
+    return MarketInsightResponse(summary=summary_payload, articles=articles)
 
 
 @app.get("/control/status", response_model=ControlStatusResponse)
@@ -5298,6 +6416,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect global_index stats: %s", exc)
         stats_map["global_index"] = {}
     try:
+        stats_map["realtime_index"] = RealtimeIndexDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect realtime_index stats: %s", exc)
+        stats_map["realtime_index"] = {}
+    try:
         stats_map["dollar_index"] = DollarIndexDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect dollar_index stats: %s", exc)
@@ -5307,6 +6430,11 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect rmb_midpoint stats: %s", exc)
         stats_map["rmb_midpoint"] = {}
+    try:
+        stats_map["index_history"] = IndexHistoryDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect index_history stats: %s", exc)
+        stats_map["index_history"] = {}
     try:
         stats_map["futures_realtime"] = FuturesRealtimeDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -5378,6 +6506,16 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect big_deal_fund_flow stats: %s", exc)
         stats_map["big_deal_fund_flow"] = {}
     try:
+        stats_map["hsgt_fund_flow"] = HSGTFundFlowDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect hsgt_fund_flow stats: %s", exc)
+        stats_map["hsgt_fund_flow"] = {}
+    try:
+        stats_map["margin_account"] = MarginAccountDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect margin_account stats: %s", exc)
+        stats_map["margin_account"] = {}
+    try:
         stats_map["stock_main_business"] = StockMainBusinessDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect stock_main_business stats: %s", exc)
@@ -5387,13 +6525,14 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect stock_main_composition stats: %s", exc)
         stats_map["stock_main_composition"] = {}
+    news_dao = NewsArticleDAO(settings.postgres)
     try:
-        stats_map["finance_breakfast"] = FinanceBreakfastDAO(settings.postgres).stats()
+        stats_map["finance_breakfast"] = news_dao.stats(source="finance_breakfast")
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect finance_breakfast stats: %s", exc)
         stats_map["finance_breakfast"] = {}
     try:
-        stats_map["global_flash"] = GlobalFlashDAO(settings.postgres).stats()
+        stats_map["global_flash"] = news_dao.stats(source="global_flash")
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect global_flash stats: %s", exc)
         stats_map["global_flash"] = {}
@@ -5402,6 +6541,8 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect trade_calendar stats: %s", exc)
         stats_map["trade_calendar"] = {}
+
+    stats_map.setdefault("fund_flow_aggregate", {})
 
     jobs: Dict[str, JobStatusPayload] = {}
     for name, info in monitor.snapshot().items():
@@ -5493,6 +6634,80 @@ def update_runtime_config(payload: RuntimeConfigPayload) -> RuntimeConfigPayload
     return _runtime_config_to_payload(config)
 
 
+def _build_market_insight_payload(summary: Dict[str, object]) -> Dict[str, object]:
+    summary_json = summary.get("summary_json")
+    if isinstance(summary_json, str):
+        try:
+            summary_json = json.loads(summary_json)
+        except json.JSONDecodeError:
+            summary_json = {"text": summary_json}
+    elif summary_json is not None and not isinstance(summary_json, dict):
+        summary_json = {"text": str(summary_json)}
+
+    referenced = summary.get("referenced_articles") or []
+    articles: List[MarketInsightArticleItem] = []
+    if isinstance(referenced, str):
+        try:
+            referenced = json.loads(referenced)
+        except json.JSONDecodeError:
+            referenced = []
+    if isinstance(referenced, list):
+        for entry in referenced:
+            if not isinstance(entry, dict):
+                continue
+            markets = entry.get("markets") or entry.get("impact_markets") or []
+            if isinstance(markets, str):
+                markets = [part.strip() for part in markets.split(",") if part.strip()]
+            published_at = entry.get("published_at") or entry.get("publishedAt")
+            article_payload = {
+                "articleId": entry.get("article_id"),
+                "source": entry.get("source"),
+                "title": entry.get("title"),
+                "impactSummary": entry.get("impact_summary"),
+                "impactAnalysis": entry.get("impact_analysis"),
+                "impactConfidence": entry.get("impact_confidence"),
+                "markets": markets if isinstance(markets, list) else [],
+                "publishedAt": _parse_datetime(published_at),
+                "url": entry.get("url"),
+            }
+            articles.append(MarketInsightArticleItem(**article_payload))
+
+    generated_at = _localize_datetime(summary.get("generated_at"))
+    window_start = _localize_datetime(summary.get("window_start"))
+    window_end = _localize_datetime(summary.get("window_end"))
+    elapsed_ms = summary.get("elapsed_ms")
+    elapsed_seconds = None
+    if isinstance(elapsed_ms, (int, float)):
+        elapsed_seconds = float(elapsed_ms) / 1000.0
+
+    summary_payload = MarketInsightSummaryPayload(
+        summaryId=str(summary.get("summary_id")),
+        generatedAt=generated_at or _local_now(),
+        windowStart=window_start or generated_at or _local_now(),
+        windowEnd=window_end or generated_at or _local_now(),
+        headlineCount=int(summary.get("headline_count") or 0),
+        summary=summary_json,
+        rawResponse=summary.get("raw_response"),
+        promptTokens=summary.get("prompt_tokens"),
+        completionTokens=summary.get("completion_tokens"),
+        totalTokens=summary.get("total_tokens"),
+        elapsedSeconds=elapsed_seconds,
+        modelUsed=summary.get("model_used"),
+    )
+
+    return {
+        "summary": summary_payload,
+        "articles": articles,
+    }
+
+
+
+@app.post("/control/sync/market-insight")
+async def control_sync_market_insight(payload: SyncMarketInsightRequest) -> dict[str, str]:
+    await start_market_insight_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/stock-basic")
 async def control_sync_stock_basic(payload: SyncStockBasicRequest) -> dict[str, str]:
     await start_stock_basic_job(payload)
@@ -5554,8 +6769,10 @@ async def control_sync_profit_forecast(payload: SyncProfitForecastRequest) -> di
 
 
 @app.post("/control/sync/global-indices")
-async def control_sync_global_indices(payload: SyncGlobalIndexRequest) -> dict[str, str]:
-    await start_global_index_job(payload)
+async def control_sync_global_indices(
+    payload: Optional[SyncGlobalIndexRequest] = Body(default=None),
+) -> dict[str, str]:
+    await start_global_index_job(payload or SyncGlobalIndexRequest())
     return {"status": "started"}
 
 
@@ -5625,6 +6842,18 @@ async def control_sync_fed_statements(payload: SyncFedStatementRequest) -> dict[
     return {"status": "started"}
 
 
+@app.post("/control/sync/macro-aggregate")
+async def control_sync_macro_aggregate(payload: SyncMacroAggregateRequest) -> dict[str, str]:
+    await start_macro_aggregate_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/fund-flow-aggregate")
+async def control_sync_fund_flow_aggregate(payload: SyncFundFlowAggregateRequest) -> dict[str, str]:
+    await start_fund_flow_aggregate_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/peripheral-aggregate")
 async def control_sync_peripheral_aggregate(payload: SyncPeripheralAggregateRequest) -> dict[str, str]:
     await start_peripheral_aggregate_job(payload)
@@ -5661,6 +6890,18 @@ async def control_sync_big_deal_fund_flow(payload: SyncBigDealFundFlowRequest) -
     return {"status": "started"}
 
 
+@app.post("/control/sync/margin-account")
+async def control_sync_margin_account(payload: SyncMarginAccountRequest) -> dict[str, str]:
+    await start_margin_account_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/hsgt-fund-flow")
+async def control_sync_hsgt_fund_flow(payload: SyncHsgtFundFlowRequest) -> dict[str, str]:
+    await start_hsgt_fund_flow_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/stock-main-business")
 async def control_sync_stock_main_business(payload: SyncStockMainBusinessRequest) -> dict[str, str]:
     await start_stock_main_business_job(payload)
@@ -5685,6 +6926,18 @@ async def control_sync_global_flash(payload: SyncGlobalFlashRequest) -> dict[str
     return {"status": "started"}
 
 
+@app.post("/control/sync/realtime-indices")
+async def control_sync_realtime_indices(payload: SyncRealtimeIndexRequest) -> dict[str, str]:
+    await start_realtime_index_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/index-history")
+async def control_sync_index_history(payload: SyncIndexHistoryRequest) -> dict[str, str]:
+    await start_index_history_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/global-flash-classification")
 async def control_sync_global_flash_classification(payload: SyncGlobalFlashClassifyRequest) -> dict[str, str]:
     await start_global_flash_classification_job(payload)
@@ -5700,6 +6953,7 @@ async def control_sync_trade_calendar(payload: SyncTradeCalendarRequest) -> dict
 @app.get("/control/debug/stats", include_in_schema=False)
 def control_debug_stats() -> dict[str, object]:
     settings = load_settings()
+    news_dao = NewsArticleDAO(settings.postgres)
     return {
         "stats": {
             "stock_basic": StockBasicDAO(settings.postgres).stats(),
@@ -5708,12 +6962,15 @@ def control_debug_stats() -> dict[str, object]:
             "daily_trade_metrics": DailyTradeMetricsDAO(settings.postgres).stats(),
             "income_statement": IncomeStatementDAO(settings.postgres).stats(),
             "financial_indicator": FinancialIndicatorDAO(settings.postgres).stats(),
-            "finance_breakfast": FinanceBreakfastDAO(settings.postgres).stats(),
-            "global_flash": GlobalFlashDAO(settings.postgres).stats(),
+            "finance_breakfast": news_dao.stats(source="finance_breakfast"),
+            "global_flash": news_dao.stats(source="global_flash"),
+            "realtime_index": RealtimeIndexDAO(settings.postgres).stats(),
+            "index_history": IndexHistoryDAO(settings.postgres).stats(),
             "trade_calendar": TradeCalendarDAO(settings.postgres).stats(),
             "fundamental_metrics": FundamentalMetricsDAO(settings.postgres).stats(),
             "stock_main_business": StockMainBusinessDAO(settings.postgres).stats(),
             "stock_main_composition": StockMainCompositionDAO(settings.postgres).stats(),
+            "market_insight": NewsMarketInsightDAO(settings.postgres).stats(),
         },
         "monitor": monitor.snapshot(),
     }
@@ -5794,7 +7051,7 @@ def trigger_income_statement_sync(payload: SyncIncomeStatementRequest) -> SyncIn
         codes=[str(code) for code in result.get("codes", [])],
         code_count=int(result.get("code_count", len(result.get("codes", [])))),
         total_codes=int(result.get("total_codes", result.get("code_count", 0))),
-        elapsed_seconds=float(result.get("elapsed_seconds", 0.0)),
+        elapsed_seconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
     )
 
 
@@ -5809,7 +7066,7 @@ def trigger_financial_indicator_sync(payload: SyncFinancialIndicatorRequest) -> 
         codes=[str(code) for code in result.get("codes", [])],
         code_count=int(result.get("code_count", len(result.get("codes", [])))),
         total_codes=int(result.get("total_codes", result.get("code_count", 0))),
-        elapsed_seconds=float(result.get("elapsed_seconds", 0.0)),
+        elapsed_seconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
     )
 
 
@@ -5819,7 +7076,7 @@ def trigger_finance_breakfast_sync(payload: SyncFinanceBreakfastRequest) -> Sync
     result = sync_finance_breakfast()
     return SyncFinanceBreakfastResponse(
         rows=int(result["rows"]),
-        elapsedSeconds=float(result.get("elapsed_seconds", 0.0)),
+        elapsedSeconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
     )
 
 
@@ -5835,11 +7092,24 @@ def trigger_global_flash_sync(payload: SyncGlobalFlashRequest) -> SyncGlobalFlas
 
 @app.post("/sync/global-flash/classification", response_model=SyncGlobalFlashClassifyResponse)
 def trigger_global_flash_classification_sync(payload: SyncGlobalFlashClassifyRequest) -> SyncGlobalFlashClassifyResponse:
-    result = classify_global_flash_batch(batch_size=payload.batch_size)
+    relevance_result = classify_relevance_batch(batch_size=payload.batch_size)
+    impact_result = classify_impact_batch(batch_size=payload.batch_size)
+
+    relevance_rows = int(relevance_result.get("rows", 0) or 0)
+    impact_rows = int(impact_result.get("rows", 0) or 0)
+    relevance_requested = int(relevance_result.get("requested", relevance_rows) or relevance_rows)
+    impact_requested = int(impact_result.get("requested", impact_rows) or impact_rows)
+    elapsed_seconds = float(relevance_result.get("elapsedSeconds", 0.0) or 0.0) + float(
+        impact_result.get("elapsedSeconds", 0.0) or 0.0
+    )
+
     return SyncGlobalFlashClassifyResponse(
-        rows=int(result.get("rows", 0)),
-        elapsedSeconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
-        requested=int(result.get("requested", payload.batch_size)),
+        rows=relevance_rows + impact_rows,
+        relevanceRows=relevance_rows,
+        relevanceRequested=relevance_requested,
+        impactRows=impact_rows,
+        impactRequested=impact_requested,
+        elapsedSeconds=elapsed_seconds,
     )
 
 

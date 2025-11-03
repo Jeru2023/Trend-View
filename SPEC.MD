@@ -36,11 +36,17 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-30 (FEATURE backend/frontend-021): Added individual stock fund flow ingestion via AkShare `stock_fund_flow_individual`, new fund-flow sync control, and dedicated dashboard with ranking tabs and per-stock metrics.
 - 2025-10-30 (FEATURE backend/frontend-022): Added big deal tracking via AkShare `stock_fund_flow_big_deal`, including persistence schema/DAO, control panel sync card, dashboards, and stock-detail integrations for big-deal and individual fund flow snapshots.
 - 2025-10-30 (FIX backend-022): Hardened fund flow DAO upserts by de-duplicating conflict keys per batch and wiring date column metadata to avoid `ON CONFLICT` and signature errors during control-panel sync jobs.
+- 2025-11-04 (FEATURE backend/frontend-045): Added Shanghai/Shenzhen-Hong Kong connect fund flow ingestion via AkShare `stock_hsgt_fund_flow_summary_em`, new control panel card, aggregate job integration, and dedicated dashboard with channel/direction filters.
+- 2025-11-05 (UPDATE backend/frontend-046): Switched HSGT module to use AkShare `stock_hsgt_hist_em` (北向资金) historical series, refreshed schema/service/API, and rebuilt the dashboard with yearly filter and extended metrics.
+- 2025-11-05 (FEATURE backend/frontend-050): Added margin account statistics ingestion via AkShare `stock_margin_account_info`, including schema/DAO/service, REST API, Control Panel card, fund flow aggregate integration, and a dedicated dashboard with pagination and yearly filters.
 - 2025-10-30 (UPDATE frontend/backend-018): Reworked performance express & forecast pages plus stock detail highlights for the AkShare schemas (card layout restored, table columns realigned, links to stock detail, single-column tiles, and full-text change reasons with compact empty states).
 - 2025-10-31 (FEATURE backend/frontend-025): Integrated Tonghuashun `stock_zyjs_ths` main business ingestion, control panel sync entry, and stock detail overview display.
+- 2025-11-02 (FEATURE backend/frontend-031): Added A-share index history ingestion via AkShare `index_zh_a_hist`, including DAO/service, daily 17:00 scheduler, control panel trigger, navigation entry under Market, and new index-history page with ECharts trend plus tabular metrics for SSE Composite, SZSE Component, ChiNext, and STAR 50 indices.
+- 2025-11-02 (FEATURE backend/frontend-032): Introduced Sina realtime China index snapshot ingest (`stock_zh_index_spot_sina`) with manual control-panel trigger, dedicated API, Market navigation page, localized table view, and control dashboard wiring.
 - 2025-10-31 (UPDATE backend/frontend-025): Moved stock basic + main business syncs under the new “Base Data” control category and switched the main business job to incremental updates by comparing against existing records.
 - 2025-10-31 (FEATURE backend/frontend-026): Added Eastmoney main composition ingestion (stock_zygc_em), control panel sync card, and stock detail revenue-mix visualisation grouped by category.
 - 2025-10-31 (UPDATE frontend-026): Restyled stock detail business section with paired cards beneath the candlestick (business overview + revenue composition) including progress visuals for key categories.
+- 2025-11-04 (FEATURE backend/frontend-030): Delivered the unified news ingestion & classification pipeline plus Market Insight DeepSeek reasoner summary, new FastAPI endpoints, control trigger, and dedicated frontend page.
 - 2025-10-20 (FEATURE backend-001): Added Tushare API client, DAO layer, and service to fetch and upsert A-share stock basics into PostgreSQL using configuration-driven credentials.
 - 2025-10-20 (FEATURE backend-002): Added daily trade ingestion pipeline covering API client helper, reusable DAO for daily trade data, batching service with duration reporting, and schema template for `daily_trade`.
 - 2025-10-20 (FEATURE backend-003): Delivered FastAPI entrypoint exposing health, stock listing, and sync endpoints backed by existing services.
@@ -90,6 +96,90 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-11-03 (FEATURE backend/frontend-039): Added China PPI module (AkShare macro_china_ppi) with schema/DAO/service, dual 10:00 monthly schedulers, control panel integration, macro navigation entry, and localized dual-line chart plus filtered list view.
 - 2025-11-03 (REQUIREMENT backend/frontend-040): Introduced PBC interest rate decision module (AkShare macro_bank_china_interest_rate) with backend ingestion, manual control panel trigger, macro navigation entry, localized trend/table page, and tooltip guidance.
 - 2025-11-03 (FEATURE backend/frontend-041): Added global finance flash module (AkShare stock_info_global_em) with schema/DAO/service, configurable interval scheduler, control panel automation card, dedicated global flash page, and navigation entry under News.
+
+## Unified News Pipeline (2025-11-03)
+
+### Overview
+- Added a shared news ingestion and classification pipeline that standardises all upstream sources before storage and downstream consumption.
+- Initial integrations cover Eastmoney 7×24 Global Flash (`backend/src/services/global_flash_service.py`) and AkShare Finance Breakfast (`backend/src/services/finance_breakfast_service.py`). New sources can plug in by emitting the same payload contract.
+
+### Storage Model
+- `news_articles` (`backend/config/news_articles_schema.sql`)
+  - Deterministic `article_id` derived from source + upstream key + publish timestamp.
+  - Persists canonical metadata (title, summary, optional content, language, content type) and processing state fields (`processing_status`, attempt counters, `last_error`).
+  - Timestamps normalised to Asia/Shanghai and stored without timezone; indexes support dedupe and queue scans.
+- `news_insights` (`backend/config/news_insights_schema.sql`)
+  - One-to-one with `news_articles.article_id`; captures LLM relevance/impact outputs, hierarchical impact tags, and arbitrary JSON metadata.
+
+### Ingestion Flow
+1. Source service fetches raw DataFrame from AkShare/Eastmoney.
+2. `_prepare_*_frame` coerces column names, trims text, and filters invalid rows.
+3. `_frame_to_pipeline_records` converts rows into payload dictionaries with ISO publish timestamps and content-type hints.
+4. DAO deduplication (`existing_article_ids`) prevents re-inserting previously seen headlines.
+5. `news_pipeline_service.ingest_articles` handles timestamp normalisation, auto-fills `content_fetched` flags, stores raw payload JSON, and writes the batch via `NewsArticleDAO.upsert`.
+6. Finance Breakfast performs a second-stage content fetch (`fetch_eastmoney_detail`) prior to persistence when article bodies are available.
+
+### Processing & Classification
+- Status lifecycle (`NewsArticleDAO`): `pending` → `relevance_in_progress` → (`ready_for_impact` or `completed`) → `impact_in_progress` → `completed`/`error`.
+- Batch acquisition uses `FOR UPDATE SKIP LOCKED` to protect concurrent workers and increments attempt counters (`relevance_attempts`, `impact_attempts`).
+- Relevance batches (`classify_relevance_batch`) build prompts from title/summary/content, call DeepSeek, and persist results via `save_relevance_results`.
+- Impact batches (`classify_impact_batch`) reuse DeepSeek with a richer prompt, parse both camelCase and snake_case fields, merge metadata, and write structured impact summaries/analysis using `save_impact_results`.
+- `reset_in_progress_articles()` resets stuck rows back to `pending`; `last_error` is propagated for diagnostics when parsing or API calls fail.
+
+### Scheduling & Control Panel
+- APScheduler jobs in `backend/src/app.py`:
+  - Global flash ingestion runs hourly with additional intraday guards (respecting trading calendar logic).
+  - Impact/relevance classification executes every 10 minutes (`schedule_global_flash_classification_job`) and logs progress through the control monitor.
+  - Manual endpoints (`/control/sync/global-flash`, `/control/sync/finance-breakfast`, `/control/sync/global-flash-classification`) allow ad-hoc retriggers; payloads are optional.
+- Control panel cards display Asia/Shanghai timestamps thanks to timezone-aware monitor updates.
+
+### API & Frontend Consumption
+- Aggregation helper `list_news_articles` returns unified article + insight payloads with localised timestamps.
+- REST surfaces:
+  - `/news/articles` (generic feed with optional `source` and `onlyRelevant` filters).
+  - `/news/global-flash` for the flash dashboard, `/finance-breakfast` for morning briefs.
+- Frontend bundles (`frontend/public/global-flash.js`, `frontend/public/finance-breakfast.js`) render the new insight fields: impact judgement, relevance/impact confidence, subject level, scope, time sensitivity, quant signals, and topic chips for markets/industries/sectors/themes/stocks.
+
+### Operational Notes
+- DeepSeek credentials remain mandatory for classification; missing tokens result in skipped batches with explicit log messages.
+- Inspect pipeline health via `SELECT processing_status, COUNT(*) FROM news_articles GROUP BY 1` and join `news_insights` for recent impact metadata.
+- When adding sources, reuse `ingest_articles` and emit `source`, `source_item_id`, `title`, `summary`, `content`, `published_at`, and `url` fields; the rest of the pipeline is source-agnostic.
+- `extra_metadata` always retains the model payload (including `raw_response`) to simplify troubleshooting and future prompt tuning.
+
+## Market Insight Reasoner (2025-11-04)
+
+### Summary
+- DeepSeek Reasoner aggregates the latest high-impact news into a 24-hour market narrative aimed at A-share index interpretation.
+- Results persist in `news_market_insights` (`backend/config/news_market_insights_schema.sql`) with prompt/response usage metrics, JSON summary, and referenced headline metadata.
+- Manual trigger only: `/control/sync/market-insight` enqueues the job; control card reports elapsed time, token usage, and Asia/Shanghai timestamps.
+- Headline intake now prioritises up to 40 items by confidence、影响层级、主题覆盖和时效性；后台会抓取更大的候选集并做去重，以扩大资讯覆盖面且控制上下文长度。
+- 单条新闻的摘要/分析文本在入模前做了截断，默认能把 token 规模稳定在 40 条以内；如需更多样本可在触发请求里把 `articleLimit` 调大（上限 50）。
+- 控制面板新增“宏观聚合”任务，一键串行运行杠杆率、社融、CPI、PPI、PMI、M2、央行利率等宏观数据同步，便于每日集中刷新。
+
+### Backend Flow
+1. `collect_recent_market_headlines` joins `news_articles` + `news_insights` for completed rows tagged with market-level impact or explicit market scopes.
+2. Headlines are formatted for the prompt block with publish timestamps normalised to local time.
+3. `generate_market_insight_summary` calls `generate_finance_analysis(..., model_override="deepseek-reasoner", return_usage=True)` to request structured JSON.
+4. Parsed JSON is stored alongside the raw response; token counts and elapsed ms persist for monitoring.
+5. `NewsMarketInsightDAO.insert_summary` performs idempotent upsert so retries overwrite the latest run cleanly.
+
+### API & Frontend
+- `/news/market-insight` returns the latest summary (or a fallback list of qualifying headlines when no summary exists).
+- Response model surfaces:
+  - Summary metadata (`generatedAt`, `windowStart`, `windowEnd`, headline count, token usage, latency, model).
+  - Structured JSON payload (sentiment, confidence, overview, drivers, sectors/indices/risk/actions, detailed notes per headline).
+  - Referenced headlines with impact summaries/analysis/confidence.
+- New sidebar entry under “News” → “Market Insight”; front-end bundle `frontend/public/market-insight.js` renders:
+  - Highlight card with sentiment chip, KPI grid, and sectioned lists。
+  - Responsive article grid featuring impact badges, summaries, analysis paragraphs, and scope chips。
+  - Manual “Generate Insight” button（40条默认样本，内置任务状态提示，409 冲突时提示“任务运行中”）。
+- Styles consolidated in `frontend/public/styles.css` for sentiment chips, insight cards, and news chips; query-string cache busting updated (`styles.css?v=20261110`, `sidebar.js?v=20261110`, `i18n.js?v=20261110`).
+
+### Operational Notes
+- Uses Asia/Shanghai naive timestamps end-to-end; monitor entries convert to local time when persisting job state.
+- Reasoner model default output cap 32k tokens; adjust `MAX_OUTPUT_TOKENS` in `market_insight_service` if future prompts expand.
+- If the reasoner returns invalid JSON, service stores raw text while keeping the run result for debugging (`raw_response` column).
+- Fallback mode surfaces the qualifying headline list so the frontend still provides context even when no summary exists.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.

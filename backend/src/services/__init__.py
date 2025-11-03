@@ -3,7 +3,7 @@
 from .daily_indicator_service import sync_daily_indicator
 from .income_statement_service import sync_income_statements
 from .financial_indicator_service import sync_financial_indicators
-from .finance_breakfast_service import list_finance_breakfast, sync_finance_breakfast
+from .finance_breakfast_service import sync_finance_breakfast
 from .performance_express_service import list_performance_express, sync_performance_express
 from .performance_forecast_service import list_performance_forecast, sync_performance_forecast
 from .profit_forecast_service import list_profit_forecast, sync_profit_forecast
@@ -28,10 +28,22 @@ from .industry_fund_flow_service import list_industry_fund_flow, sync_industry_f
 from .concept_fund_flow_service import list_concept_fund_flow, sync_concept_fund_flow
 from .individual_fund_flow_service import list_individual_fund_flow, sync_individual_fund_flow
 from .big_deal_fund_flow_service import list_big_deal_fund_flow, sync_big_deal_fund_flow
+from .hsgt_fund_flow_service import list_hsgt_fund_flow, sync_hsgt_fund_flow
 from .stock_main_business_service import get_stock_main_business, sync_stock_main_business
 from .stock_main_composition_service import get_stock_main_composition, sync_stock_main_composition
-from .global_flash_service import list_global_flash, sync_global_flash, classify_global_flash_batch
+from .global_flash_service import sync_global_flash
+from .news_classification_service import classify_relevance_batch, classify_impact_batch
+from .news_query_service import list_news_articles
+from .market_insight_service import (
+    collect_recent_market_headlines,
+    generate_market_insight_summary,
+    get_latest_market_insight,
+    list_market_insights,
+)
+from .index_history_service import INDEX_CONFIG, list_index_history, sync_index_history
+from .realtime_index_service import list_realtime_indices, sync_realtime_indices
 from .trade_calendar_service import sync_trade_calendar, is_trading_day
+from .margin_account_service import list_margin_account_info, sync_margin_account_info
 from .favorite_stock_service import (
     add_stock_to_favorites,
     remove_stock_from_favorites,
@@ -52,6 +64,7 @@ __all__ = [
     "sync_performance_forecast",
     "sync_profit_forecast",
     "sync_global_indices",
+    "sync_realtime_indices",
     "sync_dollar_index",
     "sync_rmb_midpoint_rates",
     "sync_futures_realtime",
@@ -63,15 +76,22 @@ __all__ = [
     "sync_macro_m2",
     "sync_macro_ppi",
     "sync_macro_pbc_rate",
+    "sync_margin_account_info",
     "sync_global_flash",
-    "classify_global_flash_batch",
+    "classify_relevance_batch",
+    "classify_impact_batch",
+    "list_news_articles",
+    "collect_recent_market_headlines",
+    "generate_market_insight_summary",
+    "get_latest_market_insight",
+    "list_market_insights",
     "sync_trade_calendar",
     "generate_peripheral_insight",
-    "list_finance_breakfast",
     "list_performance_express",
     "list_performance_forecast",
     "list_profit_forecast",
     "list_global_indices",
+    "list_realtime_indices",
     "list_dollar_index",
     "list_rmb_midpoint_rates",
     "list_futures_realtime",
@@ -83,12 +103,18 @@ __all__ = [
     "list_macro_m2",
     "list_macro_ppi",
     "list_macro_pbc_rate",
-    "list_global_flash",
+    "list_margin_account_info",
     "is_trading_day",
     "get_latest_peripheral_insight",
+    "sync_index_history",
+    "list_index_history",
+    "sync_realtime_indices",
+    "list_realtime_indices",
+    "INDEX_CONFIG",
     "list_industry_fund_flow",
     "list_concept_fund_flow",
     "list_individual_fund_flow",
+    "list_hsgt_fund_flow",
     "sync_finance_breakfast",
     "sync_daily_trade",
     "sync_daily_trade_metrics",
@@ -98,6 +124,7 @@ __all__ = [
     "sync_concept_fund_flow",
     "sync_individual_fund_flow",
     "sync_big_deal_fund_flow",
+    "sync_hsgt_fund_flow",
     "sync_stock_main_business",
     "sync_stock_main_composition",
     "list_fundamental_metrics",

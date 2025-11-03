@@ -93,6 +93,24 @@ const elements = {
     progress: document.getElementById("peripheral-aggregate-progress"),
     button: document.getElementById("run-peripheral-aggregate"),
   },
+  macroAggregate: {
+    status: document.getElementById("macro-aggregate-status"),
+    updated: document.getElementById("macro-aggregate-updated"),
+    duration: document.getElementById("macro-aggregate-duration"),
+    rows: document.getElementById("macro-aggregate-rows"),
+    message: document.getElementById("macro-aggregate-message"),
+    progress: document.getElementById("macro-aggregate-progress"),
+    button: document.getElementById("run-macro-aggregate"),
+  },
+  fundFlowAggregate: {
+    status: document.getElementById("fund-flow-aggregate-status"),
+    updated: document.getElementById("fund-flow-aggregate-updated"),
+    duration: document.getElementById("fund-flow-aggregate-duration"),
+    rows: document.getElementById("fund-flow-aggregate-rows"),
+    message: document.getElementById("fund-flow-aggregate-message"),
+    progress: document.getElementById("fund-flow-aggregate-progress"),
+    button: document.getElementById("run-fund-flow-aggregate"),
+  },
   dailyIndicator: {
     status: document.getElementById("daily-indicator-status"),
     updated: document.getElementById("daily-indicator-updated"),
@@ -101,6 +119,24 @@ const elements = {
     message: document.getElementById("daily-indicator-message"),
     progress: document.getElementById("daily-indicator-progress"),
     button: document.getElementById("run-daily-indicator"),
+  },
+  indexHistory: {
+    status: document.getElementById("index-history-status"),
+    updated: document.getElementById("index-history-updated"),
+    duration: document.getElementById("index-history-duration"),
+    rows: document.getElementById("index-history-rows"),
+    message: document.getElementById("index-history-message"),
+    progress: document.getElementById("index-history-progress"),
+    button: document.getElementById("run-index-history"),
+  },
+  realtimeIndex: {
+    status: document.getElementById("realtime-index-status"),
+    updated: document.getElementById("realtime-index-updated"),
+    duration: document.getElementById("realtime-index-duration"),
+    rows: document.getElementById("realtime-index-rows"),
+    message: document.getElementById("realtime-index-message"),
+    progress: document.getElementById("realtime-index-progress"),
+    button: document.getElementById("run-realtime-index"),
   },
   incomeStatement: {
     status: document.getElementById("income-statement-status"),
@@ -270,6 +306,24 @@ const elements = {
     message: document.getElementById("industry-fund-flow-message"),
     progress: document.getElementById("industry-fund-flow-progress"),
     button: document.getElementById("run-industry-fund-flow"),
+  },
+  hsgtFundFlow: {
+    status: document.getElementById("hsgt-fund-flow-status"),
+    updated: document.getElementById("hsgt-fund-flow-updated"),
+    duration: document.getElementById("hsgt-fund-flow-duration"),
+    rows: document.getElementById("hsgt-fund-flow-rows"),
+    message: document.getElementById("hsgt-fund-flow-message"),
+    progress: document.getElementById("hsgt-fund-flow-progress"),
+    button: document.getElementById("run-hsgt-fund-flow"),
+  },
+  marginAccount: {
+    status: document.getElementById("margin-account-status"),
+    updated: document.getElementById("margin-account-updated"),
+    duration: document.getElementById("margin-account-duration"),
+    rows: document.getElementById("margin-account-rows"),
+    message: document.getElementById("margin-account-message"),
+    progress: document.getElementById("margin-account-progress"),
+    button: document.getElementById("run-margin-account"),
   },
   conceptFundFlow: {
     status: document.getElementById("concept-fund-flow-status"),
@@ -522,11 +576,23 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const macroAggregateSnapshot = jobs.macro_aggregate || {
+      status: "idle",
+      progress: 0,
+    };
+    const fundFlowAggregateSnapshot = jobs.fund_flow_aggregate || {
+      status: "idle",
+      progress: 0,
+    };
     const peripheralAggregateSnapshot = jobs.peripheral_aggregate || {
       status: "idle",
       progress: 0,
     };
     const indicatorSnapshot = jobs.daily_indicator || {
+      status: "idle",
+      progress: 0,
+    };
+    const indexHistorySnapshot = jobs.index_history || {
       status: "idle",
       progress: 0,
     };
@@ -551,6 +617,10 @@ async function loadStatus() {
       progress: 0,
     };
     const globalIndexSnapshot = jobs.global_index || {
+      status: "idle",
+      progress: 0,
+    };
+    const realtimeSnapshot = jobs.realtime_index || {
       status: "idle",
       progress: 0,
     };
@@ -618,6 +688,14 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const hsgtFundFlowSnapshot = jobs.hsgt_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
+    const marginAccountSnapshot = jobs.margin_account || {
+      status: "idle",
+      progress: 0,
+    };
     const mainBusinessSnapshot = jobs.stock_main_business || {
       status: "idle",
       progress: 0,
@@ -643,13 +721,17 @@ async function loadStatus() {
     updateJobCard(elements.dailyTrade, dailySnapshot);
     updateJobCard(elements.dailyTradeMetrics, metricsSnapshot);
     updateJobCard(elements.dailyIndicator, indicatorSnapshot);
+    updateJobCard(elements.indexHistory, indexHistorySnapshot);
     updateJobCard(elements.fundamentalMetrics, fundamentalSnapshot);
+    updateJobCard(elements.macroAggregate, macroAggregateSnapshot);
+    updateJobCard(elements.fundFlowAggregate, fundFlowAggregateSnapshot);
     updateJobCard(elements.peripheralAggregate, peripheralAggregateSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.performanceExpress, expressSnapshot);
     updateJobCard(elements.performanceForecast, forecastSnapshot);
     updateJobCard(elements.globalIndex, globalIndexSnapshot);
+    updateJobCard(elements.realtimeIndex, realtimeSnapshot);
     updateJobCard(elements.macroLeverage, leverageSnapshot);
     updateJobCard(elements.socialFinancing, socialFinancingSnapshot);
     updateJobCard(elements.cpiMonthly, cpiSnapshot);
@@ -666,6 +748,8 @@ async function loadStatus() {
     updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
     updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
     updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
+    updateJobCard(elements.hsgtFundFlow, hsgtFundFlowSnapshot);
+    updateJobCard(elements.marginAccount, marginAccountSnapshot);
     updateJobCard(elements.bigDealFundFlow, bigDealFundFlowSnapshot);
     updateJobCard(elements.stockMainBusiness, mainBusinessSnapshot);
     updateJobCard(elements.stockMainComposition, mainCompositionSnapshot);
@@ -688,13 +772,17 @@ async function loadStatus() {
       dailySnapshot,
       metricsSnapshot,
       indicatorSnapshot,
+      indexHistorySnapshot,
       fundamentalSnapshot,
+      macroAggregateSnapshot,
+      fundFlowAggregateSnapshot,
       peripheralAggregateSnapshot,
       incomeSnapshot,
       financialSnapshot,
       expressSnapshot,
       forecastSnapshot,
       globalIndexSnapshot,
+      realtimeSnapshot,
       leverageSnapshot,
       socialFinancingSnapshot,
       cpiSnapshot,
@@ -710,6 +798,8 @@ async function loadStatus() {
       industryFundFlowSnapshot,
       conceptFundFlowSnapshot,
       individualFundFlowSnapshot,
+      hsgtFundFlowSnapshot,
+      marginAccountSnapshot,
       bigDealFundFlowSnapshot,
       mainBusinessSnapshot,
       mainCompositionSnapshot,
@@ -862,6 +952,16 @@ function initActions() {
   elements.dailyIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/daily-indicators", {})
   );
+  if (elements.indexHistory.button) {
+    elements.indexHistory.button.addEventListener("click", () =>
+      triggerJob("/control/sync/index-history", {})
+    );
+  }
+  if (elements.realtimeIndex.button) {
+    elements.realtimeIndex.button.addEventListener("click", () =>
+      triggerJob("/control/sync/realtime-indices", {})
+    );
+  }
   elements.fundamentalMetrics.button.addEventListener("click", () =>
     triggerJob("/control/sync/fundamental-metrics", {})
   );
@@ -903,9 +1003,29 @@ function initActions() {
       })
     );
   }
+  if (elements.hsgtFundFlow.button) {
+    elements.hsgtFundFlow.button.addEventListener("click", () =>
+      triggerJob("/control/sync/hsgt-fund-flow", {})
+    );
+  }
+  if (elements.marginAccount.button) {
+    elements.marginAccount.button.addEventListener("click", () =>
+      triggerJob("/control/sync/margin-account", {})
+    );
+  }
   if (elements.bigDealFundFlow.button) {
     elements.bigDealFundFlow.button.addEventListener("click", () =>
       triggerJob("/control/sync/big-deal-fund-flow", {})
+    );
+  }
+  if (elements.fundFlowAggregate.button) {
+    elements.fundFlowAggregate.button.addEventListener("click", () =>
+      triggerJob("/control/sync/fund-flow-aggregate", {})
+    );
+  }
+  if (elements.macroAggregate.button) {
+    elements.macroAggregate.button.addEventListener("click", () =>
+      triggerJob("/control/sync/macro-aggregate", {})
     );
   }
   if (elements.peripheralAggregate.button) {
