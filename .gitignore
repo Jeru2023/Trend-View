@@ -12,3 +12,11 @@ backend/config/control_state.json
 
 # Runtime logs
 *.log
+
+# Local virtual environment
+bin/
+lib/
+include/
+pyvenv.cfg
+
+.pytest_cache

@@ -39,7 +39,7 @@ def generate_finance_analysis(
         logger.debug("DeepSeek skipped whitespace-only news content")
         return None
 
-    prompt = prompt_template.format_map({"news_content": prompt_content})
+    prompt = prompt_template.replace("{news_content}", prompt_content)
 
     url = settings.base_url.rstrip("/") + "/v1/chat/completions"
     headers = {

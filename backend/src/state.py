@@ -43,6 +43,9 @@ class SyncMonitor:
             "income_statement": JobProgress(),
             "financial_indicator": JobProgress(),
             "finance_breakfast": JobProgress(),
+            "global_flash": JobProgress(),
+            "global_flash_classification": JobProgress(),
+            "trade_calendar": JobProgress(),
             "fundamental_metrics": JobProgress(),
             "performance_express": JobProgress(),
             "performance_forecast": JobProgress(),
@@ -65,6 +68,8 @@ class SyncMonitor:
             "cpi_monthly": JobProgress(),
             "pmi_monthly": JobProgress(),
             "m2_monthly": JobProgress(),
+            "ppi_monthly": JobProgress(),
+            "pbc_rate": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():

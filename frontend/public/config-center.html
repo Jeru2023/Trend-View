@@ -68,8 +68,37 @@
             </label>
             <div class="config-field">
               <label for="config-window" data-i18n="windowLabel">Daily trade window (days)</label>
-              <input type="number" id="config-window" min="1" max="3650" value="420" />
+              <div class="skeleton" data-skeleton="window"></div>
+              <input type="number" id="config-window" min="1" max="3650" class="hidden" />
               <small data-i18n="windowHint">Used by scheduled and manual daily trade updates.</small>
+            </div>
+          </div>
+
+          <header class="config-subheader">
+            <h3 data-i18n="scheduleSectionTitle">Scheduled Jobs</h3>
+            <p data-i18n="scheduleSectionSubtitle">Configure automation runtimes for key workflows.</p>
+          </header>
+
+          <div class="config-grid">
+            <div class="config-field">
+              <label for="config-peripheral-aggregate-time" data-i18n="peripheralAggregateTimeLabel">
+                Peripheral bundle sync time
+              </label>
+              <div class="skeleton" data-skeleton="peripheral"></div>
+              <input type="time" id="config-peripheral-aggregate-time" class="hidden" />
+              <small data-i18n="peripheralAggregateTimeHint">
+                Set the daily time (24h format) to run the peripheral aggregate scheduler.
+              </small>
+            </div>
+            <div class="config-field">
+              <label for="config-global-flash-frequency" data-i18n="globalFlashFrequencyLabel">
+                Global flash sync interval (minutes)
+              </label>
+              <div class="skeleton" data-skeleton="global-flash"></div>
+              <input type="number" id="config-global-flash-frequency" min="10" max="1440" class="hidden" />
+              <small data-i18n="globalFlashFrequencyHint">
+                Configure how often to refresh Eastmoney global flash headlines (10-1440 minutes).
+              </small>
             </div>
           </div>
 
@@ -82,9 +111,14 @@
       </main>
     </div>
 
-    <script src="i18n.js?v=20251226"></script>
-    <script src="sidebar.js?v=20260309"></script>
+    <div class="toast-container hidden" id="config-toast-container" role="status" aria-live="polite">
+      <div class="toast" id="config-toast">
+        <span class="toast__message" id="config-toast-message"></span>
+      </div>
+    </div>
+
+    <script src="i18n.js?v=20260408"></script>
+    <script src="sidebar.js?v=20260408"></script>
     <script src="config-center.js?v=20260306"></script>
   </body>
 </html>
-

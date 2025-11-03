@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import multiprocessing as mp
 import re
+import ssl
 from contextlib import suppress
 from queue import Empty
 from typing import Final, Optional, Tuple
@@ -14,6 +15,8 @@ from typing import Final, Optional, Tuple
 import pandas as pd
 
 import akshare as ak
+import requests
+from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +269,28 @@ MACRO_M2_COLUMN_MAP: Final[dict[str, str]] = {
     "今值": "actual_value",
     "预测值": "forecast_value",
     "前值": "previous_value",
+}
+
+MACRO_PPI_COLUMN_MAP: Final[dict[str, str]] = {
+    "月份": "period_label",
+    "当月": "current_index",
+    "当月同比增长": "yoy_change",
+    "累计": "cumulative_index",
+}
+
+MACRO_PBC_RATE_COLUMN_MAP: Final[dict[str, str]] = {
+    "商品": "category",
+    "日期": "period_label",
+    "今值": "actual_value",
+    "预测值": "forecast_value",
+    "前值": "previous_value",
+}
+
+GLOBAL_FLASH_COLUMN_MAP: Final[dict[str, str]] = {
+    "标题": "title",
+    "摘要": "summary",
+    "发布时间": "published_at",
+    "链接": "url",
 }
 
 FUTURES_REALTIME_COLUMN_MAP: Final[dict[str, str]] = {
@@ -652,18 +677,92 @@ def _empty_macro_social_financing_frame() -> pd.DataFrame:
     return pd.DataFrame(columns=list(MACRO_SOCIAL_FINANCING_COLUMN_MAP.values()))
 
 
+class _LegacyTLSAdapter(HTTPAdapter):
+    """HTTP adapter that relaxes OpenSSL security level for legacy endpoints."""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def init_poolmanager(self, *args, **kwargs):
+        context = ssl.create_default_context()
+        context.set_ciphers("DEFAULT:@SECLEVEL=1")
+        kwargs["ssl_context"] = context
+        return super().init_poolmanager(*args, **kwargs)
+
+    def proxy_manager_for(self, *args, **kwargs):
+        context = ssl.create_default_context()
+        context.set_ciphers("DEFAULT:@SECLEVEL=1")
+        kwargs["ssl_context"] = context
+        return super().proxy_manager_for(*args, **kwargs)
+
+
+def _fetch_social_financing_with_legacy_tls() -> pd.DataFrame:
+    """Fetch social financing data using a relaxed TLS security level."""
+
+    session = requests.Session()
+    session.mount("https://", _LegacyTLSAdapter())
+    try:
+        response = session.post(
+            "https://data.mofcom.gov.cn/datamofcom/front/gnmy/shrzgmQuery",
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:  # pragma: no cover - fallback path
+        logger.error("Legacy TLS social financing fetch failed: %s", exc)
+        return _empty_macro_social_financing_frame()
+    finally:
+        session.close()
+
+    if not payload:
+        logger.warning("Social financing endpoint returned an empty payload.")
+        return _empty_macro_social_financing_frame()
+
+    frame = pd.DataFrame(payload)
+    rename_map = {
+        "date": "period_label",
+        "tiosfs": "total_financing",
+        "rmblaon": "renminbi_loans",
+        "forcloan": "entrusted_and_fx_loans",
+        "entrustloan": "entrusted_loans",
+        "trustloan": "trust_loans",
+        "ndbab": "undiscounted_bankers_acceptance",
+        "bibae": "corporate_bonds",
+        "sfinfe": "domestic_equity_financing",
+    }
+    for column in rename_map:
+        if column not in frame.columns:
+            frame[column] = None
+    renamed = frame.rename(columns=rename_map)
+    for column in MACRO_SOCIAL_FINANCING_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+    result = renamed.loc[:, list(MACRO_SOCIAL_FINANCING_COLUMN_MAP.values())]
+    numeric_columns = [col for col in result.columns if col != "period_label"]
+    result[numeric_columns] = result[numeric_columns].apply(pd.to_numeric, errors="coerce")
+    return result
+
+
 def fetch_macro_social_financing() -> pd.DataFrame:
     """Fetch social financing incremental statistics from MOFCOM."""
 
     try:
         dataframe = ak.macro_china_shrzgm()
+    except requests.exceptions.SSLError as exc:  # pragma: no cover - legacy TLS fallback
+        logger.warning(
+            "AkShare social financing fetch hit SSL error; attempting legacy TLS fallback: %s",
+            exc,
+        )
+        dataframe = _fetch_social_financing_with_legacy_tls()
     except Exception as exc:  # pragma: no cover - external dependency
         logger.error("Failed to fetch social financing data via AkShare: %s", exc)
         return _empty_macro_social_financing_frame()
 
     if dataframe is None or dataframe.empty:
         logger.warning("AkShare returned no social financing data.")
-        return _empty_macro_social_financing_frame()
+        dataframe = _fetch_social_financing_with_legacy_tls()
+        if dataframe.empty:
+            return _empty_macro_social_financing_frame()
 
     renamed = dataframe.rename(columns=MACRO_SOCIAL_FINANCING_COLUMN_MAP)
     for column in MACRO_SOCIAL_FINANCING_COLUMN_MAP.values():
@@ -759,6 +858,69 @@ def fetch_macro_m2_yearly() -> pd.DataFrame:
             renamed[column] = None
 
     return renamed.loc[:, list(MACRO_M2_COLUMN_MAP.values())]
+
+
+def fetch_macro_ppi_monthly() -> pd.DataFrame:
+    """Fetch monthly PPI data from Jin10."""
+
+    try:
+        dataframe = ak.macro_china_ppi()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch PPI data via AkShare: %s", exc)
+        return pd.DataFrame(columns=list(MACRO_PPI_COLUMN_MAP.values()))
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no PPI data.")
+        return pd.DataFrame(columns=list(MACRO_PPI_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=MACRO_PPI_COLUMN_MAP)
+    for column in MACRO_PPI_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_PPI_COLUMN_MAP.values())]
+
+
+def fetch_macro_pbc_interest_rates() -> pd.DataFrame:
+    """Fetch People's Bank of China interest rate decision history."""
+
+    try:
+        dataframe = ak.macro_bank_china_interest_rate()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch PBC interest rate data via AkShare: %s", exc)
+        return pd.DataFrame(columns=list(MACRO_PBC_RATE_COLUMN_MAP.values()))
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no PBC interest rate data.")
+        return pd.DataFrame(columns=list(MACRO_PBC_RATE_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=MACRO_PBC_RATE_COLUMN_MAP)
+    for column in MACRO_PBC_RATE_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_PBC_RATE_COLUMN_MAP.values())]
+
+
+def fetch_global_flash_news() -> pd.DataFrame:
+    """Fetch global finance flash headlines from Eastmoney."""
+
+    try:
+        dataframe = ak.stock_info_global_em()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch global flash data via AkShare: %s", exc)
+        return pd.DataFrame(columns=list(GLOBAL_FLASH_COLUMN_MAP.values()))
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no global flash data.")
+        return pd.DataFrame(columns=list(GLOBAL_FLASH_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=GLOBAL_FLASH_COLUMN_MAP)
+    for column in GLOBAL_FLASH_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(GLOBAL_FLASH_COLUMN_MAP.values())]
 
 
 def fetch_futures_realtime(symbols: Optional[Sequence[str]] = None) -> pd.DataFrame:
@@ -964,6 +1126,9 @@ __all__ = [
     "MACRO_CPI_COLUMN_MAP",
     "MACRO_PMI_COLUMN_MAP",
     "MACRO_M2_COLUMN_MAP",
+    "MACRO_PPI_COLUMN_MAP",
+    "MACRO_PBC_RATE_COLUMN_MAP",
+    "GLOBAL_FLASH_COLUMN_MAP",
     "fetch_finance_breakfast",
     "fetch_performance_express_em",
     "fetch_performance_forecast_em",
@@ -979,4 +1144,7 @@ __all__ = [
     "fetch_macro_pmi_yearly",
     "fetch_macro_non_man_pmi",
     "fetch_macro_m2_yearly",
+    "fetch_macro_ppi_monthly",
+    "fetch_macro_pbc_interest_rates",
+    "fetch_global_flash_news",
 ]

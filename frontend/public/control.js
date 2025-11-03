@@ -168,6 +168,26 @@ const elements = {
     button: document.getElementById("run-cpi"),
     infoButton: document.querySelector("[data-cpi-info]"),
   },
+  ppiMonthly: {
+    status: document.getElementById("ppi-status"),
+    updated: document.getElementById("ppi-updated"),
+    duration: document.getElementById("ppi-duration"),
+    rows: document.getElementById("ppi-rows"),
+    message: document.getElementById("ppi-message"),
+    progress: document.getElementById("ppi-progress"),
+    button: document.getElementById("run-ppi"),
+    infoButton: document.querySelector("[data-ppi-info]"),
+  },
+  pbcRate: {
+    status: document.getElementById("pbc-rate-status"),
+    updated: document.getElementById("pbc-rate-updated"),
+    duration: document.getElementById("pbc-rate-duration"),
+    rows: document.getElementById("pbc-rate-rows"),
+    message: document.getElementById("pbc-rate-message"),
+    progress: document.getElementById("pbc-rate-progress"),
+    button: document.getElementById("run-pbc-rate"),
+    infoButton: document.querySelector("[data-pbc-rate-info]"),
+  },
   pmiMonthly: {
     status: document.getElementById("pmi-status"),
     updated: document.getElementById("pmi-updated"),
@@ -296,6 +316,24 @@ const elements = {
     progress: document.getElementById("finance-breakfast-progress"),
     button: document.getElementById("run-finance-breakfast"),
   },
+  globalFlash: {
+    status: document.getElementById("global-flash-status"),
+    updated: document.getElementById("global-flash-updated"),
+    duration: document.getElementById("global-flash-duration"),
+    rows: document.getElementById("global-flash-rows"),
+    message: document.getElementById("global-flash-message"),
+    progress: document.getElementById("global-flash-progress"),
+    button: document.getElementById("run-global-flash"),
+  },
+  globalFlashClassification: {
+    status: document.getElementById("global-flash-classification-status"),
+    updated: document.getElementById("global-flash-classification-updated"),
+    duration: document.getElementById("global-flash-classification-duration"),
+    rows: document.getElementById("global-flash-classification-rows"),
+    message: document.getElementById("global-flash-classification-message"),
+    progress: document.getElementById("global-flash-classification-progress"),
+    button: document.getElementById("run-global-flash-classification"),
+  },
   stockMainBusiness: {
     status: document.getElementById("stock-main-business-status"),
     updated: document.getElementById("stock-main-business-updated"),
@@ -393,6 +431,16 @@ function applyTranslations() {
     const tooltip = dict.cpiTooltip || "";
     elements.cpiMonthly.infoButton.setAttribute("title", tooltip);
     elements.cpiMonthly.infoButton.setAttribute("aria-label", tooltip || "Info");
+  }
+  if (elements.ppiMonthly.infoButton) {
+    const tooltip = dict.ppiTooltip || "";
+    elements.ppiMonthly.infoButton.setAttribute("title", tooltip);
+    elements.ppiMonthly.infoButton.setAttribute("aria-label", tooltip || "Info");
+  }
+  if (elements.pbcRate.infoButton) {
+    const tooltip = dict.pbcRateTooltip || "";
+    elements.pbcRate.infoButton.setAttribute("title", tooltip);
+    elements.pbcRate.infoButton.setAttribute("aria-label", tooltip || "Info");
   }
   if (elements.pmiMonthly.infoButton) {
     const tooltip = dict.pmiTooltip || "";
@@ -518,6 +566,14 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const ppiSnapshot = jobs.ppi_monthly || {
+      status: "idle",
+      progress: 0,
+    };
+    const pbcRateSnapshot = jobs.pbc_rate || {
+      status: "idle",
+      progress: 0,
+    };
     const pmiSnapshot = jobs.pmi_monthly || {
       status: "idle",
       progress: 0,
@@ -570,6 +626,14 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const globalFlashSnapshot = jobs.global_flash || {
+      status: "idle",
+      progress: 0,
+    };
+    const globalFlashClassifySnapshot = jobs.global_flash_classification || {
+      status: "idle",
+      progress: 0,
+    };
     const breakfastSnapshot = jobs.finance_breakfast || {
       status: "idle",
       progress: 0,
@@ -589,6 +653,8 @@ async function loadStatus() {
     updateJobCard(elements.macroLeverage, leverageSnapshot);
     updateJobCard(elements.socialFinancing, socialFinancingSnapshot);
     updateJobCard(elements.cpiMonthly, cpiSnapshot);
+    updateJobCard(elements.ppiMonthly, ppiSnapshot);
+    updateJobCard(elements.pbcRate, pbcRateSnapshot);
     updateJobCard(elements.pmiMonthly, pmiSnapshot);
     updateJobCard(elements.m2Monthly, m2Snapshot);
     updateJobCard(elements.rmbMidpoint, rmbMidpointSnapshot);
@@ -603,6 +669,8 @@ async function loadStatus() {
     updateJobCard(elements.bigDealFundFlow, bigDealFundFlowSnapshot);
     updateJobCard(elements.stockMainBusiness, mainBusinessSnapshot);
     updateJobCard(elements.stockMainComposition, mainCompositionSnapshot);
+    updateJobCard(elements.globalFlash, globalFlashSnapshot);
+    updateJobCard(elements.globalFlashClassification, globalFlashClassifySnapshot);
     updateJobCard(elements.financeBreakfast, breakfastSnapshot);
 
     if (data.config) {
@@ -630,6 +698,8 @@ async function loadStatus() {
       leverageSnapshot,
       socialFinancingSnapshot,
       cpiSnapshot,
+      ppiSnapshot,
+      pbcRateSnapshot,
       pmiSnapshot,
       m2Snapshot,
       rmbMidpointSnapshot,
@@ -643,6 +713,8 @@ async function loadStatus() {
       bigDealFundFlowSnapshot,
       mainBusinessSnapshot,
       mainCompositionSnapshot,
+      globalFlashSnapshot,
+      globalFlashClassifySnapshot,
       breakfastSnapshot,
     ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
@@ -861,6 +933,16 @@ function initActions() {
       triggerJob("/control/sync/cpi", {})
     );
   }
+  if (elements.ppiMonthly.button) {
+    elements.ppiMonthly.button.addEventListener("click", () =>
+      triggerJob("/control/sync/ppi", {})
+    );
+  }
+  if (elements.pbcRate.button) {
+    elements.pbcRate.button.addEventListener("click", () =>
+      triggerJob("/control/sync/pbc-rate", {})
+    );
+  }
   if (elements.pmiMonthly.button) {
     elements.pmiMonthly.button.addEventListener("click", () =>
       triggerJob("/control/sync/pmi", {})
@@ -888,6 +970,26 @@ function initActions() {
         (dict && dict.cpiTooltip) ||
         (translations.en && translations.en.cpiTooltip) ||
         "Monthly release: NBS publishes CPI around the 9th-10th of the following month.";
+      window.alert(message);
+    });
+  }
+  if (elements.ppiMonthly.infoButton) {
+    elements.ppiMonthly.infoButton.addEventListener("click", () => {
+      const dict = translations[currentLang] || translations.en;
+      const message =
+        (dict && dict.ppiTooltip) ||
+        (translations.en && translations.en.ppiTooltip) ||
+        "Monthly release: NBS publishes PPI around the 9th-10th of the following month.";
+      window.alert(message);
+    });
+  }
+  if (elements.pbcRate.infoButton) {
+    elements.pbcRate.infoButton.addEventListener("click", () => {
+      const dict = translations[currentLang] || translations.en;
+      const message =
+        (dict && dict.pbcRateTooltip) ||
+        (translations.en && translations.en.pbcRateTooltip) ||
+        "Irregular release: trigger after the PBC publishes a new benchmark rate decision.";
       window.alert(message);
     });
   }
@@ -959,6 +1061,20 @@ function initActions() {
     elements.stockMainComposition.button.addEventListener("click", () =>
       triggerJob("/control/sync/stock-main-composition", {})
     );
+  }
+  if (elements.globalFlash.button) {
+    elements.globalFlash.button.addEventListener("click", () =>
+      triggerJob("/control/sync/global-flash", {})
+    );
+  }
+  if (elements.globalFlashClassification.button) {
+    elements.globalFlashClassification.button.addEventListener("click", () => {
+      const attr = elements.globalFlashClassification.button.getAttribute("data-batch-size");
+      const batchSize = Number(attr);
+      triggerJob("/control/sync/global-flash-classification", {
+        batchSize: Number.isFinite(batchSize) && batchSize > 0 ? batchSize : 10,
+      });
+    });
   }
   elements.financeBreakfast.button.addEventListener("click", () =>
     triggerJob("/control/sync/finance-breakfast", {})

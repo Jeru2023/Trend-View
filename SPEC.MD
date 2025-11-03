@@ -87,6 +87,9 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-11-01 (FEATURE backend/frontend-038): Added M2 money supply module (AkShare macro_china_m2_yearly) including schema/DAO/service, triple 17:01 scheduler (10/11/12), control panel automation with tooltip, macro navigation entry, localized M2 dashboard with chart/table and manual refresh.
 - 2025-10-31 (FEATURE backend/frontend-032): Built peripheral market insight pipeline aggregating global indices, dollar index, RMB midpoint, and commodity quotes, persisted summaries with DeepSeek integration, added control-panel automation, and exposed the new Peripheral Insight dashboard.
 - 2025-10-31 (FEATURE backend/frontend-031): Added Federal Reserve statements ingestion (requests + BeautifulSoup crawler), new PostgreSQL schema/DAO/service with twice-daily scheduler, control-panel sync card, peripheral navigation entry, and a localized Fed Statements landing page with full-text rendering.
+- 2025-11-03 (FEATURE backend/frontend-039): Added China PPI module (AkShare macro_china_ppi) with schema/DAO/service, dual 10:00 monthly schedulers, control panel integration, macro navigation entry, and localized dual-line chart plus filtered list view.
+- 2025-11-03 (REQUIREMENT backend/frontend-040): Introduced PBC interest rate decision module (AkShare macro_bank_china_interest_rate) with backend ingestion, manual control panel trigger, macro navigation entry, localized trend/table page, and tooltip guidance.
+- 2025-11-03 (FEATURE backend/frontend-041): Added global finance flash module (AkShare stock_info_global_em) with schema/DAO/service, configurable interval scheduler, control panel automation card, dedicated global flash page, and navigation entry under News.
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.

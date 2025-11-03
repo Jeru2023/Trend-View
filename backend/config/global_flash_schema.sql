@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS {schema}.{table} (
+    url TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    summary TEXT,
+    published_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    if_extract BOOLEAN,
+    extract_checked_at TIMESTAMP WITHOUT TIME ZONE,
+    extract_reason TEXT,
+    subject_level TEXT,
+    impact_scope TEXT,
+    event_type TEXT,
+    time_sensitivity TEXT,
+    quant_signal TEXT,
+    impact_levels TEXT,
+    impact_markets TEXT,
+    impact_industries TEXT,
+    impact_sectors TEXT,
+    impact_themes TEXT,
+    impact_stocks TEXT,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

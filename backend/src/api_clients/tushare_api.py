@@ -155,6 +155,12 @@ PERFORMANCE_FORECAST_FIELDS: Sequence[str] = (
     "update_flag",
 )
 
+TRADE_CALENDAR_FIELDS: Sequence[str] = (
+    "exchange",
+    "cal_date",
+    "is_open",
+)
+
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
     list_statuses: Sequence[str],
@@ -386,6 +392,42 @@ def get_financial_indicators(
     return df.loc[:, list(FINANCIAL_INDICATOR_FIELDS)]
 
 
+def fetch_trade_calendar(
+    token: str,
+    start_date: str,
+    end_date: str,
+    exchange: str = "SSE",
+) -> pd.DataFrame:
+    """
+    Fetch trade calendar data for the specified date range.
+    """
+    if not token:
+        raise RuntimeError("Tushare token is required to fetch trade calendar data.")
+    if not start_date or not end_date:
+        raise ValueError("Both start_date and end_date must be provided to fetch trade calendar data.")
+
+    pro = ts.pro_api(token)
+    params = {
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    if exchange:
+        params["exchange"] = exchange
+
+    logger.debug("Requesting trade_cal with params=%s", params)
+    try:
+        frame = pro.query("trade_cal", fields=",".join(TRADE_CALENDAR_FIELDS), **params)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch trade calendar via Tushare: %s", exc)
+        return pd.DataFrame(columns=TRADE_CALENDAR_FIELDS)
+
+    if frame is None or frame.empty:
+        logger.warning("Tushare returned empty trade calendar data for range %s-%s", start_date, end_date)
+        return pd.DataFrame(columns=TRADE_CALENDAR_FIELDS)
+
+    return frame.loc[:, list(TRADE_CALENDAR_FIELDS)]
+
+
 __all__ = [
     "DATE_COLUMNS",
     "DAILY_TRADE_FIELDS",
@@ -394,8 +436,10 @@ __all__ = [
     "FINANCIAL_INDICATOR_FIELDS",
     "STOCK_BASIC_FIELDS",
     "fetch_stock_basic",
+    "fetch_trade_calendar",
     "get_daily_trade",
     "get_daily_indicator",
     "get_income_statements",
     "get_financial_indicators",
+    "TRADE_CALENDAR_FIELDS",
 ]

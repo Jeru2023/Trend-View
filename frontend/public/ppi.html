@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-i18n="title">Trend View - Social Financing Increment</title>
-    <link rel="stylesheet" href="styles.css?v=20251226" />
+    <title data-i18n="title">Trend View - PPI Index</title>
+    <link rel="stylesheet" href="styles.css?v=20251101" />
     <script>
       (function () {
         var key = "trend-view-lang";
@@ -26,16 +26,16 @@
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
   </head>
-  <body data-active-nav="macro-social-financing">
+  <body data-active-nav="macro-ppi">
     <div class="layout">
       <div data-sidebar-container></div>
 
       <main class="content">
         <header class="content__header">
           <div>
-            <h1 class="page-heading" data-i18n="pageTitle">China Social Financing Flow</h1>
+            <h1 class="page-heading" data-i18n="pageTitle">China PPI Index</h1>
             <p class="page-subtitle" data-i18n="pageSubtitle">
-              Monthly incremental social financing published by MOFCOM (in 100 million CNY).
+              Industrial producer price index released monthly by the National Bureau of Statistics.
             </p>
           </div>
           <div class="header-actions">
@@ -49,47 +49,42 @@
         <section class="page">
           <div class="dollar-index-controls">
             <div class="dollar-index-actions">
-              <button class="primary-btn" id="social-financing-refresh" data-i18n="refreshButton">
+              <button class="primary-btn" id="ppi-refresh" data-i18n="refreshButton">
                 Refresh
               </button>
             </div>
             <div class="dollar-index-meta">
               <span data-i18n="lastSyncedLabel">Last synced</span>
-              <strong id="social-financing-last-synced">--</strong>
+              <strong id="ppi-last-synced">--</strong>
             </div>
           </div>
 
           <article class="chart-card">
             <header class="chart-card__header">
-              <h2 data-i18n="chartTitle">Selected Financing Channels</h2>
+              <h2 data-i18n="chartTitle">PPI Trend</h2>
             </header>
-            <div class="chart-card__body">
-              <div class="chart-container" id="social-financing-chart"></div>
-              <p class="chart-empty hidden" id="social-financing-chart-empty" data-i18n="chartEmpty">
-                No social financing data available.
+            <div class="chart-card__body" style="height:360px">
+              <div class="chart-container" id="ppi-chart"></div>
+              <p class="chart-empty hidden" id="ppi-chart-empty" data-i18n="chartEmpty">
+                No PPI data available.
               </p>
             </div>
           </article>
 
           <div class="table-wrapper">
-            <table class="data-table" id="social-financing-table">
+            <table class="data-table" id="ppi-table">
               <thead>
                 <tr>
                   <th data-i18n="tablePeriod">Period</th>
-                  <th data-i18n="tableTotal">Total</th>
-                  <th data-i18n="tableRenminbiLoans">RMB Loans</th>
-                  <th data-i18n="tableEntrustedFx">Entrusted + FX Loans</th>
-                  <th data-i18n="tableEntrusted">Entrusted Loans</th>
-                  <th data-i18n="tableTrust">Trust Loans</th>
-                  <th data-i18n="tableBills">Undiscounted Bankers' Acceptance</th>
-                  <th data-i18n="tableBonds">Corporate Bonds</th>
-                  <th data-i18n="tableEquity">Domestic Equity Financing</th>
+                  <th data-i18n="tableCurrent">Current Index</th>
+                  <th data-i18n="tableYoy">YoY Change (%)</th>
+                  <th data-i18n="tableCumulative">Cumulative Index</th>
                 </tr>
               </thead>
               <tbody
-                id="social-financing-tbody"
-                data-empty-en="No social financing data."
-                data-empty-zh="暂无社会融资规模数据。"
+                id="ppi-tbody"
+                data-empty-en="No PPI data."
+                data-empty-zh="暂无 PPI 数据。"
               ></tbody>
             </table>
           </div>
@@ -99,6 +94,6 @@
 
     <script src="i18n.js?v=20260408"></script>
     <script src="sidebar.js?v=20260408"></script>
-    <script type="module" src="social-financing.js?v=20260306"></script>
+    <script type="module" src="ppi.js?v=20260408"></script>
   </body>
 </html>

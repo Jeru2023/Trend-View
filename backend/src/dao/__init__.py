@@ -30,6 +30,10 @@ from .macro_social_financing_dao import MacroSocialFinancingDAO
 from .macro_cpi_dao import MacroCpiDAO
 from .macro_m2_dao import MacroM2DAO
 from .macro_pmi_dao import MacroPmiDAO
+from .macro_ppi_dao import MacroPpiDAO
+from .macro_pbc_rate_dao import MacroPbcRateDAO
+from .global_flash_dao import GlobalFlashDAO
+from .trade_calendar_dao import TradeCalendarDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -62,4 +66,8 @@ __all__ = [
     "MacroCpiDAO",
     "MacroPmiDAO",
     "MacroM2DAO",
+    "MacroPpiDAO",
+    "MacroPbcRateDAO",
+    "GlobalFlashDAO",
+    "TradeCalendarDAO",
 ]

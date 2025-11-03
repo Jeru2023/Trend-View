@@ -47,6 +47,8 @@ class PostgresSettings:
     income_statement_table: str
     financial_indicator_table: str
     finance_breakfast_table: str
+    global_flash_table: str
+    trade_calendar_table: str
     fundamental_metrics_table: str
     favorites_table: str
     stock_main_business_table: str
@@ -65,6 +67,8 @@ class PostgresSettings:
     cpi_table: str
     pmi_table: str
     m2_table: str
+    ppi_table: str
+    pbc_rate_table: str
     connect_timeout: int = 3
     application_name: str = DEFAULT_APPLICATION_NAME
     statement_timeout_ms: Optional[int] = None
@@ -185,6 +189,12 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             finance_breakfast_table=str(
                 postgres_config.get("finance_breakfast_table", "finance_breakfast")
             ),
+            global_flash_table=str(
+                postgres_config.get("global_flash_table", "global_flash")
+            ),
+            trade_calendar_table=str(
+                postgres_config.get("trade_calendar_table", "trade_calendar")
+            ),
             fundamental_metrics_table=str(
                 postgres_config.get("fundamental_metrics_table", "fundamental_metrics")
             ),
@@ -238,6 +248,12 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             m2_table=str(
                 postgres_config.get("m2_table", "macro_m2")
+            ),
+            ppi_table=str(
+                postgres_config.get("ppi_table", "macro_ppi")
+            ),
+            pbc_rate_table=str(
+                postgres_config.get("pbc_rate_table", "macro_pbc_rate")
             ),
             connect_timeout=int(postgres_config.get("connect_timeout", 3)),
             application_name=str(application_name).strip() if isinstance(application_name, str) and application_name.strip() else DEFAULT_APPLICATION_NAME,

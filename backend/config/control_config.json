@@ -1,5 +1,7 @@
 {
   "include_st": false,
   "include_delisted": false,
-  "daily_trade_window_days": 365
+  "daily_trade_window_days": 365,
+  "peripheral_aggregate_time": "06:00",
+  "global_flash_frequency_minutes": 180
 }

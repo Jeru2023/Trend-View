@@ -26,6 +26,8 @@ from .dao import (
     DailyTradeMetricsDAO,
     FinancialIndicatorDAO,
     FinanceBreakfastDAO,
+    GlobalFlashDAO,
+    TradeCalendarDAO,
     IncomeStatementDAO,
     FundamentalMetricsDAO,
     PerformanceExpressDAO,
@@ -42,6 +44,8 @@ from .dao import (
     MacroCpiDAO,
     MacroPmiDAO,
     MacroM2DAO,
+    MacroPpiDAO,
+    MacroPbcRateDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
@@ -57,6 +61,7 @@ from .services import (
     list_favorite_entries,
     list_favorite_groups,
     list_finance_breakfast,
+    list_global_flash,
     list_fundamental_metrics,
     list_performance_express,
     list_performance_forecast,
@@ -77,6 +82,10 @@ from .services import (
     sync_macro_pmi,
     list_macro_m2,
     sync_macro_m2,
+    list_macro_ppi,
+    sync_macro_ppi,
+    list_macro_pbc_rate,
+    sync_macro_pbc_rate,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_individual_fund_flow,
@@ -85,6 +94,9 @@ from .services import (
     sync_daily_indicator,
     sync_financial_indicators,
     sync_finance_breakfast,
+    sync_global_flash,
+    classify_global_flash_batch,
+    sync_trade_calendar,
     sync_income_statements,
     sync_daily_trade,
     sync_daily_trade_metrics,
@@ -106,11 +118,47 @@ from .services import (
     sync_stock_main_business,
     sync_stock_main_composition,
     get_stock_main_composition,
+    is_trading_day,
 )
 from .state import monitor
 
 scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Shanghai"))
+scheduler_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def _parse_time_string(value: str) -> Tuple[int, int]:
+    if not isinstance(value, str) or ":" not in value:
+        raise HTTPException(status_code=400, detail="Invalid time format. Expected HH:MM.")
+    hour_part, minute_part = value.split(":", 1)
+    try:
+        hour = int(hour_part)
+        minute = int(minute_part)
+    except ValueError as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=400, detail="Invalid time format. Expected HH:MM.") from exc
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise HTTPException(status_code=400, detail="Time must be between 00:00 and 23:59.")
+    return hour, minute
+
+
+def _normalize_time_string(value: str) -> str:
+    hour, minute = _parse_time_string(value)
+    return f"{hour:02d}:{minute:02d}"
 logger = logging.getLogger(__name__)
+
+
+def _submit_scheduler_task(coro: Awaitable[object]) -> bool:
+    global scheduler_loop
+    loop = scheduler_loop
+    if loop is None or loop.is_closed():
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.error("Scheduler job triggered without available asyncio loop.")
+            return False
+        else:
+            scheduler_loop = loop
+    loop.call_soon_threadsafe(asyncio.create_task, coro)
+    return True
 
 FAVORITE_GROUP_NONE_SENTINEL = "__ungrouped__"
 MAX_FAVORITE_GROUP_LENGTH = 64
@@ -567,6 +615,80 @@ class SyncFinanceBreakfastRequest(BaseModel):
         extra = "forbid"
 
 
+class SyncGlobalFlashRequest(BaseModel):
+    """Placeholder request model for global flash sync."""
+
+    class Config:
+        extra = "forbid"
+
+
+class SyncGlobalFlashResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncTradeCalendarRequest(BaseModel):
+    start_date: Optional[str] = Field(None, alias="startDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+    exchange: Optional[str] = "SSE"
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncTradeCalendarResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    start_date: Optional[str] = Field(None, alias="startDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncGlobalFlashClassifyRequest(BaseModel):
+    batch_size: int = Field(10, ge=1, le=100, alias="batchSize")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncGlobalFlashClassifyResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+    requested: int = Field(..., alias="requested")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class GlobalFlashItem(BaseModel):
+    title: str
+    summary: Optional[str] = None
+    published_at: Optional[datetime] = Field(None, alias="publishedAt")
+    url: str
+    if_extract: Optional[bool] = Field(None, alias="ifExtract")
+    extract_checked_at: Optional[datetime] = Field(None, alias="extractCheckedAt")
+    extract_reason: Optional[str] = Field(None, alias="extractReason")
+    subject_level: Optional[str] = Field(None, alias="subjectLevel")
+    impact_scope: Optional[str] = Field(None, alias="impactScope")
+    event_type: Optional[str] = Field(None, alias="eventType")
+    time_sensitivity: Optional[str] = Field(None, alias="timeSensitivity")
+    quant_signal: Optional[str] = Field(None, alias="quantSignal")
+    impact_levels: List[str] = Field(default_factory=list, alias="impactLevels")
+    impact_markets: List[str] = Field(default_factory=list, alias="impactMarkets")
+    impact_industries: List[str] = Field(default_factory=list, alias="impactIndustries")
+    impact_sectors: List[str] = Field(default_factory=list, alias="impactSectors")
+    impact_themes: List[str] = Field(default_factory=list, alias="impactThemes")
+    impact_stocks: List[str] = Field(default_factory=list, alias="impactStocks")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class SyncPerformanceExpressRequest(BaseModel):
     codes: Optional[List[str]] = Field(
         None,
@@ -755,6 +877,32 @@ class SyncMacroM2Request(BaseModel):
 
 
 class SyncMacroM2Response(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMacroPpiRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncMacroPpiResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMacroPbcRateRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncMacroPbcRateResponse(BaseModel):
     rows: int
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
@@ -1246,6 +1394,42 @@ class M2ListResponse(BaseModel):
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
 
 
+class PpiRecord(BaseModel):
+    period_date: date = Field(..., alias="periodDate")
+    period_label: Optional[str] = Field(None, alias="periodLabel")
+    current_index: Optional[float] = Field(None, alias="currentIndex")
+    yoy_change: Optional[float] = Field(None, alias="yoyChange")
+    cumulative_index: Optional[float] = Field(None, alias="cumulativeIndex")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class PpiListResponse(BaseModel):
+    total: int
+    items: List[PpiRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class PbcRateRecord(BaseModel):
+    period_date: date = Field(..., alias="periodDate")
+    period_label: Optional[str] = Field(None, alias="periodLabel")
+    actual_value: Optional[float] = Field(None, alias="actualValue")
+    forecast_value: Optional[float] = Field(None, alias="forecastValue")
+    previous_value: Optional[float] = Field(None, alias="previousValue")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class PbcRateListResponse(BaseModel):
+    total: int
+    items: List[PbcRateRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
 class FuturesRealtimeRecord(BaseModel):
     name: str
     code: Optional[str] = None
@@ -1430,6 +1614,18 @@ class RuntimeConfigPayload(BaseModel):
     include_st: bool = Field(..., alias="includeST")
     include_delisted: bool = Field(..., alias="includeDelisted")
     daily_trade_window_days: int = Field(..., alias="dailyTradeWindowDays", ge=1, le=3650)
+    peripheral_aggregate_time: Optional[str] = Field(
+        None,
+        alias="peripheralAggregateTime",
+        description="Daily run time (HH:MM, 24h) for peripheral aggregate scheduler.",
+    )
+    global_flash_frequency_minutes: int = Field(
+        180,
+        alias="globalFlashFrequencyMinutes",
+        ge=10,
+        le=1440,
+        description="Interval in minutes between global flash data refresh runs.",
+    )
 
     class Config:
         allow_population_by_field_name = True
@@ -1478,6 +1674,8 @@ def _runtime_config_to_payload(config: RuntimeConfig) -> RuntimeConfigPayload:
         include_st=config.include_st,
         include_delisted=config.include_delisted,
         daily_trade_window_days=config.daily_trade_window_days,
+        peripheral_aggregate_time=config.peripheral_aggregate_time,
+        global_flash_frequency_minutes=config.global_flash_frequency_minutes,
     )
 
 
@@ -1951,6 +2149,132 @@ async def _run_finance_breakfast_job(request: SyncFinanceBreakfastRequest) -> No
     await loop.run_in_executor(None, job)
 
 
+async def _run_global_flash_job(request: SyncGlobalFlashRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        try:
+            result = sync_global_flash()
+            stats: Dict[str, object] = {}
+            try:
+                stats = GlobalFlashDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh global_flash stats: %s", stats_exc)
+            elapsed = float(result.get("elapsedSeconds", result.get("elapsed_seconds", time.perf_counter() - started)))
+            total_rows = None
+            if isinstance(stats, dict):
+                total_rows = stats.get("count")
+                finished_at = stats.get("updated_at")
+            else:
+                finished_at = None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "global_flash",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message="Global flash sync completed",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            error_message = str(exc)
+            monitor.finish(
+                "global_flash",
+                success=False,
+                message=error_message,
+                error=error_message,
+                last_duration=elapsed,
+            )
+            logger.error("Global flash sync failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_trade_calendar_job(request: SyncTradeCalendarRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("trade_calendar", message="Syncing A-share trading calendar", progress=0.0)
+        try:
+            result = sync_trade_calendar(
+                start_date=request.start_date,
+                end_date=request.end_date,
+                exchange=request.exchange or "SSE",
+            )
+            stats: Dict[str, object] = {}
+            try:
+                stats = TradeCalendarDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh trade_calendar stats: %s", stats_exc)
+            elapsed = float(result.get("elapsedSeconds", time.perf_counter() - started))
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            finished_at = stats.get("updated_at") if isinstance(stats, dict) else None
+            monitor.finish(
+                "trade_calendar",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Trade calendar synced ({result.get('rows', 0)} rows)",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            error_message = str(exc)
+            monitor.finish(
+                "trade_calendar",
+                success=False,
+                message=error_message,
+                error=error_message,
+                last_duration=elapsed,
+            )
+            logger.error("Trade calendar sync failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_global_flash_classification_job(request: SyncGlobalFlashClassifyRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("global_flash_classification", message="Classifying global flash entries", progress=0.0)
+        try:
+            result = classify_global_flash_batch(batch_size=request.batch_size)
+            elapsed = float(result.get("elapsedSeconds", time.perf_counter() - started))
+            rows = int(result.get("rows", 0) or 0)
+            requested = int(result.get("requested", rows) or rows)
+            skipped = bool(result.get("skipped"))
+            message = (
+                "DeepSeek configuration missing; classification skipped"
+                if skipped
+                else f"Classified {rows}/{requested} global flash entries"
+            )
+            monitor.finish(
+                "global_flash_classification",
+                success=True,
+                total_rows=rows,
+                message=message,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            error_message = str(exc)
+            monitor.finish(
+                "global_flash_classification",
+                success=False,
+                message=error_message,
+                error=error_message,
+                last_duration=elapsed,
+            )
+            logger.error("Global flash classification failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
+
+
 
 async def _run_performance_express_job(request: SyncPerformanceExpressRequest) -> None:
     loop = asyncio.get_running_loop()
@@ -2346,6 +2670,74 @@ async def _run_macro_m2_job(request: SyncMacroM2Request) -> None:  # noqa: ARG00
             elapsed = time.perf_counter() - started
             monitor.finish(
                 "m2_monthly",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_macro_ppi_job(request: SyncMacroPpiRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("ppi_monthly", message="Syncing PPI data", progress=0.0)
+        try:
+            result = sync_macro_ppi()
+            stats = MacroPpiDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "ppi_monthly",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} PPI rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "ppi_monthly",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_macro_pbc_rate_job(request: SyncMacroPbcRateRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("pbc_rate", message="Syncing PBC interest rate data", progress=0.0)
+        try:
+            result = sync_macro_pbc_rate()
+            stats = MacroPbcRateDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "pbc_rate",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} PBC rate rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "pbc_rate",
                 success=False,
                 error=str(exc),
                 last_duration=elapsed,
@@ -2989,6 +3381,22 @@ async def start_macro_m2_job(payload: SyncMacroM2Request) -> None:
     asyncio.create_task(_run_macro_m2_job(payload))
 
 
+async def start_macro_ppi_job(payload: SyncMacroPpiRequest) -> None:
+    if _job_running("ppi_monthly"):
+        raise HTTPException(status_code=409, detail="PPI sync already running")
+    monitor.start("ppi_monthly", message="Syncing PPI data")
+    monitor.update("ppi_monthly", progress=0.0)
+    asyncio.create_task(_run_macro_ppi_job(payload))
+
+
+async def start_macro_pbc_rate_job(payload: SyncMacroPbcRateRequest) -> None:
+    if _job_running("pbc_rate"):
+        raise HTTPException(status_code=409, detail="PBC interest rate sync already running")
+    monitor.start("pbc_rate", message="Syncing PBC interest rate data")
+    monitor.update("pbc_rate", progress=0.0)
+    asyncio.create_task(_run_macro_pbc_rate_job(payload))
+
+
 async def start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
     if _job_running("futures_realtime"):
         raise HTTPException(status_code=409, detail="Futures realtime sync already running")
@@ -3091,6 +3499,30 @@ async def start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> N
     asyncio.create_task(_run_finance_breakfast_job(payload))
 
 
+async def start_global_flash_job(payload: SyncGlobalFlashRequest) -> None:
+    if _job_running("global_flash"):
+        raise HTTPException(status_code=409, detail="Global flash sync already running")
+    monitor.start("global_flash", message="Syncing global finance flash data")
+    monitor.update("global_flash", progress=0.0)
+    asyncio.create_task(_run_global_flash_job(payload))
+
+
+async def start_trade_calendar_job(payload: SyncTradeCalendarRequest) -> None:
+    if _job_running("trade_calendar"):
+        raise HTTPException(status_code=409, detail="Trade calendar sync already running")
+    monitor.start("trade_calendar", message="Syncing A-share trading calendar")
+    monitor.update("trade_calendar", progress=0.0)
+    asyncio.create_task(_run_trade_calendar_job(payload))
+
+
+async def start_global_flash_classification_job(payload: SyncGlobalFlashClassifyRequest) -> None:
+    if _job_running("global_flash_classification"):
+        raise HTTPException(status_code=409, detail="Global flash classification already running")
+    monitor.start("global_flash_classification", message="Classifying global flash entries")
+    monitor.update("global_flash_classification", progress=0.0)
+    asyncio.create_task(_run_global_flash_classification_job(payload))
+
+
 async def safe_start_stock_basic_job(payload: SyncStockBasicRequest) -> None:
     try:
         await start_stock_basic_job(payload)
@@ -3144,6 +3576,20 @@ async def safe_start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest)
         await start_finance_breakfast_job(payload)
     except HTTPException as exc:
         logger.info("Finance breakfast sync skipped: %s", exc.detail)
+
+
+async def safe_start_trade_calendar_job(payload: SyncTradeCalendarRequest) -> None:
+    try:
+        await start_trade_calendar_job(payload)
+    except HTTPException as exc:
+        logger.info("Trade calendar sync skipped: %s", exc.detail)
+
+
+async def safe_start_global_flash_classification_job(payload: SyncGlobalFlashClassifyRequest) -> None:
+    try:
+        await start_global_flash_classification_job(payload)
+    except HTTPException as exc:
+        logger.info("Global flash classification skipped: %s", exc.detail)
 
 
 
@@ -3224,6 +3670,13 @@ async def safe_start_macro_m2_job(payload: SyncMacroM2Request) -> None:
         logger.info("M2 sync skipped: %s", exc.detail)
 
 
+async def safe_start_macro_ppi_job(payload: SyncMacroPpiRequest) -> None:
+    try:
+        await start_macro_ppi_job(payload)
+    except HTTPException as exc:
+        logger.info("PPI sync skipped: %s", exc.detail)
+
+
 async def safe_start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
     try:
         await start_futures_realtime_job(payload)
@@ -3266,6 +3719,138 @@ async def safe_start_concept_fund_flow_job(payload: SyncConceptFundFlowRequest) 
         logger.info("Concept fund flow sync skipped: %s", exc.detail)
 
 
+def schedule_peripheral_aggregate_job(config: RuntimeConfig) -> None:
+    job_id = "peripheral_aggregate_daily"
+    try:
+        trigger_hour, trigger_minute = _parse_time_string(config.peripheral_aggregate_time)
+    except HTTPException:
+        trigger_hour, trigger_minute = 6, 0
+    try:
+        scheduler.remove_job(job_id)
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+    scheduler.add_job(
+        lambda: _submit_scheduler_task(
+            safe_start_peripheral_aggregate_job(SyncPeripheralAggregateRequest())
+        ),
+        CronTrigger(hour=trigger_hour, minute=trigger_minute),
+        id=job_id,
+        replace_existing=True,
+    )
+
+
+def _maybe_queue_global_flash_sync(trigger: str) -> None:
+    local_now = datetime.now(tz=scheduler.timezone)
+    try:
+        trading_status = is_trading_day(local_now)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to determine trading day status: %s", exc)
+        trading_status = None
+
+    is_trading = bool(trading_status)
+    if trading_status is None:
+        logger.debug("Trading day status unknown for %s; defaulting to non-trading logic.", local_now.date())
+
+    hour = local_now.hour
+    minute = local_now.minute
+
+    if trigger == "intraday":
+        if not is_trading or not (8 <= hour < 20):
+            logger.debug(
+                "Skipping global flash intraday run at %s (trading=%s, hour=%s)",
+                local_now.isoformat(),
+                is_trading,
+                hour,
+            )
+            return
+    elif trigger == "intraday_close":
+        if not is_trading or not (hour == 20 and minute == 0):
+            logger.debug(
+                "Skipping global flash 20:00 run at %s (trading=%s)",
+                local_now.isoformat(),
+                is_trading,
+            )
+            return
+    else:  # hourly
+        if is_trading and 8 <= hour <= 20:
+            logger.debug(
+                "Skipping hourly global flash run during trading session (%s)",
+                local_now.isoformat(),
+            )
+            return
+
+    if not _submit_scheduler_task(safe_start_global_flash_job(SyncGlobalFlashRequest())):
+        logger.debug("Global flash job queueing skipped; scheduler loop unavailable.")
+
+
+def schedule_global_flash_job(config: RuntimeConfig) -> None:
+    for job_id in [
+        "global_flash_intraday",
+        "global_flash_intraday_close",
+        "global_flash_hourly",
+    ]:
+        try:
+            scheduler.remove_job(job_id)
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    scheduler.add_job(
+        lambda: _maybe_queue_global_flash_sync("intraday"),
+        CronTrigger(day_of_week="mon-fri", hour="8-19", minute="*/10"),
+        id="global_flash_intraday",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        lambda: _maybe_queue_global_flash_sync("intraday_close"),
+        CronTrigger(day_of_week="mon-fri", hour="20", minute="0"),
+        id="global_flash_intraday_close",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        lambda: _maybe_queue_global_flash_sync("hourly"),
+        CronTrigger(minute=0),
+        id="global_flash_hourly",
+        replace_existing=True,
+    )
+
+
+def schedule_trade_calendar_job() -> None:
+    job_id = "trade_calendar_daily"
+    try:
+        scheduler.remove_job(job_id)
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+    scheduler.add_job(
+        lambda: _submit_scheduler_task(
+            safe_start_trade_calendar_job(SyncTradeCalendarRequest())
+        ),
+        CronTrigger(hour=2, minute=30),
+        id=job_id,
+        replace_existing=True,
+    )
+
+
+def schedule_global_flash_classification_job(default_batch_size: int = 10) -> None:
+    job_id = "global_flash_classification"
+    try:
+        scheduler.remove_job(job_id)
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+    scheduler.add_job(
+        lambda: _submit_scheduler_task(
+            safe_start_global_flash_classification_job(
+                SyncGlobalFlashClassifyRequest(batch_size=default_batch_size)
+            )
+        ),
+        CronTrigger(minute="*/10"),
+        id=job_id,
+        replace_existing=True,
+    )
+
+
 async def safe_start_individual_fund_flow_job(payload: SyncIndividualFundFlowRequest) -> None:
     try:
         await start_individual_fund_flow_job(payload)
@@ -3294,12 +3879,22 @@ async def safe_start_stock_main_composition_job(payload: SyncStockMainCompositio
         logger.info("Stock main composition sync skipped: %s", exc.detail)
 
 
+async def safe_start_global_flash_job(payload: SyncGlobalFlashRequest) -> None:
+    try:
+        await start_global_flash_job(payload)
+    except HTTPException as exc:
+        logger.info("Global flash sync skipped: %s", exc.detail)
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
+    global scheduler_loop
+    scheduler_loop = asyncio.get_running_loop()
     if not scheduler.running:
         scheduler.start()
+        config = load_runtime_config()
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_stock_basic_job(SyncStockBasicRequest(list_statuses=["L", "D"], market=None))
             ),
             CronTrigger(day=1, hour=0, minute=0),
@@ -3307,7 +3902,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_daily_trade_job(SyncDailyTradeRequest())
             ),
             CronTrigger(hour=17, minute=0),
@@ -3315,7 +3910,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_daily_indicator_job(SyncDailyIndicatorRequest())
             ),
             CronTrigger(hour=17, minute=5),
@@ -3323,7 +3918,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_daily_trade_metrics_job(SyncDailyTradeMetricsRequest())
             ),
             CronTrigger(hour=19, minute=0),
@@ -3331,7 +3926,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_fundamental_metrics_job(SyncFundamentalMetricsRequest())
             ),
             CronTrigger(hour=19, minute=10),
@@ -3339,7 +3934,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_finance_breakfast_job(SyncFinanceBreakfastRequest())
             ),
             CronTrigger(hour=7, minute=0),
@@ -3349,7 +3944,7 @@ async def startup_event() -> None:
 
 
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_industry_fund_flow_job(SyncIndustryFundFlowRequest())
             ),
             CronTrigger(hour=19, minute=25),
@@ -3357,7 +3952,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_concept_fund_flow_job(SyncConceptFundFlowRequest())
             ),
             CronTrigger(hour=19, minute=30),
@@ -3365,7 +3960,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_individual_fund_flow_job(SyncIndividualFundFlowRequest())
             ),
             CronTrigger(hour=19, minute=35),
@@ -3373,7 +3968,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_big_deal_fund_flow_job(SyncBigDealFundFlowRequest())
             ),
             CronTrigger(hour=19, minute=37),
@@ -3381,7 +3976,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_performance_express_job(SyncPerformanceExpressRequest())
             ),
             CronTrigger(hour=19, minute=20),
@@ -3389,23 +3984,19 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_performance_forecast_job(SyncPerformanceForecastRequest())
             ),
             CronTrigger(hour=19, minute=40),
             id="performance_forecast_daily",
             replace_existing=True,
         )
+        schedule_peripheral_aggregate_job(config)
+        schedule_global_flash_job(config)
+        schedule_trade_calendar_job()
+        schedule_global_flash_classification_job()
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
-                safe_start_peripheral_aggregate_job(SyncPeripheralAggregateRequest())
-            ),
-            CronTrigger(hour=6, minute=0),
-            id="peripheral_aggregate_daily",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_profit_forecast_job(SyncProfitForecastRequest())
             ),
             CronTrigger(hour=19, minute=45),
@@ -3413,7 +4004,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_macro_cpi_job(SyncMacroCpiRequest())
             ),
             CronTrigger(day=9, hour=22, minute=0),
@@ -3421,7 +4012,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_macro_cpi_job(SyncMacroCpiRequest())
             ),
             CronTrigger(day=10, hour=22, minute=0),
@@ -3429,7 +4020,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_macro_pmi_job(SyncMacroPmiRequest())
             ),
             CronTrigger(day=9, hour=22, minute=0),
@@ -3437,7 +4028,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_macro_pmi_job(SyncMacroPmiRequest())
             ),
             CronTrigger(day=10, hour=22, minute=0),
@@ -3445,7 +4036,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_macro_m2_job(SyncMacroM2Request())
             ),
             CronTrigger(day=10, hour=17, minute=1),
@@ -3453,7 +4044,7 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_macro_m2_job(SyncMacroM2Request())
             ),
             CronTrigger(day=11, hour=17, minute=1),
@@ -3461,13 +4052,34 @@ async def startup_event() -> None:
             replace_existing=True,
         )
         scheduler.add_job(
-            lambda: asyncio.get_running_loop().create_task(
+            lambda: _submit_scheduler_task(
                 safe_start_macro_m2_job(SyncMacroM2Request())
             ),
             CronTrigger(day=12, hour=17, minute=1),
             id="macro_m2_monthly_day12",
             replace_existing=True,
         )
+        scheduler.add_job(
+            lambda: _submit_scheduler_task(
+                safe_start_macro_ppi_job(SyncMacroPpiRequest())
+            ),
+            CronTrigger(day=9, hour=10, minute=0),
+            id="macro_ppi_monthly_day9",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: _submit_scheduler_task(
+                safe_start_macro_ppi_job(SyncMacroPpiRequest())
+            ),
+            CronTrigger(day=10, hour=10, minute=0),
+            id="macro_ppi_monthly_day10",
+            replace_existing=True,
+        )
+        _submit_scheduler_task(safe_start_trade_calendar_job(SyncTradeCalendarRequest()))
+        _submit_scheduler_task(
+            safe_start_global_flash_classification_job(SyncGlobalFlashClassifyRequest())
+        )
+        _maybe_queue_global_flash_sync("hourly")
 
 
 @app.on_event("shutdown")
@@ -4356,6 +4968,56 @@ def list_macro_m2_api(
     )
 
 
+@app.get("/macro/ppi", response_model=PpiListResponse)
+def list_macro_ppi_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of PPI rows to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> PpiListResponse:
+    result = list_macro_ppi(limit=limit, offset=offset)
+    items: List[PpiRecord] = []
+    for entry in result.get("items", []):
+        items.append(
+            PpiRecord(
+                periodDate=entry.get("period_date"),
+                periodLabel=entry.get("period_label"),
+                currentIndex=entry.get("current_index"),
+                yoyChange=entry.get("yoy_change"),
+                cumulativeIndex=entry.get("cumulative_index"),
+                updatedAt=entry.get("updated_at"),
+            )
+        )
+    return PpiListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
+@app.get("/macro/pbc-rate", response_model=PbcRateListResponse)
+def list_macro_pbc_rate_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of rate decisions to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> PbcRateListResponse:
+    result = list_macro_pbc_rate(limit=limit, offset=offset)
+    items: List[PbcRateRecord] = []
+    for entry in result.get("items", []):
+        items.append(
+            PbcRateRecord(
+                periodDate=entry.get("period_date"),
+                periodLabel=entry.get("period_label"),
+                actualValue=entry.get("actual_value"),
+                forecastValue=entry.get("forecast_value"),
+                previousValue=entry.get("previous_value"),
+                updatedAt=entry.get("updated_at"),
+            )
+        )
+    return PbcRateListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
 @app.get("/peripheral/insights/latest", response_model=PeripheralInsightResponse)
 def get_latest_peripheral_insight_api() -> PeripheralInsightResponse:
     record = get_latest_peripheral_insight()
@@ -4518,11 +5180,7 @@ async def list_finance_breakfast_entries(
         logger.warning("Finance breakfast query failed: %s", exc)
         entries = []
     if not entries:
-        try:
-            asyncio.get_running_loop().create_task(
-                safe_start_finance_breakfast_job(SyncFinanceBreakfastRequest())
-            )
-        except RuntimeError:
+        if not _submit_scheduler_task(safe_start_finance_breakfast_job(SyncFinanceBreakfastRequest())):
             logger.debug("Finance breakfast sync could not be scheduled (no running loop).")
     return [
         FinanceBreakfastItem(
@@ -4534,6 +5192,45 @@ async def list_finance_breakfast_entries(
             ai_extract_detail=entry.get("ai_extract_detail"),
             published_at=entry.get("published_at"),
             url=entry.get("url"),
+        )
+        for entry in entries
+    ]
+
+
+@app.get("/news/global-flash", response_model=List[GlobalFlashItem])
+async def list_global_flash_entries(
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of headlines to return."),
+) -> List[GlobalFlashItem]:
+    try:
+        entries = list_global_flash(limit=limit)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Global flash query failed: %s", exc)
+        entries = []
+
+    if not entries:
+        if not _submit_scheduler_task(safe_start_global_flash_job(SyncGlobalFlashRequest())):
+            logger.debug("Global flash sync could not be scheduled (no running loop).")
+
+    return [
+        GlobalFlashItem(
+            title=entry.get("title", ""),
+            summary=entry.get("summary"),
+            published_at=entry.get("published_at"),
+            url=entry.get("url", ""),
+            if_extract=entry.get("if_extract"),
+            extract_checked_at=entry.get("extract_checked_at"),
+            extract_reason=entry.get("extract_reason"),
+            subject_level=entry.get("subject_level"),
+            impact_scope=entry.get("impact_scope"),
+            event_type=entry.get("event_type"),
+            time_sensitivity=entry.get("time_sensitivity"),
+            quant_signal=entry.get("quant_signal"),
+            impact_levels=entry.get("impact_levels") or [],
+            impact_markets=entry.get("impact_markets") or [],
+            impact_industries=entry.get("impact_industries") or [],
+            impact_sectors=entry.get("impact_sectors") or [],
+            impact_themes=entry.get("impact_themes") or [],
+            impact_stocks=entry.get("impact_stocks") or [],
         )
         for entry in entries
     ]
@@ -4651,6 +5348,16 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect m2_monthly stats: %s", exc)
         stats_map["m2_monthly"] = {}
     try:
+        stats_map["ppi_monthly"] = MacroPpiDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect ppi_monthly stats: %s", exc)
+        stats_map["ppi_monthly"] = {}
+    try:
+        stats_map["pbc_rate"] = MacroPbcRateDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect pbc_rate stats: %s", exc)
+        stats_map["pbc_rate"] = {}
+    try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect industry_fund_flow stats: %s", exc)
@@ -4685,6 +5392,16 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect finance_breakfast stats: %s", exc)
         stats_map["finance_breakfast"] = {}
+    try:
+        stats_map["global_flash"] = GlobalFlashDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect global_flash stats: %s", exc)
+        stats_map["global_flash"] = {}
+    try:
+        stats_map["trade_calendar"] = TradeCalendarDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect trade_calendar stats: %s", exc)
+        stats_map["trade_calendar"] = {}
 
     jobs: Dict[str, JobStatusPayload] = {}
     for name, info in monitor.snapshot().items():
@@ -4749,12 +5466,30 @@ def get_control_status() -> ControlStatusResponse:
 
 @app.put("/control/config", response_model=RuntimeConfigPayload)
 def update_runtime_config(payload: RuntimeConfigPayload) -> RuntimeConfigPayload:
+    existing = load_runtime_config()
+    time_input = payload.peripheral_aggregate_time if payload.peripheral_aggregate_time else existing.peripheral_aggregate_time
+    peripheral_time = _normalize_time_string(time_input or "06:00")
+    frequency_value = payload.global_flash_frequency_minutes or existing.global_flash_frequency_minutes
+    try:
+        frequency_value = int(frequency_value)
+    except (TypeError, ValueError):
+        frequency_value = existing.global_flash_frequency_minutes
+    if frequency_value <= 0:
+        frequency_value = existing.global_flash_frequency_minutes or 180
+    frequency_value = max(10, min(frequency_value, 1440))
     config = RuntimeConfig(
         include_st=payload.include_st,
         include_delisted=payload.include_delisted,
         daily_trade_window_days=payload.daily_trade_window_days,
+        peripheral_aggregate_time=peripheral_time,
+        global_flash_frequency_minutes=frequency_value,
     )
     save_runtime_config(config)
+    if scheduler.running:
+        schedule_peripheral_aggregate_job(config)
+        schedule_global_flash_job(config)
+        schedule_trade_calendar_job()
+        schedule_global_flash_classification_job()
     return _runtime_config_to_payload(config)
 
 
@@ -4860,6 +5595,18 @@ async def control_sync_m2(payload: SyncMacroM2Request) -> dict[str, str]:
     return {"status": "started"}
 
 
+@app.post("/control/sync/ppi")
+async def control_sync_ppi(payload: SyncMacroPpiRequest) -> dict[str, str]:
+    await start_macro_ppi_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/pbc-rate")
+async def control_sync_pbc_rate(payload: SyncMacroPbcRateRequest) -> dict[str, str]:
+    await start_macro_pbc_rate_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/social-financing")
 async def control_sync_social_financing(payload: SyncSocialFinancingRequest) -> dict[str, str]:
     await start_social_financing_job(payload)
@@ -4932,6 +5679,24 @@ async def control_sync_finance_breakfast(payload: SyncFinanceBreakfastRequest) -
     return {"status": "started"}
 
 
+@app.post("/control/sync/global-flash")
+async def control_sync_global_flash(payload: SyncGlobalFlashRequest) -> dict[str, str]:
+    await start_global_flash_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/global-flash-classification")
+async def control_sync_global_flash_classification(payload: SyncGlobalFlashClassifyRequest) -> dict[str, str]:
+    await start_global_flash_classification_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/trade-calendar")
+async def control_sync_trade_calendar(payload: SyncTradeCalendarRequest) -> dict[str, str]:
+    await start_trade_calendar_job(payload)
+    return {"status": "started"}
+
+
 @app.get("/control/debug/stats", include_in_schema=False)
 def control_debug_stats() -> dict[str, object]:
     settings = load_settings()
@@ -4944,6 +5709,8 @@ def control_debug_stats() -> dict[str, object]:
             "income_statement": IncomeStatementDAO(settings.postgres).stats(),
             "financial_indicator": FinancialIndicatorDAO(settings.postgres).stats(),
             "finance_breakfast": FinanceBreakfastDAO(settings.postgres).stats(),
+            "global_flash": GlobalFlashDAO(settings.postgres).stats(),
+            "trade_calendar": TradeCalendarDAO(settings.postgres).stats(),
             "fundamental_metrics": FundamentalMetricsDAO(settings.postgres).stats(),
             "stock_main_business": StockMainBusinessDAO(settings.postgres).stats(),
             "stock_main_composition": StockMainCompositionDAO(settings.postgres).stats(),
@@ -5053,6 +5820,26 @@ def trigger_finance_breakfast_sync(payload: SyncFinanceBreakfastRequest) -> Sync
     return SyncFinanceBreakfastResponse(
         rows=int(result["rows"]),
         elapsedSeconds=float(result.get("elapsed_seconds", 0.0)),
+    )
+
+
+@app.post("/sync/global-flash", response_model=SyncGlobalFlashResponse)
+def trigger_global_flash_sync(payload: SyncGlobalFlashRequest) -> SyncGlobalFlashResponse:
+    del payload
+    result = sync_global_flash()
+    return SyncGlobalFlashResponse(
+        rows=int(result.get("rows", 0)),
+        elapsedSeconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
+    )
+
+
+@app.post("/sync/global-flash/classification", response_model=SyncGlobalFlashClassifyResponse)
+def trigger_global_flash_classification_sync(payload: SyncGlobalFlashClassifyRequest) -> SyncGlobalFlashClassifyResponse:
+    result = classify_global_flash_batch(batch_size=payload.batch_size)
+    return SyncGlobalFlashClassifyResponse(
+        rows=int(result.get("rows", 0)),
+        elapsedSeconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
+        requested=int(result.get("requested", payload.batch_size)),
     )
 
 

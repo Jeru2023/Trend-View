@@ -18,6 +18,8 @@ from .social_financing_service import list_social_financing_ratios, sync_social_
 from .macro_cpi_service import list_macro_cpi, sync_macro_cpi
 from .macro_pmi_service import list_macro_pmi, sync_macro_pmi
 from .macro_m2_service import list_macro_m2, sync_macro_m2
+from .macro_ppi_service import list_macro_ppi, sync_macro_ppi
+from .macro_pbc_rate_service import list_macro_pbc_rate, sync_macro_pbc_rate
 from .daily_trade_service import sync_daily_trade
 from .daily_trade_metrics_service import sync_daily_trade_metrics
 from .stock_basic_service import get_stock_overview, get_stock_detail, sync_stock_basic
@@ -28,6 +30,8 @@ from .individual_fund_flow_service import list_individual_fund_flow, sync_indivi
 from .big_deal_fund_flow_service import list_big_deal_fund_flow, sync_big_deal_fund_flow
 from .stock_main_business_service import get_stock_main_business, sync_stock_main_business
 from .stock_main_composition_service import get_stock_main_composition, sync_stock_main_composition
+from .global_flash_service import list_global_flash, sync_global_flash, classify_global_flash_batch
+from .trade_calendar_service import sync_trade_calendar, is_trading_day
 from .favorite_stock_service import (
     add_stock_to_favorites,
     remove_stock_from_favorites,
@@ -57,6 +61,11 @@ __all__ = [
     "sync_macro_cpi",
     "sync_macro_pmi",
     "sync_macro_m2",
+    "sync_macro_ppi",
+    "sync_macro_pbc_rate",
+    "sync_global_flash",
+    "classify_global_flash_batch",
+    "sync_trade_calendar",
     "generate_peripheral_insight",
     "list_finance_breakfast",
     "list_performance_express",
@@ -72,6 +81,10 @@ __all__ = [
     "list_macro_cpi",
     "list_macro_pmi",
     "list_macro_m2",
+    "list_macro_ppi",
+    "list_macro_pbc_rate",
+    "list_global_flash",
+    "is_trading_day",
     "get_latest_peripheral_insight",
     "list_industry_fund_flow",
     "list_concept_fund_flow",
