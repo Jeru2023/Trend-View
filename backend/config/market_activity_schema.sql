@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS {schema}.{table} (
+    metric TEXT PRIMARY KEY,
+    display_order INTEGER NOT NULL,
+    value_text TEXT,
+    value_number NUMERIC,
+    dataset_timestamp TIMESTAMP WITHOUT TIME ZONE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+

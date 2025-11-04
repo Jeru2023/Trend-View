@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View - Macro Insight</title>
+    <link rel="stylesheet" href="styles.css?v=20270420" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          } else {
+            document.documentElement.lang = "zh";
+            document.documentElement.setAttribute("data-pref-lang", "zh");
+          }
+        } catch (error) {
+          document.documentElement.lang = "zh";
+          document.documentElement.setAttribute("data-pref-lang", "zh");
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="macro-insight">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="pageTitle">Macro Insight</h1>
+            <p class="page-subtitle" data-i18n="pageSubtitle">
+              Consolidated macro indicators with AI-generated reasoning on A-share implications.
+            </p>
+          </div>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <div class="macro-insight-meta">
+            <button class="primary-btn" id="macro-insight-refresh" data-i18n="refreshButton">Refresh</button>
+            <span data-i18n="lastGeneratedLabel">Last generated</span>
+            <strong id="macro-insight-generated">--</strong>
+          </div>
+
+          <article class="insight-card" id="macro-insight-summary-card">
+            <div class="insight-card__header">
+              <h2 data-i18n="summaryTitle">LLM Summary</h2>
+              <span class="insight-card__model" id="macro-insight-model"></span>
+            </div>
+            <div
+              class="macro-summary"
+              id="macro-insight-summary"
+              data-empty-en="No macro insight yet."
+              data-empty-zh="暂无宏观推理结果。"
+            ></div>
+          </article>
+
+          <div class="macro-summary-panels" id="macro-insight-highlights"></div>
+
+          <div class="macro-dataset-grid" id="macro-insight-datasets"></div>
+
+          <div class="insight-warnings" id="macro-insight-warnings"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20270415"></script>
+    <script src="sidebar.js?v=20270426"></script>
+    <script type="module" src="macro-insight.js?v=20270420"></script>
+  </body>
+</html>

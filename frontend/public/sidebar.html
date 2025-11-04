@@ -8,48 +8,83 @@
   </div>
 
   <nav class="nav">
-    <a class="nav__item nav__item--highlight" data-nav-key="dashboard" data-i18n="navDashboard" href="dashboard.html">Dashboard</a>
-    <div class="nav__section-title" data-i18n="navBasics">Market</div>
-    <a class="nav__item" data-nav-key="market-intelligence" data-i18n="navMarketIntelligence" href="index.html">Market Intelligence</a>
-    <a class="nav__item" data-nav-key="market-realtime-indices" data-i18n="navRealtimeIndices" href="realtime-indices.html">Realtime Indices</a>
-    <a class="nav__item" data-nav-key="market-index-history" data-i18n="navIndexHistory" href="index-history.html">Index History</a>
-    <a class="nav__item" data-nav-key="portfolio" data-i18n="navPortfolio" href="index.html?favoritesOnly=1">Portfolio Monitor</a>
-    <a class="nav__item" data-nav-key="performance-express" data-i18n="navPerformanceExpress" href="performance-express.html">Performance Express</a>
-    <a class="nav__item" data-nav-key="performance-forecast" data-i18n="navPerformanceForecast" href="performance-forecast.html">Performance Forecast</a>
-    <a class="nav__item" data-nav-key="profit-forecast" data-i18n="navProfitForecast" href="profit-forecast.html">Profit Forecast</a>
+    <a class="nav__item nav__item--highlight" data-nav-key="dashboard" data-i18n="navDashboard" href="dashboard.html">仪表盘</a>
 
-  <div class="nav__section-title" data-i18n="navFunds">Funds</div>
-    <a class="nav__item" data-nav-key="big-deal-fund-flow" data-i18n="navBigDealFundFlow" href="big-deal-tracking.html">Big Deal Tracking</a>
-    <a class="nav__item" data-nav-key="individual-fund-flow" data-i18n="navIndividualFundFlow" href="individual-fund-flow.html">Individual Fund Flow</a>
-    <a class="nav__item" data-nav-key="concept-fund-flow" data-i18n="navConceptFundFlow" href="concept-fund-flow.html">Concept Fund Flow</a>
-    <a class="nav__item" data-nav-key="industry-fund-flow" data-i18n="navIndustryFundFlow" href="industry-fund-flow.html">Industry Fund Flow</a>
-    <a class="nav__item" data-nav-key="hsgt-fund-flow" data-i18n="navHsgtFundFlow" href="hsgt-fund-flow.html">HSGT Fund Flow</a>
-    <a class="nav__item" data-nav-key="margin-account" data-i18n="navMarginAccount" href="margin-account.html">Margin Account</a>
+    <div class="nav-section" data-section="reasoning">
+      <button class="nav-section__title" type="button" data-section-toggle data-i18n="navReasoning">推理分析</button>
+      <div class="nav-section__items">
+        <a class="nav__item" data-nav-key="market-overview" data-i18n="navMarketOverview" href="market-overview.html">大盘推理</a>
+      </div>
+    </div>
 
-    <div class="nav__section-title" data-i18n="navMacroGroup">Macro</div>
-    <a class="nav__item" data-nav-key="macro-leverage" data-i18n="navLeverageRatio" href="leverage-ratio.html">Macro Leverage</a>
-    <a class="nav__item" data-nav-key="macro-social-financing" data-i18n="navSocialFinancing" href="social-financing.html">Social Financing</a>
-    <a class="nav__item" data-nav-key="macro-m2" data-i18n="navM2" href="m2.html">M2 Money Supply</a>
-    <a class="nav__item" data-nav-key="macro-pmi" data-i18n="navPmi" href="pmi.html">PMI</a>
-    <a class="nav__item" data-nav-key="macro-cpi" data-i18n="navCpi" href="cpi.html">CPI Index</a>
-    <a class="nav__item" data-nav-key="macro-ppi" data-i18n="navPpi" href="ppi.html">PPI Index</a>
-    <a class="nav__item" data-nav-key="macro-pbc-rate" data-i18n="navPbcRate" href="pbc-rate.html">PBC Decisions</a>
+    <div class="nav-section" data-section="market">
+      <button class="nav-section__title" type="button" data-section-toggle data-i18n="navBasics">市场</button>
+      <div class="nav-section__items">
+        <a class="nav__item" data-nav-key="market-intelligence" data-i18n="navMarketIntelligence" href="index.html">交易行情</a>
+        <a class="nav__item" data-nav-key="market-realtime-indices" data-i18n="navRealtimeIndices" href="realtime-indices.html">实时指数</a>
+        <a class="nav__item" data-nav-key="market-index-history" data-i18n="navIndexHistory" href="index-history.html">指数行情</a>
+        <a class="nav__item" data-nav-key="market-activity" data-i18n="navMarketActivity" href="market-activity.html">市场活跃度</a>
+        <a class="nav__item" data-nav-key="portfolio" data-i18n="navPortfolio" href="index.html?favoritesOnly=1">组合监控</a>
+        <a class="nav__item" data-nav-key="performance-express" data-i18n="navPerformanceExpress" href="performance-express.html">业绩快报</a>
+        <a class="nav__item" data-nav-key="performance-forecast" data-i18n="navPerformanceForecast" href="performance-forecast.html">业绩预告</a>
+        <a class="nav__item" data-nav-key="profit-forecast" data-i18n="navProfitForecast" href="profit-forecast.html">盈利预测</a>
+      </div>
+    </div>
 
-    <div class="nav__section-title" data-i18n="navMacro">Peripheral</div>
-    <a class="nav__item" data-nav-key="peripheral-insight" data-i18n="navPeripheralInsight" href="peripheral-insight.html">Peripheral Insight</a>
-    <a class="nav__item" data-nav-key="peripheral-global-indices" data-i18n="navGlobalIndices" href="global-indices.html">Global Indices</a>
-    <a class="nav__item" data-nav-key="peripheral-dollar-index" data-i18n="navDollarIndex" href="dollar-index.html">Dollar Index</a>
-    <a class="nav__item" data-nav-key="peripheral-rmb-midpoint" data-i18n="navRmbMidpoint" href="rmb-midpoint.html">RMB Midpoint</a>
-    <a class="nav__item" data-nav-key="peripheral-futures" data-i18n="navFuturesRealtime" href="futures-realtime.html">Futures Realtime</a>
-    <a class="nav__item" data-nav-key="peripheral-fed-statements" data-i18n="navFedStatements" href="fed-statements.html">Fed Statements</a>
+    <div class="nav-section" data-section="funds">
+      <button class="nav-section__title" type="button" data-section-toggle data-i18n="navFunds">资金流</button>
+      <div class="nav-section__items">
+        <a class="nav__item" data-nav-key="big-deal-fund-flow" data-i18n="navBigDealFundFlow" href="big-deal-tracking.html">大单追踪</a>
+        <a class="nav__item" data-nav-key="individual-fund-flow" data-i18n="navIndividualFundFlow" href="individual-fund-flow.html">个股资金流</a>
+        <a class="nav__item" data-nav-key="concept-fund-flow" data-i18n="navConceptFundFlow" href="concept-fund-flow.html">概念资金流</a>
+        <a class="nav__item" data-nav-key="industry-fund-flow" data-i18n="navIndustryFundFlow" href="industry-fund-flow.html">行业资金流</a>
+        <a class="nav__item" data-nav-key="hsgt-fund-flow" data-i18n="navHsgtFundFlow" href="hsgt-fund-flow.html">沪港通资金流</a>
+        <a class="nav__item" data-nav-key="market-fund-flow" data-i18n="navMarketFundFlow" href="market-fund-flow.html">大盘资金流</a>
+        <a class="nav__item" data-nav-key="margin-account" data-i18n="navMarginAccount" href="margin-account.html">两融账户信息</a>
+      </div>
+    </div>
 
-    <div class="nav__section-title" data-i18n="navNewsGroup">News</div>
-    <a class="nav__item" data-nav-key="market-insight" data-i18n="navMarketInsight" href="market-insight.html">Market Insight</a>
-    <a class="nav__item" data-nav-key="daily-finance" data-i18n="navDailyFinance" href="finance-breakfast.html">Daily Finance</a>
-    <a class="nav__item" data-nav-key="global-flash" data-i18n="navGlobalFlash" href="global-flash.html">Global Flash</a>
+    <div class="nav-section" data-section="macro">
+      <button class="nav-section__title" type="button" data-section-toggle data-i18n="navMacroGroup">宏观</button>
+      <div class="nav-section__items">
+        <a class="nav__item" data-nav-key="macro-leverage" data-i18n="navLeverageRatio" href="leverage-ratio.html">宏观杠杆率</a>
+        <a class="nav__item" data-nav-key="macro-insight" data-i18n="navMacroInsight" href="macro-insight.html">宏观推理</a>
+        <a class="nav__item" data-nav-key="macro-social-financing" data-i18n="navSocialFinancing" href="social-financing.html">社会融资规模</a>
+        <a class="nav__item" data-nav-key="macro-m2" data-i18n="navM2" href="m2.html">广义货币(M2)</a>
+        <a class="nav__item" data-nav-key="macro-pmi" data-i18n="navPmi" href="pmi.html">PMI 指数</a>
+        <a class="nav__item" data-nav-key="macro-cpi" data-i18n="navCpi" href="cpi.html">CPI 指数</a>
+        <a class="nav__item" data-nav-key="macro-ppi" data-i18n="navPpi" href="ppi.html">PPI 指数</a>
+        <a class="nav__item" data-nav-key="macro-pbc-rate" data-i18n="navPbcRate" href="pbc-rate.html">央行决议报告</a>
+      </div>
+    </div>
 
-    <div class="nav__section-title" data-i18n="navSettings">Settings</div>
-    <a class="nav__item" data-nav-key="config-center" data-i18n="navConfigCenter" href="config-center.html">Configuration Center</a>
-    <a class="nav__item" data-nav-key="control" data-i18n="navControl" href="control.html">Control Panel</a>
+    <div class="nav-section" data-section="peripheral">
+      <button class="nav-section__title" type="button" data-section-toggle data-i18n="navMacro">外围</button>
+      <div class="nav-section__items">
+        <a class="nav__item" data-nav-key="peripheral-insight" data-i18n="navPeripheralInsight" href="peripheral-insight.html">外围洞察</a>
+        <a class="nav__item" data-nav-key="peripheral-global-indices" data-i18n="navGlobalIndices" href="global-indices.html">全球指数</a>
+        <a class="nav__item" data-nav-key="peripheral-dollar-index" data-i18n="navDollarIndex" href="dollar-index.html">美元指数</a>
+        <a class="nav__item" data-nav-key="peripheral-rmb-midpoint" data-i18n="navRmbMidpoint" href="rmb-midpoint.html">人民币中间价</a>
+        <a class="nav__item" data-nav-key="peripheral-futures" data-i18n="navFuturesRealtime" href="futures-realtime.html">外盘期货</a>
+        <a class="nav__item" data-nav-key="peripheral-fed-statements" data-i18n="navFedStatements" href="fed-statements.html">美联储声明</a>
+      </div>
+    </div>
+
+    <div class="nav-section" data-section="news">
+      <button class="nav-section__title" type="button" data-section-toggle data-i18n="navNewsGroup">新闻</button>
+      <div class="nav-section__items">
+        <a class="nav__item" data-nav-key="market-insight" data-i18n="navMarketInsight" href="market-insight.html">大盘洞察</a>
+        <a class="nav__item" data-nav-key="daily-finance" data-i18n="navDailyFinance" href="finance-breakfast.html">每日财经</a>
+        <a class="nav__item" data-nav-key="global-flash" data-i18n="navGlobalFlash" href="global-flash.html">全球快讯</a>
+      </div>
+    </div>
+
+    <div class="nav-section" data-section="settings">
+      <button class="nav-section__title" type="button" data-section-toggle data-i18n="navSettings">设置</button>
+      <div class="nav-section__items">
+        <a class="nav__item" data-nav-key="config-center" data-i18n="navConfigCenter" href="config-center.html">配置中心</a>
+        <a class="nav__item" data-nav-key="control" data-i18n="navControl" href="control.html">控制面板</a>
+      </div>
+    </div>
   </nav>
 </aside>

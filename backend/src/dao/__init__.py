@@ -41,6 +41,10 @@ from .news_market_insight_dao import NewsMarketInsightDAO
 from .index_history_dao import IndexHistoryDAO
 from .realtime_index_dao import RealtimeIndexDAO
 from .margin_account_dao import MarginAccountDAO
+from .market_activity_dao import MarketActivityDAO
+from .market_fund_flow_dao import MarketFundFlowDAO
+from .macro_insight_dao import MacroInsightDAO
+from .market_overview_insight_dao import MarketOverviewInsightDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -84,4 +88,8 @@ __all__ = [
     "IndexHistoryDAO",
     "RealtimeIndexDAO",
     "MarginAccountDAO",
+    "MarketActivityDAO",
+    "MarketFundFlowDAO",
+    "MacroInsightDAO",
+    "MarketOverviewInsightDAO",
 ]

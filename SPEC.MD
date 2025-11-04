@@ -37,8 +37,14 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-10-30 (FEATURE backend/frontend-022): Added big deal tracking via AkShare `stock_fund_flow_big_deal`, including persistence schema/DAO, control panel sync card, dashboards, and stock-detail integrations for big-deal and individual fund flow snapshots.
 - 2025-10-30 (FIX backend-022): Hardened fund flow DAO upserts by de-duplicating conflict keys per batch and wiring date column metadata to avoid `ON CONFLICT` and signature errors during control-panel sync jobs.
 - 2025-11-04 (FEATURE backend/frontend-045): Added Shanghai/Shenzhen-Hong Kong connect fund flow ingestion via AkShare `stock_hsgt_fund_flow_summary_em`, new control panel card, aggregate job integration, and dedicated dashboard with channel/direction filters.
+- 2025-11-06 (FEATURE backend/frontend-046): Added margin account statistics ingestion via AkShare `stock_margin_account_info`, introduced schema/DAO/service wiring, control panel sync card, and dashboard with financing balance trend chart plus date-range filters.
+- 2025-11-07 (FEATURE backend/frontend-047): Integrated LeGu market activity snapshot (`stock_market_activity_legu`) with new persistence, control panel card, localized summary grid, and translation set.
+- 2025-11-08 (FEATURE backend/frontend-048): Added market fund flow history ingestion using AkShare `stock_market_fund_flow`, updated fund-flow aggregate bundle, control panel navigation/card, translations, and chart/table dashboard with range filters.
+- 2025-11-08 (FEATURE backend/frontend-049): Implemented macro insight reasoning powered by DeepSeek, storing latest macro datasets (plus 10 historical points), new API/page, and control panel automation.
+- 2025-11-08 (FEATURE backend-050): Added market overview aggregation service/API bundling realtime indices, index history, insights, and fund-flow snapshots for downstream DeepSeek reasoning.
 - 2025-11-05 (UPDATE backend/frontend-046): Switched HSGT module to use AkShare `stock_hsgt_hist_em` (北向资金) historical series, refreshed schema/service/API, and rebuilt the dashboard with yearly filter and extended metrics.
 - 2025-11-05 (FEATURE backend/frontend-050): Added margin account statistics ingestion via AkShare `stock_margin_account_info`, including schema/DAO/service, REST API, Control Panel card, fund flow aggregate integration, and a dedicated dashboard with pagination and yearly filters.
+- 2025-11-05 (FEATURE backend/frontend-051): Added LeGu market activity (赚钱效应) module with AkShare ingestion, API, trading control card, and a Market navigation page summarizing breadth and limit statistics.
 - 2025-10-30 (UPDATE frontend/backend-018): Reworked performance express & forecast pages plus stock detail highlights for the AkShare schemas (card layout restored, table columns realigned, links to stock detail, single-column tiles, and full-text change reasons with compact empty states).
 - 2025-10-31 (FEATURE backend/frontend-025): Integrated Tonghuashun `stock_zyjs_ths` main business ingestion, control panel sync entry, and stock detail overview display.
 - 2025-11-02 (FEATURE backend/frontend-031): Added A-share index history ingestion via AkShare `index_zh_a_hist`, including DAO/service, daily 17:00 scheduler, control panel trigger, navigation entry under Market, and new index-history page with ECharts trend plus tabular metrics for SSE Composite, SZSE Component, ChiNext, and STAR 50 indices.
@@ -145,6 +151,126 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - Inspect pipeline health via `SELECT processing_status, COUNT(*) FROM news_articles GROUP BY 1` and join `news_insights` for recent impact metadata.
 - When adding sources, reuse `ingest_articles` and emit `source`, `source_item_id`, `title`, `summary`, `content`, `published_at`, and `url` fields; the rest of the pipeline is source-agnostic.
 - `extra_metadata` always retains the model payload (including `raw_response`) to simplify troubleshooting and future prompt tuning.
+
+## Margin Account Dashboard (2025-11-06)
+
+### Summary
+- Tracks Eastmoney margin account statistics (融资融券) via AkShare `stock_margin_account_info`.
+- Persists long-term history in `backend/config/margin_account_schema.sql`, surfaces via `MarginAccountDAO` and `margin_account_service`.
+- Control panel card `#margin-account-card` provides manual sync and progress telemetry; bundle participates in fund-flow aggregate job.
+
+### Backend Flow
+1. `fetch_margin_account_info` pulls the full AkShare dataset and column map `MARGIN_ACCOUNT_COLUMN_MAP` aligns field names.
+2. `_prepare_margin_account_frame` (service layer) coerces numeric fields, normalises dates, and drops duplicates.
+3. `MarginAccountDAO.upsert` ensures schema creation, deduplicates on `trade_date`, and tracks updates with `updated_at`.
+4. `MarginAccountDAO.list_entries` supports optional `start_date`, `end_date`, `limit`, `offset`, and returns `available_years` for UI filters.
+
+### API & Frontend
+- Endpoint `/margin/account` delivers paginated records plus metadata:
+  - `total`, `availableYears`, `lastSyncedAt`, and item array containing per-field values.
+- Front-end bundle `frontend/public/margin-account.js` renders:
+  - Dual-axis ECharts line chart (financing balance vs. financing purchase amount).
+  - Responsive table with financing balances, investor counts, collateral ratios, etc.
+  - Date-range inputs with reset button; default result length 100 rows.
+- Styles consolidated in `styles.css` (`.fund-flow-chart`, `.fund-flow-table` classes).
+
+### Operational Notes
+- Sync job persists thousands of rows on first run; subsequent runs are idempotent.
+- Control panel surfaces finished timestamps using Asia/Shanghai timezone from `SyncMonitor`.
+- Table defaults to descending trade date; consider enabling server-side caching if query load grows.
+
+## Market Activity Snapshot (2025-11-07)
+
+### Summary
+- Uses LeGu `stock_market_activity_legu` to capture daily “market heat” metrics (涨跌家数、涨跌停、活跃度等).
+- Persisted via `market_activity_schema.sql` and `MarketActivityDAO`; dataset treated as snapshot rather than history.
+- Control card `#market-activity-card` allows manual refresh, reporting dataset timestamp sourced from the API payload.
+
+### Backend Flow
+1. `fetch_market_activity_legu` returns metric/value pairs; service annotates `display_order`, numeric conversions, and canonical timestamp.
+2. `_prepare_market_activity_frame` stores both `value_text` and `value_number` for mixed string/percent metrics.
+3. `MarketActivityDAO.upsert` deduplicates on `metric`, updates data while preserving `dataset_timestamp` for the latest run.
+
+### API & Frontend
+- Endpoint `/market/activity` returns `items` plus `datasetTimestamp` (ISO string).
+- Front-end view `frontend/public/market-activity.html` renders:
+  - Localized summary grid grouping advancers/decliners, limit-up/down, and activity score.
+  - Table fallback for all metric rows.
+  - Language toggle built on shared `i18n.js`.
+
+### Operational Notes
+- Snapshot job runs quickly; no pagination needed.
+- Charting not required—UI focuses on cards and table layout.
+- Monitor entry `market_activity` logs dataset timestamp for cross-checking with UI.
+
+## Market Fund Flow Dashboard (2025-11-08)
+
+### Summary
+- Introduces Eastmoney big-board fund flow history via AkShare `stock_market_fund_flow`.
+- Schema template `backend/config/market_fund_flow_schema.sql` with DAO/service pair (`MarketFundFlowDAO`, `market_fund_flow_service`).
+- Fund-flow aggregate job now chains industry → concept → individual → HSGT → margin account → market fund flow → big deal.
+
+### Backend Flow
+1. Service fetches, renames columns using `MARKET_FUND_FLOW_COLUMN_MAP`, and `_prepare_market_fund_flow_frame` normalises numerics/percents (converted to ratios).
+2. `MarketFundFlowDAO.upsert` deduplicates by `trade_date`; new `stats()` helper returns count, `updated_at`, and latest trade date.
+3. `MarketFundFlowDAO.list_entries` supports pagination plus optional `start_date` / `end_date`, returns `available_years` for future filtering.
+4. `_run_market_fund_flow_job` captures total row count, persists last duration, and defends against empty-table index errors.
+
+### API & Frontend
+- Endpoint `/fund-flow/market` accepts `startDate`, `endDate`, `limit`, `offset`; response includes `total`, `latestTradeDate`, `lastSyncedAt`, `availableYears`, and record list.
+- Control panel card `#market-fund-flow-card` exposes manual sync; translations added for titles, subtitles, and aggregate description.
+- Front-end assets (`market-fund-flow.html/js`) deliver:
+  - Date-range filters (default limit 200) with reset.
+  - ECharts multi-series line chart for main/large/medium/small net inflow amounts.
+  - Responsive card grid summarising per-day prices, percentage moves, and multi-tier net inflow balances (replacing the wide table layout).
+- Sidebar navigation includes “Market Fund Flow” under the Funds section.
+
+## Macro Insight Reasoner (2025-11-08)
+
+### Summary
+- Consolidates key macroeconomic datasets (macro leverage, social financing, CPI, PPI, PMI, M2, PBC benchmark rates) and generates an AI summary describing the latest macro stance for A-shares.
+- Persists results in `macro_insights` (`backend/config/macro_insight_schema.sql`) with JSON payloads for datasets, optional DeepSeek response, and model metadata.
+- Control panel now has a “Macro Insight Reasoning” card and the macro aggregate bundle triggers the reasoning step automatically.
+
+### Backend Flow
+1. `generate_macro_insight` fetches each macro dataset via existing list services, normalises values, and keeps the latest reading plus 10 historical points per indicator (PMI is split by series).
+2. The payload records translation keys (`titleKey`, `labelKey`) so the frontend can localise columns without duplicating config logic.
+3. When DeepSeek credentials are configured the service calls `generate_finance_analysis` with a strict JSON prompt (`MACRO_INSIGHT_PROMPT`) to obtain sentiment, drivers, risks, and watch points; the raw response and parsed JSON are stored.
+4. `MacroInsightDAO` (new) upserts snapshots keyed by `snapshot_date` and exposes `fetch_latest`/`stats` for the API and control panel telemetry.
+
+### API & Frontend
+- Endpoint `/macro/insight` returns the latest snapshot (`MacroInsightResponse`) containing summary JSON, model name, dataset array, and warnings for missing feeds.
+- New pages `frontend/public/macro-insight.html/js` and `frontend/public/market-overview.html/js` render:
+  - LLM summary with bias badge, overview、policy outlook、risk/watch lists。
+  - Highlight cards derived from key indicators。
+  - Dataset grids showing the retained 11 rows per indicator with translated headers。
+  - Market overview page also displays realtime indices、fund-flow tables、market activity、and includes a streaming DeepSeek reasoning panel triggered via `/market/overview/reason`.
+- Sidebar highlights the new entries under the Market/Macro sections; control panel button triggers `/control/sync/macro-insight` (runLLM default true).
+
+### Operational Notes
+- `SyncMacroInsightRequest` accepts `runLLM` so environments without DeepSeek tokens can still persist raw datasets/metadata.
+- Macro aggregate job sequence adds the reasoning step after traditional sync tasks (progress bar now counts the extra stage).
+- `SyncMonitor` persistence expanded to store status/progress/finished timestamps across restarts, ensuring the new card retains last-run details on refresh.
+
+## Market Overview Aggregator (2025-11-08)
+
+### Summary
+- Provides a unified payload that combines realtime index snapshots, recent index history, existing market/macro/peripheral insights, and the latest fund-flow/market-activity metrics.
+- Exposed via `/market/overview` for downstream DeepSeek reasoning (no LLM step yet).
+
+### Backend Flow
+1. `build_market_overview_payload` pulls:
+   - Realtime indices filtered by turnover > ¥5,000亿.
+   - Latest 10 trading days from `index_history` for configured benchmark indices.
+   - Latest market, macro, peripheral insights (reference articles stripped).
+   - Recent 10-day slices for market fund flow, HSGT fund flow (默认“北向资金”), and margin account tables.
+   - Latest market activity snapshot (赚钱效应) along with warnings/metrics.
+2. Aggregation normalises JSON fields (peripheral metrics) and returns a timestamped payload ready for LLM consumption.
+3. FastAPI endpoint `/market/overview` returns the structured payload (`MarketOverviewResponse`).
+
+### Operational Notes
+- Designed as a read-only API; reasoning endpoint `/market/overview/reason` returns a plain-text stream for incremental UI updates.
+- Unit test `test_market_overview_service.py` ensures each slice is capped at 10 entries and required sections exist.
 
 ## Market Insight Reasoner (2025-11-04)
 

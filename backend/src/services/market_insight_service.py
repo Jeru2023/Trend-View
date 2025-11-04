@@ -372,7 +372,23 @@ def generate_market_insight_summary(
 def get_latest_market_insight(*, settings_path: Optional[str] = None) -> Optional[Dict[str, object]]:
     settings = load_settings(settings_path)
     summary_dao = NewsMarketInsightDAO(settings.postgres)
-    return summary_dao.latest_summary()
+    record = summary_dao.latest_summary()
+    if not record:
+        return None
+
+    def _ensure_local_iso(value: Optional[datetime]) -> Optional[str]:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=LOCAL_TZ)
+        else:
+            value = value.astimezone(LOCAL_TZ)
+        return value.isoformat()
+
+    record["generated_at"] = _ensure_local_iso(record.get("generated_at"))
+    record["window_start"] = _ensure_local_iso(record.get("window_start"))
+    record["window_end"] = _ensure_local_iso(record.get("window_end"))
+    return record
 
 
 def list_market_insights(*, limit: int = 10, settings_path: Optional[str] = None) -> List[Dict[str, object]]:

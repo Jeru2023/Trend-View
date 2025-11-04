@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
+from zoneinfo import ZoneInfo
 
 from ..api_clients import generate_finance_analysis
 from ..config.settings import AppSettings, load_settings
@@ -24,6 +25,7 @@ from ..dao import (
 logger = logging.getLogger(__name__)
 
 _UTC = timezone.utc
+_LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 GLOBAL_INDEX_TARGETS: Dict[str, Dict[str, Sequence[str]]] = {
     "dow_jones": {
@@ -119,6 +121,10 @@ def _match_row(row: Dict[str, Any], codes: Sequence[str], names: Sequence[str]) 
 
 def _now_utc() -> datetime:
     return datetime.now(tz=_UTC)
+
+
+def _now_local() -> datetime:
+    return datetime.now(tz=_LOCAL_TZ)
 
 
 @dataclass
@@ -272,8 +278,10 @@ def _collect_metrics(settings: AppSettings) -> PeripheralMetrics:
 
     snapshot_date = max(all_dates) if all_dates else date.today()
 
+    generated_at_local = _now_local()
+
     metrics = {
-        "generatedAt": _to_iso(_now_utc()),
+        "generatedAt": generated_at_local.isoformat(),
         "globalIndices": global_indices,
         "dollarIndex": dollar_summary,
         "rmbMidpoint": rmb_summary,
@@ -283,7 +291,7 @@ def _collect_metrics(settings: AppSettings) -> PeripheralMetrics:
 
     return PeripheralMetrics(
         snapshot_date=snapshot_date,
-        generated_at=_now_utc(),
+        generated_at=generated_at_local,
         data=metrics,
         warnings=warnings,
     )
@@ -323,7 +331,7 @@ def generate_peripheral_insight(
 
     PeripheralInsightDAO(settings.postgres).upsert_snapshot(
         snapshot_date=metrics_bundle.snapshot_date,
-        generated_at=metrics_bundle.generated_at,
+        generated_at=metrics_bundle.generated_at.replace(tzinfo=None),
         metrics=metrics_bundle.data,
         summary=summary,
         raw_response=raw_response,
@@ -332,7 +340,7 @@ def generate_peripheral_insight(
 
     return {
         "snapshot_date": metrics_bundle.snapshot_date,
-        "generated_at": metrics_bundle.generated_at,
+        "generated_at": metrics_bundle.generated_at.isoformat(),
         "metrics": metrics_bundle.data,
         "summary": summary,
         "raw_response": raw_response,
@@ -347,15 +355,24 @@ def get_latest_peripheral_insight(settings_path: Optional[str] = None) -> Option
     if not record:
         return None
 
+    def _to_local_iso(dt: Optional[datetime]) -> Optional[str]:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_LOCAL_TZ)
+        else:
+            dt = dt.astimezone(_LOCAL_TZ)
+        return dt.isoformat()
+
     return {
         "snapshot_date": record.get("snapshot_date"),
-        "generated_at": record.get("generated_at"),
+        "generated_at": _to_local_iso(record.get("generated_at")),
         "metrics": record.get("metrics"),
         "summary": record.get("summary"),
         "raw_response": record.get("raw_response"),
         "model": record.get("model"),
-        "created_at": record.get("created_at"),
-        "updated_at": record.get("updated_at"),
+        "created_at": _to_local_iso(record.get("created_at")),
+        "updated_at": _to_local_iso(record.get("updated_at")),
     }
 
 

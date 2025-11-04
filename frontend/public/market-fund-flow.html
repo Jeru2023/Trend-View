@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="title">Trend View - Market Fund Flow</title>
+    <link rel="stylesheet" href="styles.css?v=20270415" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          } else {
+            document.documentElement.lang = "zh";
+            document.documentElement.setAttribute("data-pref-lang", "zh");
+          }
+        } catch (error) {
+          document.documentElement.lang = "zh";
+          document.documentElement.setAttribute("data-pref-lang", "zh");
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="market-fund-flow">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="pageTitle">Market Fund Flow</h1>
+            <p class="page-subtitle" data-i18n="pageSubtitle">
+              Track aggregate main/large/small order net inflows for Shanghai and Shenzhen markets.
+            </p>
+          </div>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page">
+          <div class="filters" id="market-fund-flow-filters">
+            <div class="filter-group">
+              <label for="market-fund-flow-start" data-i18n="filterStartDate">Start Date</label>
+              <input type="date" id="market-fund-flow-start" />
+            </div>
+            <div class="filter-group">
+              <label for="market-fund-flow-end" data-i18n="filterEndDate">End Date</label>
+              <input type="date" id="market-fund-flow-end" />
+            </div>
+            <button class="secondary-btn" id="market-fund-flow-reset" data-i18n="filterReset">Reset</button>
+          </div>
+
+          <article class="chart-card">
+            <div class="chart-card__header">
+              <h2 data-i18n="chartTitle">Net Inflow Overview</h2>
+            </div>
+            <div class="chart-card__body chart-card__body--tall">
+              <div class="chart-container" id="market-fund-flow-chart"></div>
+              <p class="chart-empty hidden" id="market-fund-flow-chart-empty" data-i18n="chartEmpty">
+                Not enough data to render the market fund flow chart.
+              </p>
+            </div>
+          </article>
+
+          <div
+            class="flow-card-grid"
+            id="market-fund-flow-cards"
+            data-empty-en="No market fund flow data."
+            data-empty-zh="暂无大盘资金流数据。"
+          ></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20270415"></script>
+    <script src="sidebar.js?v=20270426"></script>
+    <script type="module" src="market-fund-flow.js?v=20270419"></script>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-const SIDEBAR_VERSION = "20270415";
+const SIDEBAR_VERSION = "20270426";
 const SIDEBAR_SCROLL_KEY = "trend-view-sidebar-scroll";
 
 function getStoredScroll() {
@@ -35,16 +35,17 @@ function restoreScrollPosition(sidebarRoot) {
 
 function highlightActiveNav(root) {
   if (!root) {
-    return;
+    return null;
   }
   const activeKey = document.body.getAttribute("data-active-nav");
   if (!activeKey) {
-    return;
+    return null;
   }
   const activeItem = root.querySelector(`[data-nav-key="${activeKey}"]`);
   if (activeItem) {
     activeItem.classList.add("nav__item--active");
   }
+  return activeItem || null;
 }
 
 function ensureSidebarTranslations() {
@@ -78,7 +79,8 @@ function ensureSidebarTranslations() {
         sidebarRoot.addEventListener("click", persistHandler);
         window.addEventListener("beforeunload", persistHandler);
       }
-      highlightActiveNav(sidebarRoot);
+      const activeItem = highlightActiveNav(sidebarRoot);
+      enableNavSectionToggle(sidebarRoot, activeItem);
       ensureSidebarTranslations();
     })
     .catch((error) => {
@@ -92,3 +94,74 @@ window.addEventListener("DOMContentLoaded", () => {
     window.__SIDEBAR_TRANSLATE_PENDING = false;
   }
 });
+
+function enableNavSectionToggle(root, activeItem) {
+  if (!root) {
+    return;
+  }
+
+  const STORAGE_KEY = "trend-view-sidebar-section-state";
+
+  const state = (() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  })();
+
+  const persist = () => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (error) {
+      /* no-op */
+    }
+  };
+
+  const sections = Array.from(root.querySelectorAll(".nav-section[data-section]"));
+  sections.forEach((section) => {
+    const key = section.dataset.section;
+    if (!key) {
+      return;
+    }
+    const toggle = section.querySelector("[data-section-toggle]");
+    if (!toggle) {
+      return;
+    }
+
+    const expanded = state[key];
+    const shouldCollapse = expanded === false;
+    if (shouldCollapse) {
+      section.classList.add("nav-section--collapsed");
+    }
+    toggle.setAttribute("aria-expanded", shouldCollapse ? "false" : "true");
+
+    toggle.addEventListener("click", () => {
+      const collapsed = section.classList.toggle("nav-section--collapsed");
+      toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      state[key] = !collapsed;
+      persist();
+    });
+  });
+
+  if (activeItem) {
+    const parentSection = activeItem.closest(".nav-section[data-section]");
+    if (parentSection) {
+      const key = parentSection.dataset.section;
+      if (key && parentSection.classList.contains("nav-section--collapsed")) {
+        parentSection.classList.remove("nav-section--collapsed");
+        const toggle = parentSection.querySelector("[data-section-toggle]");
+        if (toggle) {
+          toggle.setAttribute("aria-expanded", "true");
+        }
+        state[key] = true;
+        persist();
+      }
+    }
+  }
+}

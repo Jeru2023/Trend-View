@@ -150,6 +150,62 @@ MARGIN_ACCOUNT_COLUMN_MAP: Final[dict[str, str]] = {
     "平均维持担保比例": "average_collateral_ratio",
 }
 
+MARKET_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
+    "日期": "trade_date",
+    "上证-收盘价": "shanghai_close",
+    "上证-涨跌幅": "shanghai_change_percent",
+    "深证-收盘价": "shenzhen_close",
+    "深证-涨跌幅": "shenzhen_change_percent",
+    "主力净流入-净额": "main_net_inflow_amount",
+    "主力净流入-净占比": "main_net_inflow_ratio",
+    "超大单净流入-净额": "huge_order_net_inflow_amount",
+    "超大单净流入-净占比": "huge_order_net_inflow_ratio",
+    "大单净流入-净额": "large_order_net_inflow_amount",
+    "大单净流入-净占比": "large_order_net_inflow_ratio",
+    "中单净流入-净额": "medium_order_net_inflow_amount",
+    "中单净流入-净占比": "medium_order_net_inflow_ratio",
+    "小单净流入-净额": "small_order_net_inflow_amount",
+    "小单净流入-净占比": "small_order_net_inflow_ratio",
+}
+def fetch_market_activity_legu() -> pd.DataFrame:
+    """Fetch market activity (赚钱效应) snapshot from LeGu."""
+    try:
+        dataframe = ak.stock_market_activity_legu()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch market activity via AkShare: %s", exc)
+        return pd.DataFrame(columns=["metric", "value"])
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no market activity data.")
+        return pd.DataFrame(columns=["metric", "value"])
+
+    renamed = dataframe.rename(columns={"item": "metric", "value": "value"})
+    for column in ("metric", "value"):
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, ["metric", "value"]]
+
+
+def fetch_market_fund_flow() -> pd.DataFrame:
+    """Fetch Eastmoney market fund flow history."""
+    try:
+        dataframe = ak.stock_market_fund_flow()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch market fund flow via AkShare: %s", exc)
+        return pd.DataFrame(columns=list(MARKET_FUND_FLOW_COLUMN_MAP.values()))
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no market fund flow data.")
+        return pd.DataFrame(columns=list(MARKET_FUND_FLOW_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=MARKET_FUND_FLOW_COLUMN_MAP)
+    for column in MARKET_FUND_FLOW_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MARKET_FUND_FLOW_COLUMN_MAP.values())]
+
 STOCK_MAIN_BUSINESS_COLUMN_MAP: Final[dict[str, str]] = {
     "股票代码": "symbol",
     "主营业务": "main_business",
@@ -1228,4 +1284,7 @@ __all__ = [
     "fetch_macro_ppi_monthly",
     "fetch_macro_pbc_interest_rates",
     "fetch_global_flash_news",
+    "fetch_market_activity_legu",
+    "MARKET_FUND_FLOW_COLUMN_MAP",
+    "fetch_market_fund_flow",
 ]

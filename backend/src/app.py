@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from zoneinfo import ZoneInfo
@@ -49,12 +50,15 @@ from .dao import (
     MacroM2DAO,
     MacroPpiDAO,
     MacroPbcRateDAO,
+    MacroInsightDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     IndividualFundFlowDAO,
     BigDealFundFlowDAO,
     HSGTFundFlowDAO,
     MarginAccountDAO,
+    MarketActivityDAO,
+    MarketFundFlowDAO,
     StockBasicDAO,
     StockMainBusinessDAO,
     StockMainCompositionDAO,
@@ -77,6 +81,7 @@ from .services import (
     list_futures_realtime,
     list_fed_statements,
     get_latest_peripheral_insight,
+    get_latest_macro_insight,
     list_macro_leverage_ratios,
     sync_macro_leverage_ratios,
     list_social_financing_ratios,
@@ -97,6 +102,8 @@ from .services import (
     list_big_deal_fund_flow,
     list_hsgt_fund_flow,
     list_margin_account_info,
+    list_market_activity,
+    list_market_fund_flow,
     set_favorite_state,
     sync_daily_indicator,
     sync_financial_indicators,
@@ -131,6 +138,12 @@ from .services import (
     sync_big_deal_fund_flow,
     sync_hsgt_fund_flow,
     sync_margin_account_info,
+    sync_market_activity,
+    sync_market_fund_flow,
+    get_latest_macro_insight,
+    generate_macro_insight,
+    build_market_overview_payload,
+    generate_market_overview_reasoning,
     sync_stock_basic,
     sync_stock_main_business,
     sync_stock_main_composition,
@@ -1269,6 +1282,46 @@ class SyncMarginAccountResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncMarketActivityRequest(BaseModel):
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMarketActivityResponse(BaseModel):
+    rows: int
+    dataset_timestamp: Optional[datetime] = Field(None, alias="datasetTimestamp")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMarketFundFlowRequest(BaseModel):
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMarketFundFlowResponse(BaseModel):
+    rows: int
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMacroInsightRequest(BaseModel):
+    run_llm: bool = Field(True, alias="runLLM")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMacroInsightResponse(BaseModel):
+    snapshot_date: date = Field(..., alias="snapshotDate")
+    generated_at: datetime = Field(..., alias="generatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class SyncStockMainBusinessRequest(BaseModel):
     codes: Optional[List[str]] = Field(
         None,
@@ -1744,6 +1797,74 @@ class PeripheralInsightResponse(BaseModel):
     insight: Optional[PeripheralInsightRecord]
 
 
+class MacroInsightDatasetField(BaseModel):
+    key: str
+    label_key: str = Field(..., alias="labelKey")
+    format: Optional[str] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MacroInsightDataset(BaseModel):
+    key: str
+    title_key: str = Field(..., alias="titleKey")
+    fields: List[MacroInsightDatasetField]
+    series: List[Dict[str, Any]]
+    latest: Optional[Dict[str, Any]]
+    updated_at: Optional[str] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MacroInsightResponse(BaseModel):
+    snapshot_date: date = Field(..., alias="snapshotDate")
+    generated_at: datetime = Field(..., alias="generatedAt")
+    summary: Optional[Dict[str, Any]]
+    raw_response: Optional[str] = Field(None, alias="rawResponse")
+    model: Optional[str]
+    datasets: List[MacroInsightDataset]
+    warnings: List[str] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketOverviewReasoningSnapshot(BaseModel):
+    summary: Optional[Dict[str, Any]] = None
+    raw_text: Optional[str] = Field(None, alias="rawText")
+    model: Optional[str] = None
+    generated_at: Optional[datetime] = Field(None, alias="generatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketOverviewResponse(BaseModel):
+    generated_at: datetime = Field(..., alias="generatedAt")
+    realtime_indices: List[Dict[str, Any]] = Field(default_factory=list, alias="realtimeIndices")
+    index_history: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict, alias="indexHistory")
+    market_insight: Optional[Dict[str, Any]] = Field(None, alias="marketInsight")
+    macro_insight: Optional[Dict[str, Any]] = Field(None, alias="macroInsight")
+    market_fund_flow: List[Dict[str, Any]] = Field(default_factory=list, alias="marketFundFlow")
+    hsgt_fund_flow: List[Dict[str, Any]] = Field(default_factory=list, alias="hsgtFundFlow")
+    margin_account: List[Dict[str, Any]] = Field(default_factory=list, alias="marginAccount")
+    peripheral_insight: Optional[Dict[str, Any]] = Field(None, alias="peripheralInsight")
+    market_activity: List[Dict[str, Any]] = Field(default_factory=list, alias="marketActivity")
+    latest_reasoning: Optional[MarketOverviewReasoningSnapshot] = Field(None, alias="latestReasoning")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketOverviewReasonRequest(BaseModel):
+    run_llm: bool = Field(True, alias="runLLM")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class IndustryFundFlowRecord(BaseModel):
     symbol: str
     industry: str
@@ -1895,6 +2016,58 @@ class MarginAccountRecord(BaseModel):
 class MarginAccountListResponse(BaseModel):
     total: int
     items: List[MarginAccountRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    available_years: List[int] = Field(default_factory=list, alias="availableYears")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketActivityRecord(BaseModel):
+    metric: str
+    display_order: int = Field(..., alias="displayOrder")
+    value_text: Optional[str] = Field(None, alias="valueText")
+    value_number: Optional[float] = Field(None, alias="valueNumber")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketActivityListResponse(BaseModel):
+    items: List[MarketActivityRecord]
+    dataset_timestamp: Optional[datetime] = Field(None, alias="datasetTimestamp")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketFundFlowRecord(BaseModel):
+    trade_date: date = Field(..., alias="tradeDate")
+    shanghai_close: Optional[float] = Field(None, alias="shanghaiClose")
+    shanghai_change_percent: Optional[float] = Field(None, alias="shanghaiChangePercent")
+    shenzhen_close: Optional[float] = Field(None, alias="shenzhenClose")
+    shenzhen_change_percent: Optional[float] = Field(None, alias="shenzhenChangePercent")
+    main_net_inflow_amount: Optional[float] = Field(None, alias="mainNetInflowAmount")
+    main_net_inflow_ratio: Optional[float] = Field(None, alias="mainNetInflowRatio")
+    huge_order_net_inflow_amount: Optional[float] = Field(None, alias="hugeOrderNetInflowAmount")
+    huge_order_net_inflow_ratio: Optional[float] = Field(None, alias="hugeOrderNetInflowRatio")
+    large_order_net_inflow_amount: Optional[float] = Field(None, alias="largeOrderNetInflowAmount")
+    large_order_net_inflow_ratio: Optional[float] = Field(None, alias="largeOrderNetInflowRatio")
+    medium_order_net_inflow_amount: Optional[float] = Field(None, alias="mediumOrderNetInflowAmount")
+    medium_order_net_inflow_ratio: Optional[float] = Field(None, alias="mediumOrderNetInflowRatio")
+    small_order_net_inflow_amount: Optional[float] = Field(None, alias="smallOrderNetInflowAmount")
+    small_order_net_inflow_ratio: Optional[float] = Field(None, alias="smallOrderNetInflowRatio")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketFundFlowListResponse(BaseModel):
+    total: int
+    items: List[MarketFundFlowRecord]
+    latest_trade_date: Optional[date] = Field(None, alias="latestTradeDate")
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
     available_years: List[int] = Field(default_factory=list, alias="availableYears")
 
@@ -3339,6 +3512,12 @@ async def _run_macro_aggregate_job(request: SyncMacroAggregateRequest) -> None:
             _run_macro_pbc_rate_job,
             SyncMacroPbcRateRequest(),
         ),
+        (
+            "macro_insight",
+            "Generating macro insight summary",
+            _run_macro_insight_job,
+            SyncMacroInsightRequest(),
+        ),
     ]
 
     total_steps = len(steps)
@@ -3506,6 +3685,12 @@ async def _run_fund_flow_aggregate_job(request: SyncFundFlowAggregateRequest) ->
             "Syncing margin account statistics",
             _run_margin_account_job,
             SyncMarginAccountRequest(),
+        ),
+        (
+            "market_fund_flow",
+            "Syncing market fund flow history",
+            _run_market_fund_flow_job,
+            SyncMarketFundFlowRequest(),
         ),
         (
             "big_deal_fund_flow",
@@ -3819,6 +4004,111 @@ async def _run_margin_account_job(request: SyncMarginAccountRequest) -> None:
             elapsed = time.perf_counter() - started
             monitor.finish(
                 "margin_account",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_market_activity_job(request: SyncMarketActivityRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("market_activity", message="Collecting market activity snapshot")
+        try:
+            result = sync_market_activity()
+            dao_result = MarketActivityDAO(load_settings().postgres).list_entries()
+            elapsed = time.perf_counter() - started
+            items = dao_result.get("items", [])
+            message_text = f"Synced {result.get('rows', 0)} market activity rows"
+            monitor.finish(
+                "market_activity",
+                success=True,
+                total_rows=len(items),
+                message=message_text,
+                finished_at=dao_result.get("dataset_timestamp"),
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "market_activity",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_market_fund_flow_job(request: SyncMarketFundFlowRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("market_fund_flow", message="Collecting market fund flow history")
+        try:
+            result = sync_market_fund_flow()
+            dao = MarketFundFlowDAO(load_settings().postgres)
+            stats = dao.stats()
+            elapsed = time.perf_counter() - started
+            total_rows = None
+            finished_at = None
+            if isinstance(stats, dict):
+                total_rows = stats.get("count")
+                finished_at = stats.get("updated_at")
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "market_fund_flow",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} market fund flow rows",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "market_fund_flow",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_macro_insight_job(request: SyncMacroInsightRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("macro_insight", message="Generating macro insight summary")
+        try:
+            result = generate_macro_insight(run_llm=request.run_llm)
+            stats = MacroInsightDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            finished_at = result.get("generated_at")
+            message_text = "Macro insight generated"
+            monitor.finish(
+                "macro_insight",
+                success=True,
+                total_rows=1,
+                message=message_text,
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "macro_insight",
                 success=False,
                 error=str(exc),
                 last_duration=elapsed,
@@ -4709,6 +4999,51 @@ async def safe_start_margin_account_job(payload: SyncMarginAccountRequest) -> No
         logger.info("Margin account sync skipped: %s", exc.detail)
 
 
+async def start_market_activity_job(payload: SyncMarketActivityRequest) -> None:
+    if _job_running("market_activity"):
+        raise HTTPException(status_code=409, detail="Market activity sync already running")
+    monitor.start("market_activity", message="Syncing market activity snapshot")
+    monitor.update("market_activity", progress=0.0)
+    asyncio.create_task(_run_market_activity_job(payload))
+
+
+async def safe_start_market_activity_job(payload: SyncMarketActivityRequest) -> None:
+    try:
+        await start_market_activity_job(payload)
+    except HTTPException as exc:
+        logger.info("Market activity sync skipped: %s", exc.detail)
+
+
+async def start_market_fund_flow_job(payload: SyncMarketFundFlowRequest) -> None:
+    if _job_running("market_fund_flow"):
+        raise HTTPException(status_code=409, detail="Market fund flow sync already running")
+    monitor.start("market_fund_flow", message="Syncing market fund flow data")
+    monitor.update("market_fund_flow", progress=0.0)
+    asyncio.create_task(_run_market_fund_flow_job(payload))
+
+
+async def safe_start_market_fund_flow_job(payload: SyncMarketFundFlowRequest) -> None:
+    try:
+        await start_market_fund_flow_job(payload)
+    except HTTPException as exc:
+        logger.info("Market fund flow sync skipped: %s", exc.detail)
+
+
+async def start_macro_insight_job(payload: SyncMacroInsightRequest) -> None:
+    if _job_running("macro_insight"):
+        raise HTTPException(status_code=409, detail="Macro insight generation is already running")
+    monitor.start("macro_insight", message="Generating macro insight summary")
+    monitor.update("macro_insight", progress=0.0)
+    asyncio.create_task(_run_macro_insight_job(payload))
+
+
+async def safe_start_macro_insight_job(payload: SyncMacroInsightRequest) -> None:
+    try:
+        await start_macro_insight_job(payload)
+    except HTTPException as exc:
+        logger.info("Macro insight generation skipped: %s", exc.detail)
+
+
 async def safe_start_stock_main_business_job(payload: SyncStockMainBusinessRequest) -> None:
     try:
         await start_stock_main_business_job(payload)
@@ -4851,9 +5186,17 @@ async def startup_event() -> None:
         )
         scheduler.add_job(
             lambda: _submit_scheduler_task(
-                safe_start_big_deal_fund_flow_job(SyncBigDealFundFlowRequest())
+                safe_start_market_fund_flow_job(SyncMarketFundFlowRequest())
             ),
             CronTrigger(hour=19, minute=38),
+            id="market_fund_flow_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: _submit_scheduler_task(
+                safe_start_big_deal_fund_flow_job(SyncBigDealFundFlowRequest())
+            ),
+            CronTrigger(hour=19, minute=39),
             id="big_deal_fund_flow_daily",
             replace_existing=True,
         )
@@ -6007,6 +6350,182 @@ def list_macro_pbc_rate_api(
     )
 
 
+@app.get("/macro/insight", response_model=MacroInsightResponse)
+def get_macro_insight_snapshot() -> MacroInsightResponse:
+    result = get_latest_macro_insight()
+    if not result:
+        raise HTTPException(status_code=404, detail="Macro insight has not been generated yet")
+
+    datasets_payload = []
+    for dataset in result.get("datasets", []) or []:
+        fields = [MacroInsightDatasetField(**field) for field in dataset.get("fields", [])]
+        datasets_payload.append(
+            MacroInsightDataset(
+                key=dataset.get("key"),
+                titleKey=dataset.get("titleKey"),
+                fields=fields,
+                series=dataset.get("series") or [],
+                latest=dataset.get("latest"),
+                updatedAt=dataset.get("updatedAt"),
+            )
+        )
+
+    return MacroInsightResponse(
+        snapshotDate=result.get("snapshot_date"),
+        generatedAt=result.get("generated_at"),
+        summary=result.get("summary"),
+        rawResponse=result.get("raw_response"),
+        model=result.get("model"),
+        datasets=datasets_payload,
+        warnings=list(result.get("warnings", [])),
+    )
+
+
+@app.get("/market/overview", response_model=MarketOverviewResponse)
+def get_market_overview() -> MarketOverviewResponse:
+    payload = build_market_overview_payload()
+    return MarketOverviewResponse(**payload)
+
+
+@app.post("/market/overview/reason")
+def stream_market_overview_reasoning(payload: MarketOverviewReasonRequest) -> StreamingResponse:
+    bias_map = {
+        "bullish": "偏多",
+        "neutral": "中性",
+        "bearish": "偏空",
+    }
+
+    def format_summary(summary_payload: Any, raw_text: Optional[str]) -> List[str]:
+        parsed_summary: Optional[Dict[str, Any]] = None
+        if isinstance(summary_payload, dict):
+            parsed_summary = summary_payload
+        elif isinstance(summary_payload, str) and summary_payload.strip():
+            try:
+                parsed_summary = json.loads(summary_payload)
+            except (TypeError, json.JSONDecodeError):
+                parsed_summary = None
+        elif raw_text and raw_text.strip():
+            try:
+                parsed_summary = json.loads(raw_text)
+            except (TypeError, json.JSONDecodeError):
+                parsed_summary = None
+
+        lines: List[str] = []
+
+        def _stringify_point(value: Any) -> str:
+            if isinstance(value, dict):
+                title = value.get("title") or value.get("name")
+                detail = value.get("detail") or value.get("description") or value.get("value")
+                if title and detail:
+                    return f"{title} - {detail}"
+                if detail:
+                    return str(detail)
+                if title:
+                    return str(title)
+                try:
+                    return json.dumps(value, ensure_ascii=False)
+                except TypeError:
+                    return str(value)
+            if isinstance(value, (list, tuple)):
+                joined = "；".join(str(item) for item in value if item is not None)
+                return joined or "--"
+            return str(value)
+
+        if parsed_summary:
+            bias = parsed_summary.get("bias")
+            confidence = parsed_summary.get("confidence")
+            if bias or confidence is not None:
+                confidence_display = ""
+                if confidence is not None:
+                    try:
+                        confidence_value = float(confidence)
+                        if 0 <= confidence_value <= 1.2:
+                            confidence_display = f"{confidence_value * 100:.0f}%"
+                        else:
+                            confidence_display = f"{confidence_value:.0f}%"
+                    except (TypeError, ValueError):
+                        confidence_display = str(confidence)
+                bias_label = bias_map.get(bias, str(bias or "--"))
+                if confidence_display:
+                    lines.append(f"【倾向】{bias_label} · 置信度 {confidence_display}")
+                else:
+                    lines.append(f"【倾向】{bias_label}")
+                lines.append("")
+
+            overview = parsed_summary.get("summary")
+            if overview:
+                lines.append("【总结】")
+                if isinstance(overview, (list, tuple)):
+                    for item in overview:
+                        lines.append(str(item))
+                else:
+                    lines.extend(str(overview).splitlines())
+                lines.append("")
+
+            signals = parsed_summary.get("key_signals") or []
+            if signals:
+                lines.append("【关键信号】")
+                for idx, item in enumerate(signals, start=1):
+                    if isinstance(item, dict):
+                        title = item.get("title") or item.get("name") or f"信号{idx}"
+                        detail = item.get("detail") or item.get("description") or item.get("value") or ""
+                        detail_text = detail.strip() if isinstance(detail, str) else str(detail)
+                        if detail_text:
+                            lines.append(f"{idx}. {title} - {detail_text}")
+                        else:
+                            lines.append(f"{idx}. {title}")
+                    else:
+                        lines.append(f"{idx}. {_stringify_point(item)}")
+                lines.append("")
+
+            suggestion = parsed_summary.get("position_suggestion")
+            if suggestion:
+                lines.append("【仓位建议】")
+                if isinstance(suggestion, (list, tuple)):
+                    for item in suggestion:
+                        lines.append(str(item))
+                else:
+                    lines.extend(str(suggestion).splitlines())
+                lines.append("")
+
+            risks = parsed_summary.get("risks") or []
+            if risks:
+                lines.append("【风险提示】")
+                for risk in risks:
+                    lines.append(f"- {_stringify_point(risk)}")
+                lines.append("")
+
+        if not lines:
+            fallback = raw_text or (summary_payload if isinstance(summary_payload, str) else "")
+            fallback_text = str(fallback or "").strip()
+            if fallback_text:
+                lines = fallback_text.splitlines()
+            else:
+                lines = ["暂无推理输出。"]
+
+        return lines
+
+    def stream_generator():
+        result = generate_market_overview_reasoning(run_llm=payload.run_llm)
+        model_name = result.get("model")
+        summary_payload = result.get("summary")
+        raw_text = result.get("rawText")
+        generated_at = result.get("generatedAt")
+
+        header_lines: List[str] = []
+        if model_name:
+            header_lines.append(f"模型: {model_name}")
+        if generated_at:
+            header_lines.append(f"推理时间: {generated_at}")
+        if header_lines:
+            yield " · ".join(header_lines) + "\n\n"
+
+        for line in format_summary(summary_payload, raw_text):
+            yield line + "\n"
+
+    return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")
+
+
 @app.get("/peripheral/insights/latest", response_model=PeripheralInsightResponse)
 def get_latest_peripheral_insight_api() -> PeripheralInsightResponse:
     record = get_latest_peripheral_insight()
@@ -6261,6 +6780,74 @@ def list_margin_account_entries(
     )
 
 
+@app.get("/market/activity", response_model=MarketActivityListResponse)
+def get_market_activity_snapshot() -> MarketActivityListResponse:
+    result = list_market_activity()
+    items = [
+        MarketActivityRecord(
+            metric=entry.get("metric"),
+            displayOrder=int(entry.get("display_order", idx)),
+            valueText=entry.get("value_text"),
+            valueNumber=entry.get("value_number"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for idx, entry in enumerate(result.get("items", []))
+    ]
+    dataset_timestamp = result.get("datasetTimestamp") or result.get("dataset_timestamp")
+    return MarketActivityListResponse(items=items, datasetTimestamp=dataset_timestamp)
+
+
+@app.get("/fund-flow/market", response_model=MarketFundFlowListResponse)
+def list_market_fund_flow_entries(
+    start_date: Optional[str] = Query(None, alias="startDate", description="Filter start date (YYYY-MM-DD)."),
+    end_date: Optional[str] = Query(None, alias="endDate", description="Filter end date (YYYY-MM-DD)."),
+    limit: int = Query(100, ge=1, le=500, description="Max number of records to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> MarketFundFlowListResponse:
+    result = list_market_fund_flow(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset,
+    )
+    items = [
+        MarketFundFlowRecord(
+            tradeDate=entry.get("trade_date"),
+            shanghaiClose=entry.get("shanghai_close"),
+            shanghaiChangePercent=entry.get("shanghai_change_percent"),
+            shenzhenClose=entry.get("shenzhen_close"),
+            shenzhenChangePercent=entry.get("shenzhen_change_percent"),
+            mainNetInflowAmount=entry.get("main_net_inflow_amount"),
+            mainNetInflowRatio=entry.get("main_net_inflow_ratio"),
+            hugeOrderNetInflowAmount=entry.get("huge_order_net_inflow_amount"),
+            hugeOrderNetInflowRatio=entry.get("huge_order_net_inflow_ratio"),
+            largeOrderNetInflowAmount=entry.get("large_order_net_inflow_amount"),
+            largeOrderNetInflowRatio=entry.get("large_order_net_inflow_ratio"),
+            mediumOrderNetInflowAmount=entry.get("medium_order_net_inflow_amount"),
+            mediumOrderNetInflowRatio=entry.get("medium_order_net_inflow_ratio"),
+            smallOrderNetInflowAmount=entry.get("small_order_net_inflow_amount"),
+            smallOrderNetInflowRatio=entry.get("small_order_net_inflow_ratio"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    total = int(result.get("total", result.get("count", len(items))) or 0)
+    latest_trade_date = result.get("latestTradeDate") or result.get("latest_trade_date")
+    last_synced_at = result.get("lastSyncedAt") or result.get("updated_at")
+    available_years = [
+        int(year)
+        for year in result.get("availableYears", result.get("available_years", []))
+        if year is not None
+    ]
+    return MarketFundFlowListResponse(
+        total=total,
+        items=items,
+        latestTradeDate=latest_trade_date,
+        lastSyncedAt=last_synced_at,
+        availableYears=available_years,
+    )
+
+
 @app.get("/finance-breakfast", response_model=List[NewsArticleItem])
 async def list_finance_breakfast_entries(
     limit: int = Query(50, ge=1, le=200, description="Maximum number of entries to return."),
@@ -6451,6 +7038,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect peripheral_insight stats: %s", exc)
         stats_map["peripheral_insight"] = {}
     try:
+        stats_map["macro_insight"] = MacroInsightDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect macro_insight stats: %s", exc)
+        stats_map["macro_insight"] = {}
+    try:
         stats_map["leverage_ratio"] = MacroLeverageDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect leverage_ratio stats: %s", exc)
@@ -6515,6 +7107,28 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect margin_account stats: %s", exc)
         stats_map["margin_account"] = {}
+    try:
+        activity_dao = MarketActivityDAO(settings.postgres)
+        activity_result = activity_dao.list_entries()
+        stats_map["market_activity"] = {
+            "count": len(activity_result.get("items", [])),
+            "updated_at": activity_result.get("dataset_timestamp"),
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect market_activity stats: %s", exc)
+        stats_map["market_activity"] = {}
+    try:
+        fund_flow_dao = MarketFundFlowDAO(settings.postgres)
+        entries = fund_flow_dao.list_entries(limit=1)
+        items = entries.get("items", [])
+        latest = items[0] if items else None
+        stats_map["market_fund_flow"] = {
+            "count": len(items),
+            "updated_at": latest.get("trade_date") if latest else None,
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect market_fund_flow stats: %s", exc)
+        stats_map["market_fund_flow"] = {}
     try:
         stats_map["stock_main_business"] = StockMainBusinessDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -6848,6 +7462,12 @@ async def control_sync_macro_aggregate(payload: SyncMacroAggregateRequest) -> di
     return {"status": "started"}
 
 
+@app.post("/control/sync/macro-insight")
+async def control_sync_macro_insight(payload: SyncMacroInsightRequest) -> dict[str, str]:
+    await start_macro_insight_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/fund-flow-aggregate")
 async def control_sync_fund_flow_aggregate(payload: SyncFundFlowAggregateRequest) -> dict[str, str]:
     await start_fund_flow_aggregate_job(payload)
@@ -6896,9 +7516,21 @@ async def control_sync_margin_account(payload: SyncMarginAccountRequest) -> dict
     return {"status": "started"}
 
 
+@app.post("/control/sync/market-fund-flow")
+async def control_sync_market_fund_flow(payload: SyncMarketFundFlowRequest) -> dict[str, str]:
+    await start_market_fund_flow_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/hsgt-fund-flow")
 async def control_sync_hsgt_fund_flow(payload: SyncHsgtFundFlowRequest) -> dict[str, str]:
     await start_hsgt_fund_flow_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/market-activity")
+async def control_sync_market_activity(payload: SyncMarketActivityRequest) -> dict[str, str]:
+    await start_market_activity_job(payload)
     return {"status": "started"}
 
 

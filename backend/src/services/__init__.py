@@ -44,6 +44,11 @@ from .index_history_service import INDEX_CONFIG, list_index_history, sync_index_
 from .realtime_index_service import list_realtime_indices, sync_realtime_indices
 from .trade_calendar_service import sync_trade_calendar, is_trading_day
 from .margin_account_service import list_margin_account_info, sync_margin_account_info
+from .market_activity_service import list_market_activity, sync_market_activity
+from .market_fund_flow_service import list_market_fund_flow, sync_market_fund_flow
+from .macro_insight_service import generate_macro_insight, get_latest_macro_insight
+from .market_overview_service import build_market_overview_payload, generate_market_overview_reasoning
+from .market_overview_service import build_market_overview_payload
 from .favorite_stock_service import (
     add_stock_to_favorites,
     remove_stock_from_favorites,
@@ -77,6 +82,8 @@ __all__ = [
     "sync_macro_ppi",
     "sync_macro_pbc_rate",
     "sync_margin_account_info",
+    "sync_market_activity",
+    "sync_market_fund_flow",
     "sync_global_flash",
     "classify_relevance_batch",
     "classify_impact_batch",
@@ -104,6 +111,13 @@ __all__ = [
     "list_macro_ppi",
     "list_macro_pbc_rate",
     "list_margin_account_info",
+    "list_market_activity",
+    "list_market_fund_flow",
+    "get_latest_macro_insight",
+    "generate_macro_insight",
+    "build_market_overview_payload",
+    "generate_market_overview_reasoning",
+    "build_market_overview_payload",
     "is_trading_day",
     "get_latest_peripheral_insight",
     "sync_index_history",

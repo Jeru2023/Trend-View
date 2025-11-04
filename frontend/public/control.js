@@ -184,6 +184,15 @@ const elements = {
     button: document.getElementById("run-macro-leverage"),
     infoButton: document.querySelector("[data-leverage-info]"),
   },
+  macroInsight: {
+    status: document.getElementById("macro-insight-status"),
+    updated: document.getElementById("macro-insight-updated"),
+    duration: document.getElementById("macro-insight-duration"),
+    rows: document.getElementById("macro-insight-rows"),
+    message: document.getElementById("macro-insight-message"),
+    progress: document.getElementById("macro-insight-progress"),
+    button: document.getElementById("run-macro-insight"),
+  },
   socialFinancing: {
     status: document.getElementById("social-financing-status"),
     updated: document.getElementById("social-financing-updated"),
@@ -324,6 +333,24 @@ const elements = {
     message: document.getElementById("margin-account-message"),
     progress: document.getElementById("margin-account-progress"),
     button: document.getElementById("run-margin-account"),
+  },
+  marketFundFlow: {
+    status: document.getElementById("market-fund-flow-status"),
+    updated: document.getElementById("market-fund-flow-updated"),
+    duration: document.getElementById("market-fund-flow-duration"),
+    rows: document.getElementById("market-fund-flow-rows"),
+    message: document.getElementById("market-fund-flow-message"),
+    progress: document.getElementById("market-fund-flow-progress"),
+    button: document.getElementById("run-market-fund-flow"),
+  },
+  marketActivity: {
+    status: document.getElementById("market-activity-status"),
+    updated: document.getElementById("market-activity-updated"),
+    duration: document.getElementById("market-activity-duration"),
+    rows: document.getElementById("market-activity-rows"),
+    message: document.getElementById("market-activity-message"),
+    progress: document.getElementById("market-activity-progress"),
+    button: document.getElementById("run-market-activity"),
   },
   conceptFundFlow: {
     status: document.getElementById("concept-fund-flow-status"),
@@ -652,6 +679,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const macroInsightSnapshot = jobs.macro_insight || {
+      status: "idle",
+      progress: 0,
+    };
     const dollarIndexSnapshot = jobs.dollar_index || {
       status: "idle",
       progress: 0,
@@ -696,6 +727,14 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const marketFundFlowSnapshot = jobs.market_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
+    const marketActivitySnapshot = jobs.market_activity || {
+      status: "idle",
+      progress: 0,
+    };
     const mainBusinessSnapshot = jobs.stock_main_business || {
       status: "idle",
       progress: 0,
@@ -733,6 +772,7 @@ async function loadStatus() {
     updateJobCard(elements.globalIndex, globalIndexSnapshot);
     updateJobCard(elements.realtimeIndex, realtimeSnapshot);
     updateJobCard(elements.macroLeverage, leverageSnapshot);
+    updateJobCard(elements.macroInsight, macroInsightSnapshot);
     updateJobCard(elements.socialFinancing, socialFinancingSnapshot);
     updateJobCard(elements.cpiMonthly, cpiSnapshot);
     updateJobCard(elements.ppiMonthly, ppiSnapshot);
@@ -750,6 +790,8 @@ async function loadStatus() {
     updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
     updateJobCard(elements.hsgtFundFlow, hsgtFundFlowSnapshot);
     updateJobCard(elements.marginAccount, marginAccountSnapshot);
+    updateJobCard(elements.marketFundFlow, marketFundFlowSnapshot);
+    updateJobCard(elements.marketActivity, marketActivitySnapshot);
     updateJobCard(elements.bigDealFundFlow, bigDealFundFlowSnapshot);
     updateJobCard(elements.stockMainBusiness, mainBusinessSnapshot);
     updateJobCard(elements.stockMainComposition, mainCompositionSnapshot);
@@ -784,6 +826,7 @@ async function loadStatus() {
       globalIndexSnapshot,
       realtimeSnapshot,
       leverageSnapshot,
+      macroInsightSnapshot,
       socialFinancingSnapshot,
       cpiSnapshot,
       ppiSnapshot,
@@ -800,6 +843,8 @@ async function loadStatus() {
       individualFundFlowSnapshot,
       hsgtFundFlowSnapshot,
       marginAccountSnapshot,
+      marketFundFlowSnapshot,
+      marketActivitySnapshot,
       bigDealFundFlowSnapshot,
       mainBusinessSnapshot,
       mainCompositionSnapshot,
@@ -1013,6 +1058,16 @@ function initActions() {
       triggerJob("/control/sync/margin-account", {})
     );
   }
+  if (elements.marketFundFlow.button) {
+    elements.marketFundFlow.button.addEventListener("click", () =>
+      triggerJob("/control/sync/market-fund-flow", {})
+    );
+  }
+  if (elements.marketActivity.button) {
+    elements.marketActivity.button.addEventListener("click", () =>
+      triggerJob("/control/sync/market-activity", {})
+    );
+  }
   if (elements.bigDealFundFlow.button) {
     elements.bigDealFundFlow.button.addEventListener("click", () =>
       triggerJob("/control/sync/big-deal-fund-flow", {})
@@ -1041,6 +1096,11 @@ function initActions() {
   if (elements.macroLeverage.button) {
     elements.macroLeverage.button.addEventListener("click", () =>
       triggerJob("/control/sync/leverage-ratio", {})
+    );
+  }
+  if (elements.macroInsight.button) {
+    elements.macroInsight.button.addEventListener("click", () =>
+      triggerJob("/control/sync/macro-insight", { runLLM: true })
     );
   }
   if (elements.socialFinancing.button) {

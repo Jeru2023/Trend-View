@@ -74,6 +74,9 @@ class SyncMonitor:
             "big_deal_fund_flow": JobProgress(),
             "hsgt_fund_flow": JobProgress(),
             "margin_account": JobProgress(),
+            "market_activity": JobProgress(),
+            "market_fund_flow": JobProgress(),
+            "macro_insight": JobProgress(),
             "stock_main_business": JobProgress(),
             "stock_main_composition": JobProgress(),
             "leverage_ratio": JobProgress(),
@@ -127,11 +130,54 @@ class SyncMonitor:
                 state.last_duration = float(duration)
             elif duration is None:
                 state.last_duration = None
+            progress = payload.get("progress")
+            if isinstance(progress, (int, float)):
+                state.progress = float(progress)
+            elif progress is None:
+                state.progress = 0.0
+            status = payload.get("status")
+            if isinstance(status, str):
+                state.status = status
+            total_rows = payload.get("total_rows")
+            if isinstance(total_rows, (int, float)):
+                state.total_rows = int(total_rows)
+            elif total_rows is None:
+                state.total_rows = None
+            started_at = payload.get("started_at")
+            if isinstance(started_at, str) and started_at:
+                try:
+                    state.started_at = datetime.fromisoformat(started_at)
+                except ValueError:
+                    state.started_at = None
+            elif started_at is None:
+                state.started_at = None
+            finished_at = payload.get("finished_at")
+            if isinstance(finished_at, str) and finished_at:
+                try:
+                    parsed = datetime.fromisoformat(finished_at)
+                    state.finished_at = parsed
+                except ValueError:
+                    state.finished_at = None
+            elif finished_at is None:
+                state.finished_at = None
+            message = payload.get("message")
+            if isinstance(message, str):
+                state.message = message
+            elif message is None:
+                state.message = None
 
     def _persist_locked(self) -> None:
         snapshot = {}
         for name, state in self._jobs.items():
-            snapshot[name] = {"last_duration": state.last_duration}
+            snapshot[name] = {
+                "status": state.status,
+                "progress": state.progress,
+                "last_duration": state.last_duration,
+                "total_rows": state.total_rows,
+                "started_at": state.started_at.isoformat() if state.started_at else None,
+                "finished_at": state.finished_at.isoformat() if state.finished_at else None,
+                "message": state.message,
+            }
 
         try:
             self._state_file.parent.mkdir(parents=True, exist_ok=True)
