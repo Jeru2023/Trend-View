@@ -1,4 +1,4 @@
-const SIDEBAR_VERSION = "20270426";
+const SIDEBAR_VERSION = "20270428";
 const SIDEBAR_SCROLL_KEY = "trend-view-sidebar-scroll";
 
 function getStoredScroll() {

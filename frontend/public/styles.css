@@ -227,7 +227,10 @@ body {
 }
 
 .nav__item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 14px;
   border-radius: 8px;
   border: none;
@@ -256,6 +259,26 @@ body {
 .nav__item--highlight:hover,
 .nav__item--highlight.nav__item--active {
   background: rgba(255, 255, 255, 0.16);
+}
+
+.nav__item::after {
+  content: "";
+}
+
+.nav__item[data-nav-key="macro-insight"]::after,
+.nav__item[data-nav-key="peripheral-insight"]::after,
+.nav__item[data-nav-key="market-insight"]::after {
+  content: "★";
+  font-size: 0.85rem;
+  color: #facc15;
+  opacity: 0.8;
+  flex: 0 0 auto;
+}
+
+.nav__item[data-nav-key="macro-insight"].nav__item--active::after,
+.nav__item[data-nav-key="peripheral-insight"].nav__item--active::after,
+.nav__item[data-nav-key="market-insight"].nav__item--active::after {
+  opacity: 1;
 }
 
 .content {

@@ -83,7 +83,7 @@
         navFedStatements: "美联储声明",
         navPeripheralInsight: "外围洞察",
         navLeverageRatio: "宏观杠杆率",
-        navMacroInsight: "宏观推理",
+        navMacroInsight: "宏观洞察",
         navFunds: "资金流",
         navConceptFundFlow: "概念资金流",
         navBigDealFundFlow: "大单追踪",
