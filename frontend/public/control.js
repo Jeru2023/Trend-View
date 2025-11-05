@@ -361,6 +361,24 @@ const elements = {
     progress: document.getElementById("concept-fund-flow-progress"),
     button: document.getElementById("run-concept-fund-flow"),
   },
+  conceptInsight: {
+    status: document.getElementById("concept-insight-status"),
+    updated: document.getElementById("concept-insight-updated"),
+    duration: document.getElementById("concept-insight-duration"),
+    rows: document.getElementById("concept-insight-rows"),
+    message: document.getElementById("concept-insight-message"),
+    progress: document.getElementById("concept-insight-progress"),
+    button: document.getElementById("run-concept-insight"),
+  },
+  industryInsight: {
+    status: document.getElementById("industry-insight-status"),
+    updated: document.getElementById("industry-insight-updated"),
+    duration: document.getElementById("industry-insight-duration"),
+    rows: document.getElementById("industry-insight-rows"),
+    message: document.getElementById("industry-insight-message"),
+    progress: document.getElementById("industry-insight-progress"),
+    button: document.getElementById("run-industry-insight"),
+  },
   individualFundFlow: {
     status: document.getElementById("individual-fund-flow-status"),
     updated: document.getElementById("individual-fund-flow-updated"),
@@ -432,6 +450,24 @@ const elements = {
     message: document.getElementById("stock-main-composition-message"),
     progress: document.getElementById("stock-main-composition-progress"),
     button: document.getElementById("run-stock-main-composition"),
+  },
+  marketInsight: {
+    status: document.getElementById("market-insight-status"),
+    updated: document.getElementById("market-insight-updated"),
+    duration: document.getElementById("market-insight-duration"),
+    rows: document.getElementById("market-insight-rows"),
+    message: document.getElementById("market-insight-message"),
+    progress: document.getElementById("market-insight-progress"),
+    button: document.getElementById("run-market-insight"),
+  },
+  sectorInsight: {
+    status: document.getElementById("sector-insight-status"),
+    updated: document.getElementById("sector-insight-updated"),
+    duration: document.getElementById("sector-insight-duration"),
+    rows: document.getElementById("sector-insight-rows"),
+    message: document.getElementById("sector-insight-message"),
+    progress: document.getElementById("sector-insight-progress"),
+    button: document.getElementById("run-sector-insight"),
   },
 };
 
@@ -683,6 +719,14 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const marketInsightSnapshot = jobs.market_insight || {
+      status: "idle",
+      progress: 0,
+    };
+    const sectorInsightSnapshot = jobs.sector_insight || {
+      status: "idle",
+      progress: 0,
+    };
     const dollarIndexSnapshot = jobs.dollar_index || {
       status: "idle",
       progress: 0,
@@ -708,6 +752,14 @@ async function loadStatus() {
       progress: 0,
     };
     const conceptFundFlowSnapshot = jobs.concept_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
+    const conceptInsightSnapshot = jobs.concept_insight || {
+      status: "idle",
+      progress: 0,
+    };
+    const industryInsightSnapshot = jobs.industry_insight || {
       status: "idle",
       progress: 0,
     };
@@ -784,9 +836,13 @@ async function loadStatus() {
     updateJobCard(elements.peripheralInsight, peripheralInsightSnapshot);
     updateJobCard(elements.fedStatements, fedStatementsSnapshot);
     updateJobCard(elements.dollarIndex, dollarIndexSnapshot);
+    updateJobCard(elements.marketInsight, marketInsightSnapshot);
+    updateJobCard(elements.sectorInsight, sectorInsightSnapshot);
     updateJobCard(elements.profitForecast, profitForecastSnapshot);
     updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
     updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
+    updateJobCard(elements.conceptInsight, conceptInsightSnapshot);
+    updateJobCard(elements.industryInsight, industryInsightSnapshot);
     updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
     updateJobCard(elements.hsgtFundFlow, hsgtFundFlowSnapshot);
     updateJobCard(elements.marginAccount, marginAccountSnapshot);
@@ -827,6 +883,8 @@ async function loadStatus() {
       realtimeSnapshot,
       leverageSnapshot,
       macroInsightSnapshot,
+      marketInsightSnapshot,
+      sectorInsightSnapshot,
       socialFinancingSnapshot,
       cpiSnapshot,
       ppiSnapshot,
@@ -840,6 +898,8 @@ async function loadStatus() {
       dollarIndexSnapshot,
       industryFundFlowSnapshot,
       conceptFundFlowSnapshot,
+      conceptInsightSnapshot,
+      industryInsightSnapshot,
       individualFundFlowSnapshot,
       hsgtFundFlowSnapshot,
       marginAccountSnapshot,
@@ -1041,6 +1101,25 @@ function initActions() {
       })
     );
   }
+  if (elements.conceptInsight.button) {
+    elements.conceptInsight.button.addEventListener("click", () =>
+      triggerJob("/control/sync/concept-insight", {
+        lookbackHours: 48,
+        conceptLimit: 10,
+        runLLM: true,
+        refreshIndexHistory: true,
+      })
+    );
+  }
+  if (elements.industryInsight.button) {
+    elements.industryInsight.button.addEventListener("click", () =>
+      triggerJob("/control/sync/industry-insight", {
+        lookbackHours: 48,
+        industryLimit: 5,
+        runLLM: true,
+      })
+    );
+  }
   if (elements.individualFundFlow.button) {
     elements.individualFundFlow.button.addEventListener("click", () =>
       triggerJob("/control/sync/individual-fund-flow", {
@@ -1101,6 +1180,16 @@ function initActions() {
   if (elements.macroInsight.button) {
     elements.macroInsight.button.addEventListener("click", () =>
       triggerJob("/control/sync/macro-insight", { runLLM: true })
+    );
+  }
+  if (elements.marketInsight.button) {
+    elements.marketInsight.button.addEventListener("click", () =>
+      triggerJob("/control/sync/market-insight", { lookbackHours: 24, articleLimit: 40 })
+    );
+  }
+  if (elements.sectorInsight.button) {
+    elements.sectorInsight.button.addEventListener("click", () =>
+      triggerJob("/control/sync/sector-insight", { lookbackHours: 24, articleLimit: 60 })
     );
   }
   if (elements.socialFinancing.button) {

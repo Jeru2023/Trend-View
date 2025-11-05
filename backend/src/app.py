@@ -10,7 +10,7 @@ import math
 import logging
 import time
 from datetime import date, datetime
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -29,6 +29,7 @@ from .dao import (
     FinancialIndicatorDAO,
     NewsArticleDAO,
     NewsMarketInsightDAO,
+    NewsSectorInsightDAO,
     IndexHistoryDAO,
     TradeCalendarDAO,
     IncomeStatementDAO,
@@ -53,6 +54,9 @@ from .dao import (
     MacroInsightDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
+    ConceptIndexHistoryDAO,
+    ConceptInsightDAO,
+    IndustryInsightDAO,
     IndividualFundFlowDAO,
     BigDealFundFlowDAO,
     HSGTFundFlowDAO,
@@ -98,12 +102,19 @@ from .services import (
     sync_macro_pbc_rate,
     list_industry_fund_flow,
     list_concept_fund_flow,
+    list_concept_index_history,
+    list_concept_insights,
+    build_industry_snapshot,
+    generate_industry_insight_summary,
+    get_latest_industry_insight,
+    list_industry_insights,
     list_individual_fund_flow,
     list_big_deal_fund_flow,
     list_hsgt_fund_flow,
     list_margin_account_info,
     list_market_activity,
     list_market_fund_flow,
+    build_sector_fund_flow_snapshot,
     set_favorite_state,
     sync_daily_indicator,
     sync_financial_indicators,
@@ -130,10 +141,19 @@ from .services import (
     collect_recent_market_headlines,
     get_latest_market_insight,
     list_market_insights,
+    collect_recent_sector_headlines,
+    build_sector_group_snapshot,
+    generate_sector_insight_summary,
+    get_latest_sector_insight,
+    list_sector_insights,
     list_index_history,
     sync_index_history,
     sync_industry_fund_flow,
     sync_concept_fund_flow,
+    sync_concept_index_history,
+    generate_concept_insight_summary,
+    get_latest_concept_insight,
+    build_concept_snapshot,
     sync_individual_fund_flow,
     sync_big_deal_fund_flow,
     sync_hsgt_fund_flow,
@@ -808,6 +828,14 @@ class SyncMarketInsightRequest(BaseModel):
         allow_population_by_field_name = True
 
 
+class SyncSectorInsightRequest(BaseModel):
+    lookback_hours: int = Field(24, ge=1, le=72, alias="lookbackHours")
+    article_limit: int = Field(40, ge=5, le=60, alias="articleLimit")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class SyncIndexHistoryRequest(BaseModel):
     index_codes: Optional[List[str]] = Field(
         None,
@@ -856,6 +884,111 @@ class MarketInsightSummaryPayload(BaseModel):
 class MarketInsightResponse(BaseModel):
     summary: Optional[MarketInsightSummaryPayload]
     articles: List[MarketInsightArticleItem]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SectorInsightGroupArticle(BaseModel):
+    article_id: Optional[str] = Field(None, alias="articleId")
+    title: Optional[str] = None
+    impact_summary: Optional[str] = Field(None, alias="impactSummary")
+    impact_analysis: Optional[str] = Field(None, alias="impactAnalysis")
+    confidence: Optional[float] = None
+    severity: Optional[str] = None
+    severity_score: Optional[float] = Field(None, alias="severityScore")
+    event_type: Optional[str] = Field(None, alias="eventType")
+    time_sensitivity: List[str] = Field(default_factory=list, alias="timeSensitivity")
+    published_at: Optional[datetime] = Field(None, alias="publishedAt")
+    source: Optional[str] = None
+    url: Optional[str] = None
+    impact_levels: List[str] = Field(default_factory=list, alias="impactLevels")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SectorInsightArticleAssignment(BaseModel):
+    article_id: Optional[str] = Field(None, alias="articleId")
+    title: Optional[str] = None
+    impact_summary: Optional[str] = Field(None, alias="impactSummary")
+    impact_analysis: Optional[str] = Field(None, alias="impactAnalysis")
+    confidence: Optional[float] = None
+    severity: Optional[str] = None
+    severity_score: Optional[float] = Field(None, alias="severityScore")
+    event_type: Optional[str] = Field(None, alias="eventType")
+    time_sensitivity: List[str] = Field(default_factory=list, alias="timeSensitivity")
+    focus_topics: List[str] = Field(default_factory=list, alias="focusTopics")
+    published_at: Optional[datetime] = Field(None, alias="publishedAt")
+    source: Optional[str] = None
+    url: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    tag_types: List[str] = Field(default_factory=list, alias="tagTypes")
+    impact_levels: List[str] = Field(default_factory=list, alias="impactLevels")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SectorInsightGroup(BaseModel):
+    name: str
+    tag_type: str = Field(..., alias="tagType")
+    article_count: int = Field(..., alias="articleCount")
+    average_confidence: Optional[float] = Field(None, alias="averageConfidence")
+    average_severity_score: Optional[float] = Field(None, alias="averageSeverityScore")
+    max_severity: Optional[str] = Field(None, alias="maxSeverity")
+    max_severity_score: Optional[float] = Field(None, alias="maxSeverityScore")
+    latest_published_at: Optional[datetime] = Field(None, alias="latestPublishedAt")
+    event_types: List[str] = Field(default_factory=list, alias="eventTypes")
+    time_sensitivity: List[str] = Field(default_factory=list, alias="timeSensitivity")
+    focus_topics: List[str] = Field(default_factory=list, alias="focusTopics")
+    impact_levels: List[str] = Field(default_factory=list, alias="impactLevels")
+    sources: List[str] = Field(default_factory=list)
+    score: Optional[float] = None
+    sample_articles: List[SectorInsightGroupArticle] = Field(default_factory=list, alias="sampleArticles")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SectorInsightSnapshot(BaseModel):
+    generated_at: datetime = Field(..., alias="generatedAt")
+    lookback_hours: int = Field(..., alias="lookbackHours")
+    headline_count: int = Field(..., alias="headlineCount")
+    group_count: int = Field(..., alias="groupCount")
+    groups: List[SectorInsightGroup]
+    article_assignments: List[SectorInsightArticleAssignment] = Field(default_factory=list, alias="articleAssignments")
+    excluded_count: Optional[int] = Field(None, alias="excludedCount")
+    excluded_article_ids: Optional[List[str]] = Field(None, alias="excludedArticleIds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SectorInsightSummaryPayload(BaseModel):
+    summary_id: str = Field(..., alias="summaryId")
+    generated_at: datetime = Field(..., alias="generatedAt")
+    window_start: datetime = Field(..., alias="windowStart")
+    window_end: datetime = Field(..., alias="windowEnd")
+    headline_count: int = Field(..., alias="headlineCount")
+    group_count: int = Field(..., alias="groupCount")
+    summary: Optional[Dict[str, Any]] = None
+    group_snapshot: Optional[SectorInsightSnapshot] = Field(None, alias="groupSnapshot")
+    raw_response: Optional[str] = Field(None, alias="rawResponse")
+    prompt_tokens: Optional[int] = Field(None, alias="promptTokens")
+    completion_tokens: Optional[int] = Field(None, alias="completionTokens")
+    total_tokens: Optional[int] = Field(None, alias="totalTokens")
+    elapsed_seconds: Optional[float] = Field(None, alias="elapsedSeconds")
+    model_used: Optional[str] = Field(None, alias="modelUsed")
+    referenced_articles: List[SectorInsightArticleAssignment] = Field(default_factory=list, alias="referencedArticles")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SectorInsightResponse(BaseModel):
+    summary: Optional[SectorInsightSummaryPayload]
+    snapshot: Optional[SectorInsightSnapshot]
 
     class Config:
         allow_population_by_field_name = True
@@ -1214,6 +1347,335 @@ class SyncConceptFundFlowResponse(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+
+
+class ConceptIndexSyncItem(BaseModel):
+    concept: str
+    ts_code: Optional[str] = Field(None, alias="tsCode")
+    rows: int
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncConceptIndexHistoryRequest(BaseModel):
+    concepts: List[str] = Field(..., alias="concepts", description="List of concept names to sync.")
+    start_date: Optional[str] = Field(None, alias="startDate", description="Optional start date (YYYYMMDD).")
+    end_date: Optional[str] = Field(None, alias="endDate", description="Optional end date (YYYYMMDD).")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncConceptIndexHistoryResponse(BaseModel):
+    concepts: List[ConceptIndexSyncItem]
+    errors: List[Dict[str, Any]]
+    start_date: str = Field(..., alias="startDate")
+    end_date: str = Field(..., alias="endDate")
+    total_rows: int = Field(..., alias="totalRows")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptIndexHistoryRecord(BaseModel):
+    ts_code: str = Field(..., alias="tsCode")
+    concept_name: Optional[str] = Field(None, alias="conceptName")
+    trade_date: date = Field(..., alias="tradeDate")
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    pre_close: Optional[float] = Field(None, alias="preClose")
+    change: Optional[float] = None
+    pct_chg: Optional[float] = Field(None, alias="pctChg")
+    vol: Optional[float] = None
+    amount: Optional[float] = None
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptIndexHistoryResponse(BaseModel):
+    total: int
+    items: List[ConceptIndexHistoryRecord]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptFundFlowBreakdown(BaseModel):
+    score: Optional[float] = None
+    best_rank: Optional[int] = Field(None, alias="bestRank")
+    best_symbol: Optional[str] = Field(None, alias="bestSymbol")
+    total_net_amount: Optional[float] = Field(None, alias="totalNetAmount")
+    total_inflow: Optional[float] = Field(None, alias="totalInflow")
+    total_outflow: Optional[float] = Field(None, alias="totalOutflow")
+    stages: List[FundFlowStageSnapshot] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptIndexMetrics(BaseModel):
+    latest_close: Optional[float] = Field(None, alias="latestClose")
+    change1d: Optional[float] = None
+    change5d: Optional[float] = None
+    change20d: Optional[float] = None
+    avg_volume5d: Optional[float] = Field(None, alias="avgVolume5d")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptNewsArticle(BaseModel):
+    article_id: Optional[str] = Field(None, alias="articleId")
+    source: Optional[str] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    published_at: Optional[str] = Field(None, alias="publishedAt")
+    url: Optional[str] = None
+    impact_summary: Optional[str] = Field(None, alias="impactSummary")
+    impact_analysis: Optional[str] = Field(None, alias="impactAnalysis")
+    impact_confidence: Optional[float] = Field(None, alias="impactConfidence")
+    relevance_confidence: Optional[float] = Field(None, alias="relevanceConfidence")
+    relevance_reason: Optional[str] = Field(None, alias="relevanceReason")
+    impact_themes: Optional[Any] = Field(None, alias="impactThemes")
+    impact_industries: Optional[Any] = Field(None, alias="impactIndustries")
+    impact_sectors: Optional[Any] = Field(None, alias="impactSectors")
+    impact_stocks: Optional[Any] = Field(None, alias="impactStocks")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, alias="extraMetadata")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptSnapshotEntry(BaseModel):
+    name: str
+    ts_code: Optional[str] = Field(None, alias="tsCode")
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+    fund_flow: ConceptFundFlowBreakdown = Field(..., alias="fundFlow")
+    index_metrics: Optional[ConceptIndexMetrics] = Field(None, alias="indexMetrics")
+    news: List[ConceptNewsArticle] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptSnapshot(BaseModel):
+    generated_at: Optional[str] = Field(None, alias="generatedAt")
+    lookback_hours: Optional[int] = Field(None, alias="lookbackHours")
+    concept_count: Optional[int] = Field(None, alias="conceptCount")
+    concepts: List[ConceptSnapshotEntry] = Field(default_factory=list)
+    fund_snapshot: Optional[FundFlowSectorHotlistResponse] = Field(None, alias="fundSnapshot")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncConceptInsightRequest(BaseModel):
+    lookback_hours: int = Field(48, ge=1, le=168, alias="lookbackHours")
+    concept_limit: int = Field(10, ge=1, le=15, alias="conceptLimit")
+    run_llm: bool = Field(True, alias="runLLM")
+    refresh_index_history: bool = Field(True, alias="refreshIndexHistory")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptInsightSummary(BaseModel):
+    summary_id: str = Field(..., alias="summaryId")
+    generated_at: Optional[str] = Field(None, alias="generatedAt")
+    window_start: Optional[str] = Field(None, alias="windowStart")
+    window_end: Optional[str] = Field(None, alias="windowEnd")
+    concept_count: Optional[int] = Field(None, alias="conceptCount")
+    summary_snapshot: Optional[Dict[str, Any]] = Field(None, alias="summarySnapshot")
+    summary_json: Optional[Dict[str, Any]] = Field(None, alias="summaryJson")
+    raw_response: Optional[str] = Field(None, alias="rawResponse")
+    referenced_concepts: Optional[Sequence[str]] = Field(None, alias="referencedConcepts")
+    referenced_articles: Optional[Sequence[Dict[str, Any]]] = Field(None, alias="referencedArticles")
+    prompt_tokens: Optional[int] = Field(None, alias="promptTokens")
+    completion_tokens: Optional[int] = Field(None, alias="completionTokens")
+    total_tokens: Optional[int] = Field(None, alias="totalTokens")
+    elapsed_ms: Optional[int] = Field(None, alias="elapsedMs")
+    model_used: Optional[str] = Field(None, alias="modelUsed")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptInsightResponse(BaseModel):
+    insight: Optional[ConceptInsightSummary]
+    snapshot: Optional[ConceptSnapshot]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptInsightHistoryResponse(BaseModel):
+    items: List[ConceptInsightSummary] = Field(default_factory=list)
+
+ConceptInsightSummary.update_forward_refs(ConceptSnapshot=ConceptSnapshot, Sequence=Sequence)
+ConceptInsightResponse.update_forward_refs(ConceptInsightSummary=ConceptInsightSummary, ConceptSnapshot=ConceptSnapshot)
+ConceptInsightHistoryResponse.update_forward_refs(ConceptInsightSummary=ConceptInsightSummary, Sequence=Sequence)
+
+class IndustryNewsArticle(BaseModel):
+    article_id: Optional[str] = Field(None, alias="articleId")
+    source: Optional[str] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    published_at: Optional[str] = Field(None, alias="publishedAt")
+    url: Optional[str] = None
+    impact_summary: Optional[str] = Field(None, alias="impactSummary")
+    impact_analysis: Optional[str] = Field(None, alias="impactAnalysis")
+    impact_confidence: Optional[float] = Field(None, alias="impactConfidence")
+    relevance_confidence: Optional[float] = Field(None, alias="relevanceConfidence")
+    relevance_reason: Optional[str] = Field(None, alias="relevanceReason")
+    impact_themes: Optional[Any] = Field(None, alias="impactThemes")
+    impact_industries: Optional[Any] = Field(None, alias="impactIndustries")
+    impact_sectors: Optional[Any] = Field(None, alias="impactSectors")
+    impact_stocks: Optional[Any] = Field(None, alias="impactStocks")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, alias="extraMetadata")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustrySnapshotEntry(BaseModel):
+    name: str
+    fund_flow: ConceptFundFlowBreakdown = Field(..., alias="fundFlow")
+    stage_metrics: Dict[str, Optional[float]] = Field(default_factory=dict, alias="stageMetrics")
+    news: List[IndustryNewsArticle] = Field(default_factory=list)
+    latest_updated_at: Optional[str] = Field(None, alias="latestUpdatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustrySnapshot(BaseModel):
+    generated_at: Optional[str] = Field(None, alias="generatedAt")
+    lookback_hours: Optional[int] = Field(None, alias="lookbackHours")
+    industry_count: Optional[int] = Field(None, alias="industryCount")
+    industries: List[IndustrySnapshotEntry] = Field(default_factory=list)
+    fund_snapshot: Optional[Dict[str, Any]] = Field(None, alias="fundSnapshot")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncIndustryInsightRequest(BaseModel):
+    lookback_hours: int = Field(48, ge=1, le=168, alias="lookbackHours")
+    industry_limit: int = Field(5, ge=1, le=10, alias="industryLimit")
+    run_llm: bool = Field(True, alias="runLLM")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryInsightSummary(BaseModel):
+    summary_id: str = Field(..., alias="summaryId")
+    generated_at: Optional[str] = Field(None, alias="generatedAt")
+    window_start: Optional[str] = Field(None, alias="windowStart")
+    window_end: Optional[str] = Field(None, alias="windowEnd")
+    industry_count: Optional[int] = Field(None, alias="industryCount")
+    summary_snapshot: Optional[Dict[str, Any]] = Field(None, alias="summarySnapshot")
+    summary_json: Optional[Dict[str, Any]] = Field(None, alias="summaryJson")
+    raw_response: Optional[str] = Field(None, alias="rawResponse")
+    referenced_industries: Optional[Sequence[str]] = Field(None, alias="referencedIndustries")
+    referenced_articles: Optional[Sequence[Dict[str, Any]]] = Field(None, alias="referencedArticles")
+    prompt_tokens: Optional[int] = Field(None, alias="promptTokens")
+    completion_tokens: Optional[int] = Field(None, alias="completionTokens")
+    total_tokens: Optional[int] = Field(None, alias="totalTokens")
+    elapsed_ms: Optional[int] = Field(None, alias="elapsedMs")
+    model_used: Optional[str] = Field(None, alias="modelUsed")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryInsightResponse(BaseModel):
+    insight: Optional[IndustryInsightSummary]
+    snapshot: Optional[IndustrySnapshot]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryInsightHistoryResponse(BaseModel):
+    items: List[IndustryInsightSummary] = Field(default_factory=list)
+
+IndustryInsightSummary.update_forward_refs(IndustrySnapshot=IndustrySnapshot, Sequence=Sequence)
+IndustryInsightResponse.update_forward_refs(IndustryInsightSummary=IndustryInsightSummary, IndustrySnapshot=IndustrySnapshot)
+IndustryInsightHistoryResponse.update_forward_refs(IndustryInsightSummary=IndustryInsightSummary, Sequence=Sequence)
+
+def _build_concept_insight_payload(
+    summary: Dict[str, Any],
+    *,
+    include_snapshot: bool = True,
+) -> Dict[str, Any]:
+    snapshot_obj = summary.get("summary_snapshot") if include_snapshot else None
+    generated_dt = _parse_datetime(summary.get("generated_at"))
+    window_start_dt = _parse_datetime(summary.get("window_start"))
+    window_end_dt = _parse_datetime(summary.get("window_end"))
+    summary_payload = ConceptInsightSummary(
+        summaryId=str(summary.get("summary_id")),
+        generatedAt=generated_dt.isoformat() if generated_dt else None,
+        windowStart=window_start_dt.isoformat() if window_start_dt else None,
+        windowEnd=window_end_dt.isoformat() if window_end_dt else None,
+        conceptCount=summary.get("concept_count"),
+        summarySnapshot=snapshot_obj if isinstance(snapshot_obj, dict) else (snapshot_obj if include_snapshot else None),
+        summaryJson=summary.get("summary_json"),
+        rawResponse=summary.get("raw_response"),
+        referencedConcepts=summary.get("referenced_concepts"),
+        referencedArticles=summary.get("referenced_articles"),
+        promptTokens=summary.get("prompt_tokens"),
+        completionTokens=summary.get("completion_tokens"),
+        totalTokens=summary.get("total_tokens"),
+        elapsedMs=summary.get("elapsed_ms"),
+        modelUsed=summary.get("model_used"),
+    )
+
+    snapshot_payload: Optional[ConceptSnapshot] = None
+    if include_snapshot and isinstance(snapshot_obj, dict):
+        try:
+            snapshot_payload = ConceptSnapshot(**snapshot_obj)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to parse stored concept snapshot for %s: %s", summary.get("summary_id"), exc)
+            snapshot_payload = None
+
+    return {"summary": summary_payload, "snapshot": snapshot_payload}
+
+
+def _build_concept_insight_response(
+    *,
+    summary: Optional[Dict[str, Any]],
+    snapshot: Optional[Dict[str, Any]],
+) -> ConceptInsightResponse:
+    summary_payload: Optional[ConceptInsightSummary] = None
+    snapshot_payload: Optional[ConceptSnapshot] = None
+
+    if summary:
+        payload = _build_concept_insight_payload(summary, include_snapshot=True)
+        summary_payload = payload.get("summary")  # type: ignore[assignment]
+        snapshot_payload = payload.get("snapshot")  # type: ignore[assignment]
+
+    if snapshot and not snapshot_payload:
+        try:
+            snapshot_payload = ConceptSnapshot(**snapshot)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to parse on-demand concept snapshot: %s", exc)
+            snapshot_payload = None
+
+    return ConceptInsightResponse(insight=summary_payload, snapshot=snapshot_payload)
+
+
+def _build_industry_insight_response_wrapper(
+    *,
+    summary: Optional[Dict[str, Any]],
+    snapshot: Optional[Dict[str, Any]],
+) -> IndustryInsightResponse:
+    return _build_industry_insight_response(summary=summary, snapshot=snapshot)
 
 
 class SyncIndividualFundFlowRequest(BaseModel):
@@ -1913,6 +2375,64 @@ class ConceptFundFlowRecord(BaseModel):
 class ConceptFundFlowListResponse(BaseModel):
     total: int
     items: List[ConceptFundFlowRecord]
+
+
+class FundFlowHotlistSymbol(BaseModel):
+    symbol: str
+    weight: float
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class FundFlowStageSnapshot(BaseModel):
+    symbol: str
+    weight: float
+    rank: Optional[int] = None
+    net_amount: Optional[float] = Field(None, alias="netAmount")
+    inflow: Optional[float] = None
+    outflow: Optional[float] = None
+    price_change_percent: Optional[float] = Field(None, alias="priceChangePercent")
+    stage_change_percent: Optional[float] = Field(None, alias="stageChangePercent")
+    index_value: Optional[float] = Field(None, alias="indexValue")
+    current_price: Optional[float] = Field(None, alias="currentPrice")
+    company_count: Optional[int] = Field(None, alias="companyCount")
+    leading_stock: Optional[str] = Field(None, alias="leadingStock")
+    leading_stock_change_percent: Optional[float] = Field(None, alias="leadingStockChangePercent")
+    updated_at: Optional[str] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+ConceptFundFlowBreakdown.update_forward_refs(FundFlowStageSnapshot=FundFlowStageSnapshot)
+
+
+class FundFlowHotlistEntry(BaseModel):
+    name: str
+    score: float
+    best_rank: Optional[int] = Field(None, alias="bestRank")
+    best_symbol: Optional[str] = Field(None, alias="bestSymbol")
+    total_net_amount: Optional[float] = Field(None, alias="totalNetAmount")
+    total_inflow: Optional[float] = Field(None, alias="totalInflow")
+    total_outflow: Optional[float] = Field(None, alias="totalOutflow")
+    stages: List[FundFlowStageSnapshot] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class FundFlowSectorHotlistResponse(BaseModel):
+    generated_at: Optional[str] = Field(None, alias="generatedAt")
+    symbols: List[FundFlowHotlistSymbol] = Field(default_factory=list)
+    industries: List[FundFlowHotlistEntry] = Field(default_factory=list)
+    concepts: List[FundFlowHotlistEntry] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+ConceptSnapshot.update_forward_refs(FundFlowSectorHotlistResponse=FundFlowSectorHotlistResponse)
 
 
 class IndividualFundFlowRecord(BaseModel):
@@ -2650,6 +3170,56 @@ async def _run_market_insight_job(request: SyncMarketInsightRequest) -> None:
                 last_duration=elapsed,
             )
             logger.error("Market insight generation failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_sector_insight_job(request: SyncSectorInsightRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update(
+            "sector_insight",
+            progress=0.1,
+            message="Collecting sector-impact headlines",
+        )
+        try:
+            result = generate_sector_insight_summary(
+                lookback_hours=request.lookback_hours,
+                limit=request.article_limit,
+            )
+            elapsed = time.perf_counter() - started
+            headline_count = int(result.get("headline_count", 0) or 0)
+            snapshot = result.get("group_snapshot") if isinstance(result, dict) else None
+            group_count = int(result.get("group_count") or 0)
+            if isinstance(snapshot, dict):
+                try:
+                    group_count = int(snapshot.get("groupCount", group_count) or group_count)
+                except (TypeError, ValueError):
+                    group_count = int(result.get("group_count") or 0)
+            generated_at = result.get("generated_at")
+            message = f"Generated sector insight from {headline_count} headlines across {group_count} groups"
+            monitor.update("sector_insight", progress=1.0, message=message)
+            monitor.finish(
+                "sector_insight",
+                success=True,
+                total_rows=headline_count,
+                message=message,
+                finished_at=generated_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            error_message = str(exc)
+            monitor.finish(
+                "sector_insight",
+                success=False,
+                message=error_message,
+                error=error_message,
+                last_duration=elapsed,
+            )
+            logger.error("Sector insight generation failed: %s", error_message)
 
     await loop.run_in_executor(None, job)
 
@@ -3836,6 +4406,51 @@ async def _run_concept_fund_flow_job(request: SyncConceptFundFlowRequest) -> Non
     await loop.run_in_executor(None, job)
 
 
+async def _run_concept_index_history_job(request: SyncConceptIndexHistoryRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update(
+            "concept_index_history",
+            message="Syncing concept index history",
+            progress=0.0,
+        )
+        try:
+            result = sync_concept_index_history(
+                request.concepts,
+                start_date=request.start_date,
+                end_date=request.end_date,
+            )
+            stats = ConceptIndexHistoryDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("totalRows")
+            message_text = (
+                f"Synced {result.get('totalRows', 0)} concept index rows across {len(result.get('concepts', []))} concepts"
+            )
+            monitor.finish(
+                "concept_index_history",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=message_text,
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "concept_index_history",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_individual_fund_flow_job(request: SyncIndividualFundFlowRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -4118,6 +4733,87 @@ async def _run_macro_insight_job(request: SyncMacroInsightRequest) -> None:
     await loop.run_in_executor(None, job)
 
 
+async def _run_concept_insight_job(request: SyncConceptInsightRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update(
+            "concept_insight",
+            message="Generating concept insight summary",
+            progress=0.0,
+        )
+        try:
+            result = generate_concept_insight_summary(
+                lookback_hours=request.lookback_hours,
+                concept_limit=request.concept_limit,
+                run_llm=request.run_llm,
+                refresh_index_history=request.refresh_index_history,
+            )
+            stats = ConceptInsightDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            message_text = "Concept insight generated"
+            monitor.finish(
+                "concept_insight",
+                success=True,
+                total_rows=1,
+                message=message_text,
+                finished_at=result.get("generated_at"),
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "concept_insight",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_industry_insight_job(request: SyncIndustryInsightRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update(
+            "industry_insight",
+            message="Generating industry insight summary",
+            progress=0.0,
+        )
+        try:
+            result = generate_industry_insight_summary(
+                lookback_hours=request.lookback_hours,
+                industry_limit=request.industry_limit,
+                run_llm=request.run_llm,
+            )
+            stats = IndustryInsightDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            message_text = "Industry insight generated"
+            monitor.finish(
+                "industry_insight",
+                success=True,
+                total_rows=1,
+                message=message_text,
+                finished_at=result.get("generated_at"),
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "industry_insight",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_stock_main_business_job(request: SyncStockMainBusinessRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -4230,7 +4926,43 @@ def _job_running(job: str) -> bool:
     job_state = snapshot.get(job)
     if not job_state:
         return False
-    return job_state.get("status") == "running"
+    if job_state.get("status") != "running":
+        return False
+
+    started_at_raw = job_state.get("startedAt")
+    started_at: Optional[datetime]
+    if started_at_raw:
+        try:
+            started_at = datetime.fromisoformat(str(started_at_raw))
+        except ValueError:
+            started_at = None
+    else:
+        started_at = None
+
+    if started_at:
+        elapsed = (datetime.now(LOCAL_TZ).replace(tzinfo=None) - started_at).total_seconds()
+        if elapsed > 300:  # auto-reset after 5 minutes
+            logger.warning("Job %s marked stale after %.0f seconds; resetting status", job, elapsed)
+            monitor.finish(
+                job,
+                success=False,
+                message="Job reset due to inactivity",
+                error="stale job auto-reset",
+                last_duration=elapsed,
+            )
+            return False
+    else:
+        logger.warning("Job %s marked stale (missing start timestamp); resetting status", job)
+        monitor.finish(
+            job,
+            success=False,
+            message="Job reset due to invalid state",
+            error="stale job auto-reset",
+            last_duration=0.0,
+        )
+        return False
+
+    return True
 
 
 async def start_stock_basic_job(payload: SyncStockBasicRequest) -> None:
@@ -4313,6 +5045,14 @@ async def start_market_insight_job(payload: SyncMarketInsightRequest) -> None:
     monitor.start("market_insight", message="Generating market insight summary")
     monitor.update("market_insight", progress=0.0)
     asyncio.create_task(_run_market_insight_job(payload))
+
+
+async def start_sector_insight_job(payload: SyncSectorInsightRequest) -> None:
+    if _job_running("sector_insight"):
+        raise HTTPException(status_code=409, detail="Sector insight job already running")
+    monitor.start("sector_insight", message="Generating sector insight summary")
+    monitor.update("sector_insight", progress=0.0)
+    asyncio.create_task(_run_sector_insight_job(payload))
 
 
 async def start_global_index_job(payload: SyncGlobalIndexRequest) -> None:  # noqa: ARG001
@@ -4539,6 +5279,14 @@ async def start_concept_fund_flow_job(payload: SyncConceptFundFlowRequest) -> No
     monitor.start("concept_fund_flow", message="Syncing concept fund flow data")
     monitor.update("concept_fund_flow", progress=0.0)
     asyncio.create_task(_run_concept_fund_flow_job(payload))
+
+
+async def start_concept_index_history_job(payload: SyncConceptIndexHistoryRequest) -> None:
+    if _job_running("concept_index_history"):
+        raise HTTPException(status_code=409, detail="Concept index history sync already running")
+    monitor.start("concept_index_history", message="Syncing concept index history")
+    monitor.update("concept_index_history", progress=0.0)
+    asyncio.create_task(_run_concept_index_history_job(payload))
 
 
 async def start_individual_fund_flow_job(payload: SyncIndividualFundFlowRequest) -> None:
@@ -4839,6 +5587,13 @@ async def safe_start_concept_fund_flow_job(payload: SyncConceptFundFlowRequest) 
         logger.info("Concept fund flow sync skipped: %s", exc.detail)
 
 
+async def safe_start_concept_index_history_job(payload: SyncConceptIndexHistoryRequest) -> None:
+    try:
+        await start_concept_index_history_job(payload)
+    except HTTPException as exc:
+        logger.info("Concept index history sync skipped: %s", exc.detail)
+
+
 def schedule_peripheral_aggregate_job(config: RuntimeConfig) -> None:
     job_id = "peripheral_aggregate_daily"
     try:
@@ -5044,6 +5799,36 @@ async def safe_start_macro_insight_job(payload: SyncMacroInsightRequest) -> None
         logger.info("Macro insight generation skipped: %s", exc.detail)
 
 
+async def start_concept_insight_job(payload: SyncConceptInsightRequest) -> None:
+    if _job_running("concept_insight"):
+        raise HTTPException(status_code=409, detail="Concept insight generation is already running")
+    monitor.start("concept_insight", message="Generating concept insight summary")
+    monitor.update("concept_insight", progress=0.0)
+    asyncio.create_task(_run_concept_insight_job(payload))
+
+
+async def safe_start_concept_insight_job(payload: SyncConceptInsightRequest) -> None:
+    try:
+        await start_concept_insight_job(payload)
+    except HTTPException as exc:
+        logger.info("Concept insight generation skipped: %s", exc.detail)
+
+
+async def start_industry_insight_job(payload: SyncIndustryInsightRequest) -> None:
+    if _job_running("industry_insight"):
+        raise HTTPException(status_code=409, detail="Industry insight generation is already running")
+    monitor.start("industry_insight", message="Generating industry insight summary")
+    monitor.update("industry_insight", progress=0.0)
+    asyncio.create_task(_run_industry_insight_job(payload))
+
+
+async def safe_start_industry_insight_job(payload: SyncIndustryInsightRequest) -> None:
+    try:
+        await start_industry_insight_job(payload)
+    except HTTPException as exc:
+        logger.info("Industry insight generation skipped: %s", exc.detail)
+
+
 async def safe_start_stock_main_business_job(payload: SyncStockMainBusinessRequest) -> None:
     try:
         await start_stock_main_business_job(payload)
@@ -5070,6 +5855,13 @@ async def safe_start_market_insight_job(payload: SyncMarketInsightRequest) -> No
         await start_market_insight_job(payload)
     except HTTPException as exc:
         logger.info("Market insight job skipped: %s", exc.detail)
+
+
+async def safe_start_sector_insight_job(payload: SyncSectorInsightRequest) -> None:
+    try:
+        await start_sector_insight_job(payload)
+    except HTTPException as exc:
+        logger.info("Sector insight job skipped: %s", exc.detail)
 
 
 async def safe_start_index_history_job(payload: SyncIndexHistoryRequest) -> None:
@@ -6609,6 +7401,154 @@ def list_concept_fund_flow_entries(
     return ConceptFundFlowListResponse(total=int(result.get("total", 0)), items=items)
 
 
+@app.get("/fund-flow/sector-hotlist", response_model=FundFlowSectorHotlistResponse)
+def get_fund_flow_sector_hotlist() -> FundFlowSectorHotlistResponse:
+    snapshot = build_sector_fund_flow_snapshot()
+    symbols = [FundFlowHotlistSymbol(**item) for item in snapshot.get("symbols", [])]
+    industries = [FundFlowHotlistEntry(**item) for item in snapshot.get("industries", [])]
+    concepts = [FundFlowHotlistEntry(**item) for item in snapshot.get("concepts", [])]
+    return FundFlowSectorHotlistResponse(
+        generatedAt=snapshot.get("generatedAt"),
+        symbols=symbols,
+        industries=industries,
+        concepts=concepts,
+    )
+
+
+@app.get("/market/industry-insight", response_model=IndustryInsightResponse)
+def get_industry_insight_api(
+    lookback_hours: int = Query(
+        48,
+        ge=1,
+        le=168,
+        alias="lookbackHours",
+        description="Hours to look back when building ad-hoc snapshot.",
+    ),
+    industry_limit: int = Query(
+        5,
+        ge=1,
+        le=15,
+        alias="industryLimit",
+        description="Maximum number of industries to include in snapshot.",
+    ),
+) -> IndustryInsightResponse:
+    summary_record: Optional[Dict[str, Any]] = None
+    snapshot_dict: Optional[Dict[str, Any]] = None
+
+    try:
+        summary = get_latest_industry_insight()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to load latest industry insight: %s", exc)
+        summary = None
+
+    if summary:
+        summary_record = summary
+        existing_snapshot = summary.get("summary_snapshot")
+        if isinstance(existing_snapshot, dict):
+            snapshot_dict = existing_snapshot
+
+    if snapshot_dict is None:
+        try:
+            snapshot_dict = build_industry_snapshot(
+                lookback_hours=lookback_hours,
+                industry_limit=industry_limit,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to build industry snapshot: %s", exc)
+            snapshot_dict = None
+
+    return _build_industry_insight_response(summary=summary_record, snapshot=snapshot_dict)
+
+
+@app.get("/market/industry-insight/history", response_model=IndustryInsightHistoryResponse)
+def get_industry_insight_history(
+    limit: int = Query(5, ge=1, le=20, description="Number of historical industry insights to return."),
+) -> IndustryInsightHistoryResponse:
+    try:
+        records = list_industry_insights(limit=limit)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to list industry insight history: %s", exc)
+        records = []
+
+    items: List[IndustryInsightSummary] = []
+    for record in records:
+        payload = _build_industry_insight_payload(record, include_snapshot=False)
+        summary_item = payload.get("summary")
+        if isinstance(summary_item, IndustryInsightSummary):
+            items.append(summary_item)
+    return IndustryInsightHistoryResponse(items=items)
+
+
+@app.get("/market/concept-insight", response_model=ConceptInsightResponse)
+def get_concept_insight_api(
+    lookback_hours: int = Query(
+        48,
+        ge=1,
+        le=168,
+        alias="lookbackHours",
+        description="Hours to look back when building ad-hoc snapshot.",
+    ),
+    concept_limit: int = Query(
+        10,
+        ge=1,
+        le=15,
+        alias="conceptLimit",
+        description="Maximum number of concepts to include in snapshot.",
+    ),
+    refresh_index_history: bool = Query(
+        False,
+        alias="refreshIndexHistory",
+        description="Whether to trigger index history refresh when building snapshot on the fly.",
+    ),
+) -> ConceptInsightResponse:
+    summary_record: Optional[Dict[str, Any]] = None
+    snapshot_dict: Optional[Dict[str, Any]] = None
+
+    try:
+        summary = get_latest_concept_insight()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to load latest concept insight: %s", exc)
+        summary = None
+
+    if summary:
+        summary_record = summary
+        existing_snapshot = summary.get("summary_snapshot")
+        if isinstance(existing_snapshot, dict):
+            snapshot_dict = existing_snapshot
+
+    if snapshot_dict is None:
+        try:
+            snapshot_dict = build_concept_snapshot(
+                lookback_hours=lookback_hours,
+                concept_limit=concept_limit,
+                refresh_index_history=refresh_index_history,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to build concept snapshot: %s", exc)
+            snapshot_dict = None
+
+    return _build_concept_insight_response(summary=summary_record, snapshot=snapshot_dict)
+
+
+@app.get("/market/concept-insight/history", response_model=ConceptInsightHistoryResponse)
+def get_concept_insight_history(
+    limit: int = Query(5, ge=1, le=20, description="Number of historical concept insights to return."),
+) -> ConceptInsightHistoryResponse:
+    try:
+        records = list_concept_insights(limit=limit)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to list concept insight history: %s", exc)
+        records = []
+
+    items: List[ConceptInsightSummary] = []
+    for record in records:
+        payload = _build_concept_insight_payload(record, include_snapshot=False)
+        summary_item = payload.get("summary")
+        if isinstance(summary_item, ConceptInsightSummary):
+            items.append(summary_item)
+    return ConceptInsightHistoryResponse(items=items)
+
+
 @app.get("/fund-flow/individual", response_model=IndividualFundFlowListResponse)
 def list_individual_fund_flow_entries(
     symbol: Optional[str] = Query(
@@ -6941,6 +7881,45 @@ def get_market_insight(
     return MarketInsightResponse(summary=summary_payload, articles=articles)
 
 
+@app.get("/news/sector-insight", response_model=SectorInsightResponse)
+def get_sector_insight(
+    lookback_hours: int = Query(24, ge=1, le=72, alias="lookbackHours", description="Hours to look back when no cached summary exists."),
+    article_limit: int = Query(40, ge=5, le=80, alias="articleLimit", description="Maximum articles to aggregate when rebuilding snapshot."),
+) -> SectorInsightResponse:
+    summary_record: Optional[Dict[str, Any]] = None
+    snapshot_dict: Optional[Dict[str, Any]] = None
+
+    try:
+        summary = get_latest_sector_insight()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to load latest sector insight: %s", exc)
+        summary = None
+
+    if summary:
+        summary_record = summary
+        group_snapshot = summary.get("group_snapshot")
+        if isinstance(group_snapshot, dict):
+            snapshot_dict = group_snapshot
+    else:
+        try:
+            headlines = collect_recent_sector_headlines(
+                lookback_hours=lookback_hours,
+                limit=article_limit,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to collect sector-impact headlines: %s", exc)
+            headlines = []
+
+        if headlines:
+            snapshot_dict = build_sector_group_snapshot(
+                headlines,
+                lookback_hours=lookback_hours,
+                reference_time=_local_now(),
+            )
+
+    return _build_sector_insight_response(summary=summary_record, snapshot=snapshot_dict)
+
+
 @app.get("/control/status", response_model=ControlStatusResponse)
 def get_control_status() -> ControlStatusResponse:
     config = load_runtime_config()
@@ -7088,6 +8067,29 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect concept_fund_flow stats: %s", exc)
         stats_map["concept_fund_flow"] = {}
     try:
+        stats_map["concept_index_history"] = ConceptIndexHistoryDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect concept_index_history stats: %s", exc)
+        stats_map["concept_index_history"] = {}
+    try:
+        stats_map["concept_insight"] = ConceptInsightDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect concept_insight stats: %s", exc)
+        stats_map["concept_insight"] = {}
+    else:
+        stats = stats_map["concept_insight"]
+        if isinstance(stats, dict) and "latest" in stats and "updated_at" not in stats:
+            stats["updated_at"] = stats.get("latest")
+    try:
+        stats_map["industry_insight"] = IndustryInsightDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect industry_insight stats: %s", exc)
+        stats_map["industry_insight"] = {}
+    else:
+        stats = stats_map["industry_insight"]
+        if isinstance(stats, dict) and "latest" in stats and "updated_at" not in stats:
+            stats["updated_at"] = stats.get("latest")
+    try:
         stats_map["individual_fund_flow"] = IndividualFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect individual_fund_flow stats: %s", exc)
@@ -7155,6 +8157,16 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect trade_calendar stats: %s", exc)
         stats_map["trade_calendar"] = {}
+    try:
+        stats_map["market_insight"] = NewsMarketInsightDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect market_insight stats: %s", exc)
+        stats_map["market_insight"] = {}
+    try:
+        stats_map["sector_insight"] = NewsSectorInsightDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect sector_insight stats: %s", exc)
+        stats_map["sector_insight"] = {}
 
     stats_map.setdefault("fund_flow_aggregate", {})
 
@@ -7315,10 +8327,101 @@ def _build_market_insight_payload(summary: Dict[str, object]) -> Dict[str, objec
     }
 
 
+def _build_sector_insight_payload(summary: Dict[str, object]) -> Dict[str, object]:
+    summary_json = summary.get("summary_json")
+    if isinstance(summary_json, str):
+        try:
+            summary_json = json.loads(summary_json)
+        except json.JSONDecodeError:
+            summary_json = {"text": summary_json}
+    elif summary_json is not None and not isinstance(summary_json, dict):
+        summary_json = {"text": str(summary_json)}
+
+    snapshot = summary.get("group_snapshot")
+    if isinstance(snapshot, str):
+        try:
+            snapshot = json.loads(snapshot)
+        except json.JSONDecodeError:
+            snapshot = None
+
+    snapshot_payload = None
+    if isinstance(snapshot, dict):
+        snapshot_payload = SectorInsightSnapshot(**snapshot)
+
+    referenced = summary.get("referenced_articles")
+    if isinstance(referenced, str):
+        try:
+            referenced = json.loads(referenced)
+        except json.JSONDecodeError:
+            referenced = []
+
+    referenced_items: List[SectorInsightArticleAssignment] = []
+    if isinstance(referenced, list):
+        for item in referenced:
+            if isinstance(item, dict):
+                referenced_items.append(SectorInsightArticleAssignment(**item))
+
+    generated_at = _localize_datetime(summary.get("generated_at"))
+    window_start = _localize_datetime(summary.get("window_start"))
+    window_end = _localize_datetime(summary.get("window_end"))
+    elapsed_ms = summary.get("elapsed_ms")
+    elapsed_seconds = None
+    if isinstance(elapsed_ms, (int, float)):
+        elapsed_seconds = float(elapsed_ms) / 1000.0
+
+    summary_payload = SectorInsightSummaryPayload(
+        summaryId=str(summary.get("summary_id")),
+        generatedAt=generated_at or _local_now(),
+        windowStart=window_start or generated_at or _local_now(),
+        windowEnd=window_end or generated_at or _local_now(),
+        headlineCount=int(summary.get("headline_count") or 0),
+        groupCount=int(summary.get("group_count") or 0),
+        summary=summary_json,
+        groupSnapshot=snapshot_payload,
+        rawResponse=summary.get("raw_response"),
+        promptTokens=summary.get("prompt_tokens"),
+        completionTokens=summary.get("completion_tokens"),
+        totalTokens=summary.get("total_tokens"),
+        elapsedSeconds=elapsed_seconds,
+        modelUsed=summary.get("model_used"),
+        referencedArticles=referenced_items,
+    )
+
+    return {
+        "summary": summary_payload,
+        "snapshot": snapshot_payload,
+    }
+
+
+def _build_sector_insight_response(
+    *,
+    summary: Optional[Dict[str, Any]],
+    snapshot: Optional[Dict[str, Any]],
+) -> SectorInsightResponse:
+    summary_payload: Optional[SectorInsightSummaryPayload] = None
+    snapshot_payload: Optional[SectorInsightSnapshot] = None
+
+    if summary:
+        payload = _build_sector_insight_payload(summary)
+        summary_payload = payload.get("summary")  # type: ignore[assignment]
+        snapshot_payload = payload.get("snapshot")  # type: ignore[assignment]
+
+    if snapshot and not snapshot_payload:
+        snapshot_payload = SectorInsightSnapshot(**snapshot)
+
+    return SectorInsightResponse(summary=summary_payload, snapshot=snapshot_payload)
+
+
 
 @app.post("/control/sync/market-insight")
 async def control_sync_market_insight(payload: SyncMarketInsightRequest) -> dict[str, str]:
     await start_market_insight_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/sector-insight")
+async def control_sync_sector_insight(payload: SyncSectorInsightRequest) -> dict[str, str]:
+    await start_sector_insight_job(payload)
     return {"status": "started"}
 
 
@@ -7498,6 +8601,24 @@ async def control_sync_concept_fund_flow(payload: SyncConceptFundFlowRequest) ->
     return {"status": "started"}
 
 
+@app.post("/control/sync/concept-index-history")
+async def control_sync_concept_index_history(payload: SyncConceptIndexHistoryRequest) -> dict[str, str]:
+    await start_concept_index_history_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/concept-insight")
+async def control_sync_concept_insight(payload: SyncConceptInsightRequest) -> dict[str, str]:
+    await start_concept_insight_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/industry-insight")
+async def control_sync_industry_insight(payload: SyncIndustryInsightRequest) -> dict[str, str]:
+    await start_industry_insight_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/individual-fund-flow")
 async def control_sync_individual_fund_flow(payload: SyncIndividualFundFlowRequest) -> dict[str, str]:
     await start_individual_fund_flow_job(payload)
@@ -7603,6 +8724,7 @@ def control_debug_stats() -> dict[str, object]:
             "stock_main_business": StockMainBusinessDAO(settings.postgres).stats(),
             "stock_main_composition": StockMainCompositionDAO(settings.postgres).stats(),
             "market_insight": NewsMarketInsightDAO(settings.postgres).stats(),
+            "sector_insight": NewsSectorInsightDAO(settings.postgres).stats(),
         },
         "monitor": monitor.snapshot(),
     }
@@ -7746,3 +8868,62 @@ def trigger_global_flash_classification_sync(payload: SyncGlobalFlashClassifyReq
 
 
 __all__ = ["app"]
+def _build_industry_insight_payload(
+    summary: Dict[str, Any],
+    *,
+    include_snapshot: bool = True,
+) -> Dict[str, Any]:
+    snapshot_obj = summary.get("summary_snapshot") if include_snapshot else None
+    generated_dt = _parse_datetime(summary.get("generated_at"))
+    window_start_dt = _parse_datetime(summary.get("window_start"))
+    window_end_dt = _parse_datetime(summary.get("window_end"))
+    summary_payload = IndustryInsightSummary(
+        summaryId=str(summary.get("summary_id")),
+        generatedAt=generated_dt.isoformat() if generated_dt else None,
+        windowStart=window_start_dt.isoformat() if window_start_dt else None,
+        windowEnd=window_end_dt.isoformat() if window_end_dt else None,
+        industryCount=summary.get("industry_count"),
+        summarySnapshot=snapshot_obj if isinstance(snapshot_obj, dict) else (snapshot_obj if include_snapshot else None),
+        summaryJson=summary.get("summary_json"),
+        rawResponse=summary.get("raw_response"),
+        referencedIndustries=summary.get("referenced_industries"),
+        referencedArticles=summary.get("referenced_articles"),
+        promptTokens=summary.get("prompt_tokens"),
+        completionTokens=summary.get("completion_tokens"),
+        totalTokens=summary.get("total_tokens"),
+        elapsedMs=summary.get("elapsed_ms"),
+        modelUsed=summary.get("model_used"),
+    )
+
+    snapshot_payload: Optional[IndustrySnapshot] = None
+    if include_snapshot and isinstance(snapshot_obj, dict):
+        try:
+            snapshot_payload = IndustrySnapshot(**snapshot_obj)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to parse stored industry snapshot for %s: %s", summary.get("summary_id"), exc)
+            snapshot_payload = None
+
+    return {"summary": summary_payload, "snapshot": snapshot_payload}
+
+
+def _build_industry_insight_response(
+    *,
+    summary: Optional[Dict[str, Any]],
+    snapshot: Optional[Dict[str, Any]],
+) -> IndustryInsightResponse:
+    summary_payload: Optional[IndustryInsightSummary] = None
+    snapshot_payload: Optional[IndustrySnapshot] = None
+
+    if summary:
+        payload = _build_industry_insight_payload(summary, include_snapshot=True)
+        summary_payload = payload.get("summary")  # type: ignore[assignment]
+        snapshot_payload = payload.get("snapshot")  # type: ignore[assignment]
+
+    if snapshot and not snapshot_payload:
+        try:
+            snapshot_payload = IndustrySnapshot(**snapshot)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to parse on-demand industry snapshot: %s", exc)
+            snapshot_payload = None
+
+    return IndustryInsightResponse(insight=summary_payload, snapshot=snapshot_payload)

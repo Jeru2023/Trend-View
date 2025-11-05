@@ -157,6 +157,27 @@ class NewsArticleDAO(PostgresDAOBase):
                 rows = cur.fetchall()
         return {row[0] for row in rows}
 
+    def existing_source_items(self, source: str, source_item_ids: Iterable[str]) -> set[str]:
+        items = [item for item in source_item_ids if item]
+        if not items:
+            return set()
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL(
+                        "SELECT COALESCE(source_item_id, url) "
+                        "FROM {schema}.{table} "
+                        "WHERE source = %s AND COALESCE(source_item_id, url) = ANY(%s)"
+                    ).format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self._table_name),
+                    ),
+                    (source, items),
+                )
+                rows = cur.fetchall()
+        return {row[0] for row in rows}
+
     def list_articles(
         self,
         *,

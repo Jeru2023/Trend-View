@@ -103,7 +103,16 @@ def generate_finance_analysis(
             time.sleep(backoff_seconds)
             backoff_seconds = min(backoff_seconds * 2, _BACKOFF_MAX_SECONDS)
         except requests.RequestException as exc:  # pragma: no cover - external API
-            logger.warning("DeepSeek request failed: %s", exc)
+            error_detail = None
+            if isinstance(exc, requests.HTTPError) and exc.response is not None:
+                try:
+                    error_detail = exc.response.text
+                except Exception:  # pragma: no cover - defensive
+                    error_detail = None
+            if error_detail:
+                logger.warning("DeepSeek request failed: %s | body=%s", exc, error_detail)
+            else:
+                logger.warning("DeepSeek request failed: %s", exc)
             return None
     else:
         return None

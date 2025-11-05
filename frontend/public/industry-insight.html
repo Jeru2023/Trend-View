@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="industryInsight.title">趋势视图 - 行业推理</title>
+    <link rel="stylesheet" href="styles.css?v=20270438" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          } else {
+            document.documentElement.lang = "zh";
+            document.documentElement.setAttribute("data-pref-lang", "zh");
+          }
+        } catch (error) {
+          document.documentElement.lang = "zh";
+          document.documentElement.setAttribute("data-pref-lang", "zh");
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="industry-insight">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="industryInsight.pageTitle">行业推理</h1>
+            <p class="page-subtitle" data-i18n="industryInsight.pageSubtitle">
+              聚焦热门行业的资金强度、阶段表现与关键催化，生成策略研判。
+            </p>
+          </div>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="zh">中文</button>
+              <button class="lang-btn" data-lang="en">EN</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page" id="industry-insight-root">
+          <div class="concept-toolbar">
+            <div class="concept-toolbar__info">
+              <div class="concept-toolbar__metric">
+                <span data-i18n="industryInsight.generatedAtLabel">快照时间</span>
+                <strong id="industry-insight-generated-at">--</strong>
+              </div>
+              <div class="concept-toolbar__metric">
+                <span data-i18n="industryInsight.lookbackLabel">观察窗口</span>
+                <strong id="industry-insight-lookback">--</strong>
+              </div>
+            </div>
+            <div class="concept-toolbar__actions">
+              <button id="industry-insight-refresh" class="btn btn--primary">
+                <span class="btn__icon" aria-hidden="true">⟳</span>
+                <span class="btn__label" data-i18n="industryInsight.refreshButton">刷新</span>
+              </button>
+            </div>
+          </div>
+
+          <section class="insight-section">
+            <header class="insight-section__header">
+              <div>
+                <h2 class="insight-section__title" data-i18n="industryInsight.summaryTitle">AI 策略总结</h2>
+                <p class="insight-section__subtitle" data-i18n="industryInsight.summarySubtitle">
+                  基于热门行业的资金热度、阶段涨跌与新闻催化的综合推理结果。
+                </p>
+              </div>
+            </header>
+            <div
+              id="industry-insight-summary"
+              class="insight-summary"
+              data-empty-zh="暂无推理结果。"
+              data-empty-en="No insight yet."
+            ></div>
+          </section>
+
+          <section class="insight-section">
+            <header class="insight-section__header">
+              <div>
+                <h2 class="insight-section__title" data-i18n="industryInsight.industryTitle">热门行业</h2>
+                <p class="insight-section__subtitle" data-i18n="industryInsight.industrySubtitle">
+                  展示前五大行业的资金得分、阶段表现指标与重点新闻。
+                </p>
+              </div>
+            </header>
+            <div id="industry-insight-grid" class="concept-grid" data-empty-placeholder></div>
+          </section>
+
+          <section class="insight-section">
+            <header class="insight-section__header">
+              <div>
+                <h2 class="insight-section__title" data-i18n="industryInsight.historyTitle">历史推理</h2>
+                <p class="insight-section__subtitle" data-i18n="industryInsight.historySubtitle">
+                  回顾近期行业推理结果，追踪主线轮动与策略演化。
+                </p>
+              </div>
+            </header>
+            <div
+              id="industry-insight-history"
+              class="insight-history"
+              data-empty-zh="暂无历史记录。"
+              data-empty-en="No records."
+            ></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20270438"></script>
+    <script src="sidebar.js?v=20270438"></script>
+    <script type="module" src="industry-insight.js?v=20270438"></script>
+  </body>
+</html>
+

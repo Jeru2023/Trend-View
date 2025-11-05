@@ -14,6 +14,9 @@ from .performance_express_dao import PerformanceExpressDAO
 from .performance_forecast_dao import PerformanceForecastDAO
 from .industry_fund_flow_dao import IndustryFundFlowDAO
 from .concept_fund_flow_dao import ConceptFundFlowDAO
+from .concept_index_history_dao import ConceptIndexHistoryDAO
+from .concept_insight_dao import ConceptInsightDAO
+from .industry_insight_dao import IndustryInsightDAO
 from .individual_fund_flow_dao import IndividualFundFlowDAO
 from .big_deal_fund_flow_dao import BigDealFundFlowDAO
 from .hsgt_fund_flow_dao import HSGTFundFlowDAO
@@ -38,6 +41,7 @@ from .trade_calendar_dao import TradeCalendarDAO
 from .news_article_dao import NewsArticleDAO
 from .news_insight_dao import NewsInsightDAO
 from .news_market_insight_dao import NewsMarketInsightDAO
+from .news_sector_insight_dao import NewsSectorInsightDAO
 from .index_history_dao import IndexHistoryDAO
 from .realtime_index_dao import RealtimeIndexDAO
 from .margin_account_dao import MarginAccountDAO
@@ -61,6 +65,9 @@ __all__ = [
     "PerformanceForecastDAO",
     "IndustryFundFlowDAO",
     "ConceptFundFlowDAO",
+    "ConceptIndexHistoryDAO",
+    "ConceptInsightDAO",
+    "IndustryInsightDAO",
     "IndividualFundFlowDAO",
     "BigDealFundFlowDAO",
     "HSGTFundFlowDAO",
@@ -85,6 +92,7 @@ __all__ = [
     "NewsArticleDAO",
     "NewsInsightDAO",
     "NewsMarketInsightDAO",
+    "NewsSectorInsightDAO",
     "IndexHistoryDAO",
     "RealtimeIndexDAO",
     "MarginAccountDAO",

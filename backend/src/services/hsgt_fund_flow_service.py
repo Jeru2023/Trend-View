@@ -10,7 +10,11 @@ from typing import Callable, Optional
 
 import pandas as pd
 
-from ..api_clients import HSGT_FUND_FLOW_COLUMN_MAP, fetch_hsgt_fund_flow_history
+from ..api_clients import (
+    HSGT_FUND_FLOW_COLUMN_MAP,
+    fetch_hsgt_fund_flow_history,
+    fetch_hsgt_fund_flow_summary,
+)
 from ..config.settings import load_settings
 from ..dao import HSGTFundFlowDAO
 
@@ -33,6 +37,13 @@ PERCENT_COLUMNS: tuple[str, ...] = (
 )
 
 DEFAULT_SYMBOL = "北向资金"
+
+SUMMARY_SYMBOL_MAPPINGS: dict[str, str] = {
+    "沪股通": "沪股通",
+    "深股通": "深股通",
+    "港股通(沪)": "港股通(沪)",
+    "港股通(深)": "港股通(深)",
+}
 
 
 def _to_float(value: object) -> Optional[float]:
@@ -100,10 +111,75 @@ def _prepare_hsgt_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
     ordered_columns = list(HSGT_FUND_FLOW_COLUMN_MAP.values())
     frame = frame.loc[:, ordered_columns]
 
-    if "net_buy_amount" in frame.columns:
-        frame = frame[frame["net_buy_amount"].notna()].copy()
-
     return frame
+
+
+def _summary_rows_for_symbol(summary: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    if summary.empty:
+        return summary
+    if symbol == "北向资金":
+        return summary[summary["funds_direction"] == "北向"]
+    if symbol == "南向资金":
+        return summary[summary["funds_direction"] == "南向"]
+    board_name = SUMMARY_SYMBOL_MAPPINGS.get(symbol, symbol)
+    return summary[summary["board_name"] == board_name]
+
+
+def _merge_summary_into_history(
+    history: pd.DataFrame, summary: pd.DataFrame, symbol: str
+) -> pd.DataFrame:
+    if summary.empty:
+        return history
+
+    if history.empty:
+        base_columns = list(history.columns)
+        if not base_columns:
+            base_columns = ["symbol"] + list(HSGT_FUND_FLOW_COLUMN_MAP.values())
+        if "symbol" not in base_columns:
+            base_columns = ["symbol"] + [column for column in base_columns if column != "symbol"]
+        history = pd.DataFrame(columns=base_columns)
+
+    subset = _summary_rows_for_symbol(summary, symbol)
+    if subset.empty:
+        return history
+
+    aggregated = (
+        subset.groupby("trade_date", as_index=False)[["net_buy_amount", "fund_inflow", "balance"]]
+        .sum(min_count=1)
+        .dropna(how="all", subset=["net_buy_amount", "fund_inflow", "balance"])
+    )
+    if aggregated.empty:
+        return history
+
+    for _, row in aggregated.iterrows():
+        trade_date = row["trade_date"]
+        mask = history["trade_date"] == trade_date
+        if not mask.any():
+            new_row = {column: None for column in history.columns}
+            new_row["symbol"] = symbol
+            new_row["trade_date"] = trade_date
+            history = pd.concat([history, pd.DataFrame([new_row])], ignore_index=True)
+            mask = history["trade_date"] == trade_date
+
+        for source_column, target_column in [
+            ("net_buy_amount", "net_buy_amount"),
+            ("fund_inflow", "fund_inflow"),
+            ("balance", "balance"),
+        ]:
+            value = row.get(source_column)
+            if value is None or pd.isna(value):
+                continue
+            history.loc[mask, target_column] = float(value)
+            logger.debug(
+                "Patched %s summary value %s=%s for trade_date=%s",
+                symbol,
+                target_column,
+                value,
+                trade_date,
+            )
+
+    history = history.sort_values(["trade_date"], ignore_index=True)
+    return history
 
 
 def sync_hsgt_fund_flow(
@@ -150,6 +226,10 @@ def sync_hsgt_fund_flow(
 
     if progress_callback:
         progress_callback(0.4, f"Upserting {len(prepared)} HSGT history rows", len(prepared))
+
+    summary_snapshot = fetch_hsgt_fund_flow_summary()
+    if not summary_snapshot.empty:
+        prepared = _merge_summary_into_history(prepared, summary_snapshot, symbol)
 
     with dao.connect() as conn:
         dao.ensure_table(conn)

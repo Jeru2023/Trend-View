@@ -5,6 +5,7 @@ const MAX_FETCH_ATTEMPTS = 3;
 const FETCH_RETRY_BACKOFF_MS = 500;
 const MAX_REFRESH_RETRIES = 3;
 const REFRESH_RETRY_DELAY_MS = 5000;
+const GLOBAL_FLASH_FETCH_LIMIT = 500;
 const INVALID_SUMMARY_VALUES = new Set([
   "",
   "nan",
@@ -691,7 +692,7 @@ function updateTabCounts(entries) {
 
 async function loadEntries(options = {}) {
   const { attempt = 0 } = options;
-  const requestUrl = `${API_BASE}/news/global-flash?limit=200`;
+  const requestUrl = `${API_BASE}/news/global-flash?limit=${GLOBAL_FLASH_FETCH_LIMIT}`;
   try {
     const response = await fetchWithRetry(requestUrl);
     const data = await response.json();

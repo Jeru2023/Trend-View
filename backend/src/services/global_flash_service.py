@@ -39,8 +39,15 @@ def sync_global_flash(*, settings_path: Optional[str] = None) -> Dict[str, objec
     records = _frame_to_pipeline_records(prepared)
     article_ids = [record["article_id"] for record in records]
     existing_ids = article_dao.existing_article_ids(article_ids)
+    source_keys = [record["payload"].get("source_item_id") or record["payload"].get("url") for record in records]
+    existing_sources = article_dao.existing_source_items(SOURCE_NAME, source_keys)
 
-    new_items = [record["payload"] for record in records if record["article_id"] not in existing_ids]
+    new_items = [
+        record["payload"]
+        for record in records
+        if record["article_id"] not in existing_ids
+        and (record["payload"].get("source_item_id") or record["payload"].get("url")) not in existing_sources
+    ]
 
     if not new_items:
         elapsed = time.perf_counter() - started

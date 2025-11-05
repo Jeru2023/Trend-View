@@ -52,6 +52,7 @@ class PostgresSettings:
     news_articles_table: str
     news_insights_table: str
     news_market_insight_table: str
+    news_sector_insight_table: str
     index_history_table: str
     fundamental_metrics_table: str
     favorites_table: str
@@ -64,6 +65,9 @@ class PostgresSettings:
     realtime_index_table: str
     industry_fund_flow_table: str
     concept_fund_flow_table: str
+    concept_index_history_table: str
+    concept_insight_table: str
+    industry_insight_table: str
     individual_fund_flow_table: str
     big_deal_fund_flow_table: str
     hsgt_fund_flow_table: str
@@ -210,6 +214,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             news_market_insight_table=str(
                 postgres_config.get("news_market_insight_table", "news_market_insights")
             ),
+            news_sector_insight_table=str(
+                postgres_config.get("news_sector_insight_table", "news_sector_insights")
+            ),
             index_history_table=str(
                 postgres_config.get("index_history_table", "index_history")
             ),
@@ -245,6 +252,15 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             concept_fund_flow_table=str(
                 postgres_config.get("concept_fund_flow_table", "concept_fund_flow")
+            ),
+            concept_index_history_table=str(
+                postgres_config.get("concept_index_history_table", "concept_index_history")
+            ),
+            concept_insight_table=str(
+                postgres_config.get("concept_insight_table", "concept_insights")
+            ),
+            industry_insight_table=str(
+                postgres_config.get("industry_insight_table", "industry_insights")
             ),
             individual_fund_flow_table=str(
                 postgres_config.get("individual_fund_flow_table", "individual_fund_flow")
