@@ -96,5 +96,23 @@ class MarketOverviewInsightDAO(PostgresDAOBase):
             "created_at": created_at,
         }
 
+    def stats(self) -> Dict[str, Any]:
+        query = sql.SQL(
+            """
+            SELECT COUNT(*) AS total, MAX(generated_at) AS latest
+            FROM {schema}.{table}
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query)
+                row = cur.fetchone()
+        total, latest = row if row else (0, None)
+        return {"count": int(total or 0), "latest": latest}
+
 
 __all__ = ["MarketOverviewInsightDAO"]

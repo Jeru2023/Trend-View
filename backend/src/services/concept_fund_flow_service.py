@@ -1,4 +1,4 @@
-"""Service for syncing AkShare concept fund flow data."""
+"""Service for syncing AkShare concept fund flow data (Tonghuashun)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from typing import Callable, Optional, Sequence
 
 import pandas as pd
 
-from ..api_clients import CONCEPT_FUND_FLOW_COLUMN_MAP, fetch_concept_fund_flow
+import akshare as ak
+
 from ..config.settings import load_settings
 from ..dao import ConceptFundFlowDAO
 
@@ -16,37 +17,48 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SYMBOLS: tuple[str, ...] = ("即时", "3日排行", "5日排行", "10日排行", "20日排行")
 
-NUMERIC_COLUMNS: tuple[str, ...] = (
-    "concept_index",
-    "inflow",
-    "outflow",
-    "net_amount",
-    "current_price",
-)
+COLUMN_RENAME_MAP = {
+    "行业": "concept",
+    "行业指数": "concept_index",
+    "行业-涨跌幅": "price_change_percent",
+    "流入资金": "inflow",
+    "流出资金": "outflow",
+    "净额": "net_amount",
+    "公司家数": "company_count",
+    "领涨股": "leading_stock",
+    "领涨股-涨跌幅": "leading_stock_change_percent",
+    "当前价": "current_price",
+    "序号": "rank",
+}
 
-PERCENT_COLUMNS: tuple[str, ...] = (
-    "price_change_percent",
-    "stage_change_percent",
-    "leading_stock_change_percent",
-)
+FLOAT_COLUMNS = ("concept_index", "inflow", "outflow", "net_amount", "current_price")
+PERCENT_COLUMNS = ("price_change_percent", "leading_stock_change_percent")
 
 
-def _to_float(value: object) -> Optional[float]:
-    if value is None:
+def _parse_number(value: object) -> Optional[float]:
+    if value is None or value == "":
         return None
     if isinstance(value, (int, float)):
         return float(value)
     text = str(value).strip()
     if not text:
         return None
+    multiplier = 1.0
+    if text.endswith("亿"):
+        multiplier = 1e8
+        text = text[:-1]
+    elif text.endswith("万"):
+        multiplier = 1e4
+        text = text[:-1]
+    text = text.replace(",", "")
     try:
-        return float(text)
+        return float(text) * multiplier
     except ValueError:
         return None
 
 
-def _to_percent(value: object) -> Optional[float]:
-    if value is None:
+def _parse_percent(value: object) -> Optional[float]:
+    if value is None or value == "":
         return None
     if isinstance(value, (int, float)):
         return float(value)
@@ -63,26 +75,42 @@ def _to_percent(value: object) -> Optional[float]:
 
 
 def _prepare_frame(dataframe: pd.DataFrame, symbol: str) -> pd.DataFrame:
-    frame = dataframe.copy()
-    for column in CONCEPT_FUND_FLOW_COLUMN_MAP.values():
-        if column not in frame.columns:
-            frame[column] = None
+    if dataframe.empty:
+        return dataframe
+
+    frame = dataframe.rename(columns=COLUMN_RENAME_MAP).copy()
+    for required in COLUMN_RENAME_MAP.values():
+        if required not in frame.columns:
+            frame[required] = None
 
     frame["symbol"] = symbol
-    frame["rank"] = pd.to_numeric(frame.get("rank"), errors="coerce").astype("Int64")
-    frame["company_count"] = pd.to_numeric(frame.get("company_count"), errors="coerce").astype("Int64")
+    frame["concept"] = frame["concept"].astype(str).str.strip()
+    frame["rank"] = pd.to_numeric(frame["rank"], errors="coerce").astype("Int64")
+    frame["company_count"] = pd.to_numeric(frame["company_count"], errors="coerce").astype("Int64")
+    frame["stage_change_percent"] = None
 
-    frame = frame.drop_duplicates(subset=["concept"], keep="first")
-
-    for column in NUMERIC_COLUMNS:
-        if column in frame.columns:
-            frame[column] = frame[column].map(_to_float)
-
+    for column in FLOAT_COLUMNS:
+        frame[column] = frame[column].map(_parse_number)
     for column in PERCENT_COLUMNS:
-        if column in frame.columns:
-            frame[column] = frame[column].map(_to_percent)
+        frame[column] = frame[column].map(_parse_percent)
 
-    ordered = ["symbol"] + [col for col in CONCEPT_FUND_FLOW_COLUMN_MAP.values()]
+    frame = frame.dropna(subset=["concept"]).drop_duplicates(subset=["concept"], keep="first")
+
+    ordered = [
+        "symbol",
+        "concept",
+        "rank",
+        "concept_index",
+        "price_change_percent",
+        "stage_change_percent",
+        "inflow",
+        "outflow",
+        "net_amount",
+        "company_count",
+        "leading_stock",
+        "leading_stock_change_percent",
+        "current_price",
+    ]
     return frame.loc[:, ordered]
 
 
@@ -116,7 +144,11 @@ def sync_concept_fund_flow(
     for index, symbol in enumerate(target_symbols, start=1):
         if progress_callback:
             progress_callback((index - 1) / len(target_symbols), f"Fetching concept fund flow for {symbol}", None)
-        frame = fetch_concept_fund_flow(symbol)
+        try:
+            frame = ak.stock_fund_flow_concept(symbol=symbol)
+        except Exception as exc:  # pragma: no cover - external dependency
+            logger.warning("Concept fund flow fetch failed for %s: %s", symbol, exc)
+            continue
         if frame.empty:
             logger.info("No concept fund flow data returned for %s", symbol)
             continue

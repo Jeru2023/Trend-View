@@ -9,7 +9,7 @@ import json
 import math
 import logging
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -66,6 +66,7 @@ from .dao import (
     StockBasicDAO,
     StockMainBusinessDAO,
     StockMainCompositionDAO,
+    MarketOverviewInsightDAO,
 )
 from .services import (
     get_stock_detail,
@@ -831,6 +832,13 @@ class SyncMarketInsightRequest(BaseModel):
 class SyncSectorInsightRequest(BaseModel):
     lookback_hours: int = Field(24, ge=1, le=72, alias="lookbackHours")
     article_limit: int = Field(40, ge=5, le=60, alias="articleLimit")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMarketOverviewRequest(BaseModel):
+    run_llm: bool = Field(True, alias="runLLM")
 
     class Config:
         allow_population_by_field_name = True
@@ -2377,6 +2385,28 @@ class ConceptFundFlowListResponse(BaseModel):
     items: List[ConceptFundFlowRecord]
 
 
+class ConceptIndexBar(BaseModel):
+    trade_date: date = Field(..., alias="tradeDate")
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    pre_close: Optional[float] = Field(None, alias="preClose")
+    change: Optional[float] = None
+    pct_chg: Optional[float] = Field(None, alias="pctChg")
+    vol: Optional[float] = None
+    amount: Optional[float] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptIndexHistoryResponse(BaseModel):
+    concept: str
+    total: int
+    rows: List[ConceptIndexBar]
+
+
 class FundFlowHotlistSymbol(BaseModel):
     symbol: str
     weight: float
@@ -3128,6 +3158,50 @@ async def _run_finance_breakfast_job(request: SyncFinanceBreakfastRequest) -> No
             logger.error("Finance breakfast sync failed: %s", error_message)
 
     await loop.run_in_executor(None, job)
+async def _run_market_overview_job(request: SyncMarketOverviewRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update(
+            "market_overview",
+            progress=0.2,
+            message="Building market overview snapshot",
+        )
+        try:
+            result = generate_market_overview_reasoning(run_llm=request.run_llm)
+            elapsed = time.perf_counter() - started
+            generated_at = result.get("generatedAt")
+            finished_at = _parse_datetime(generated_at) or _local_now()
+            llm_flag = " with LLM" if request.run_llm else ""
+            monitor.update(
+                "market_overview",
+                progress=1.0,
+                message=f"Market overview refreshed{llm_flag}",
+            )
+            monitor.finish(
+                "market_overview",
+                success=True,
+                total_rows=1,
+                message=f"Market overview refreshed{llm_flag}",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            error_message = str(exc)
+            monitor.finish(
+                "market_overview",
+                success=False,
+                message=error_message,
+                error=error_message,
+                last_duration=elapsed,
+            )
+            logger.error("Market overview generation failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_market_insight_job(request: SyncMarketInsightRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -5039,6 +5113,14 @@ async def start_performance_forecast_job(payload: SyncPerformanceForecastRequest
     asyncio.create_task(_run_performance_forecast_job(payload))
 
 
+async def start_market_overview_job(payload: SyncMarketOverviewRequest) -> None:
+    if _job_running("market_overview"):
+        raise HTTPException(status_code=409, detail="Market overview job already running")
+    monitor.start("market_overview", message="Generating market overview insight")
+    monitor.update("market_overview", progress=0.0)
+    asyncio.create_task(_run_market_overview_job(payload))
+
+
 async def start_market_insight_job(payload: SyncMarketInsightRequest) -> None:
     if _job_running("market_insight"):
         raise HTTPException(status_code=409, detail="Market insight job already running")
@@ -5848,6 +5930,13 @@ async def safe_start_global_flash_job(payload: SyncGlobalFlashRequest) -> None:
         await start_global_flash_job(payload)
     except HTTPException as exc:
         logger.info("Global flash sync skipped: %s", exc.detail)
+
+
+async def safe_start_market_overview_job(payload: SyncMarketOverviewRequest) -> None:
+    try:
+        await start_market_overview_job(payload)
+    except HTTPException as exc:
+        logger.info("Market overview job skipped: %s", exc.detail)
 
 
 async def safe_start_market_insight_job(payload: SyncMarketInsightRequest) -> None:
@@ -7368,6 +7457,26 @@ def list_industry_fund_flow_entries(
     ]
     return IndustryFundFlowListResponse(total=int(result.get("total", 0)), items=items)
 
+def _refresh_concept_history_on_demand(concept: str, limit: int) -> bool:
+    """Fetch concept index history from THS when cache misses."""
+    concept_name = (concept or "").strip()
+    if not concept_name:
+        return False
+
+    lookback_days = max(120, min(int(limit) * 2, 365))
+    try:
+        end_date = date.today()
+        start_date = end_date - timedelta(days=lookback_days)
+        sync_concept_index_history(
+            [concept_name],
+            start_date=start_date.strftime("%Y%m%d"),
+            end_date=end_date.strftime("%Y%m%d"),
+        )
+        return True
+    except Exception as exc:  # pragma: no cover - best effort safeguard
+        logger.warning("On-demand concept index sync failed for %s: %s", concept_name, exc)
+        return False
+
 
 @app.get("/fund-flow/concept", response_model=ConceptFundFlowListResponse)
 def list_concept_fund_flow_entries(
@@ -7399,6 +7508,33 @@ def list_concept_fund_flow_entries(
         for entry in result.get("items", [])
     ]
     return ConceptFundFlowListResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.get("/market/concept-index-history", response_model=ConceptIndexHistoryResponse)
+def get_concept_index_history_api(
+    concept: str = Query(..., min_length=1, description="Concept name to fetch index history for."),
+    limit: int = Query(90, ge=10, le=300, description="Number of trading days to return."),
+) -> ConceptIndexHistoryResponse:
+    try:
+        result = list_concept_index_history(concept_name=concept, limit=limit)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to load concept index history for %s: %s", concept, exc)
+        raise HTTPException(status_code=500, detail="Failed to load concept index history.") from exc
+
+    rows = result.get("items", [])
+    if not rows:
+        refreshed = _refresh_concept_history_on_demand(concept, limit)
+        if refreshed:
+            try:
+                result = list_concept_index_history(concept_name=concept, limit=limit)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Failed to load concept index history after refresh for %s: %s", concept, exc)
+            else:
+                rows = result.get("items", [])
+
+    bars = [ConceptIndexBar(**item) for item in rows if isinstance(item, dict)]
+    total = int(result.get("total") or 0)
+    return ConceptIndexHistoryResponse(concept=concept, total=total, rows=bars)
 
 
 @app.get("/fund-flow/sector-hotlist", response_model=FundFlowSectorHotlistResponse)
@@ -8158,10 +8294,23 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect trade_calendar stats: %s", exc)
         stats_map["trade_calendar"] = {}
     try:
+        stats_map["market_overview"] = MarketOverviewInsightDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect market_overview stats: %s", exc)
+        stats_map["market_overview"] = {}
+    else:
+        stats = stats_map["market_overview"]
+        if isinstance(stats, dict) and "latest" in stats and "updated_at" not in stats:
+            stats["updated_at"] = stats.get("latest")
+    try:
         stats_map["market_insight"] = NewsMarketInsightDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect market_insight stats: %s", exc)
         stats_map["market_insight"] = {}
+    else:
+        stats = stats_map["market_insight"]
+        if isinstance(stats, dict) and "latest" in stats and "updated_at" not in stats:
+            stats["updated_at"] = stats.get("latest")
     try:
         stats_map["sector_insight"] = NewsSectorInsightDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -8411,6 +8560,12 @@ def _build_sector_insight_response(
 
     return SectorInsightResponse(summary=summary_payload, snapshot=snapshot_payload)
 
+
+
+@app.post("/control/sync/market-overview")
+async def control_sync_market_overview(payload: SyncMarketOverviewRequest) -> dict[str, str]:
+    await start_market_overview_job(payload)
+    return {"status": "started"}
 
 
 @app.post("/control/sync/market-insight")

@@ -1,18 +1,38 @@
-"""Service utilities for syncing concept index history from Tushare."""
+"""Service utilities for syncing concept index history via AkShare."""
 
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from difflib import SequenceMatcher
+from typing import Dict, List, Optional, Sequence, Tuple
+import re
 
+import numpy as np
 import pandas as pd
-import tushare as ts
+import akshare as ak
 
 from ..config.settings import load_settings
 from ..dao import ConceptIndexHistoryDAO
 
 logger = logging.getLogger(__name__)
+
+_CONCEPT_NAME_LOOKUP: Dict[str, str] | None = None
+_NORMALIZED_CONCEPT_MAP: Dict[str, str] | None = None
+
+CONCEPT_SYNONYM_MAP: Dict[str, str] = {
+    "ai算力": "东数西算(算力)",
+    "光伏建筑一体化": "光伏概念",
+    "算力": "东数西算(算力)",
+}
+
+CONCEPT_KEYWORD_HINTS: Tuple[Tuple[str, str], ...] = (
+    ("算力", "东数西算(算力)"),
+    ("建筑一体化", "光伏概念"),
+    ("光伏", "光伏概念"),
+)
+
+_NORMALIZE_PATTERN = re.compile(r"[\s·•()（）-]+")
 
 
 def _normalise_dates(
@@ -32,74 +52,154 @@ def _normalise_dates(
     return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
 
 
-def _concept_ts_code_map(pro, *, fuzzy: bool = True) -> Dict[str, str]:
-    """Fetch mapping from concept names to ts_code via index_basic."""
+def _normalize_concept_label(label: str) -> str:
+    if not label:
+        return ""
+    text = str(label).strip().lower()
+    text = text.replace("概念", "")
+    text = re.sub(r"[·•]+", "", text)
+    text = _NORMALIZE_PATTERN.sub("", text)
+    return text
+
+
+def _ensure_concept_name_lookup() -> None:
+    global _CONCEPT_NAME_LOOKUP, _NORMALIZED_CONCEPT_MAP
+    if _CONCEPT_NAME_LOOKUP is not None and _NORMALIZED_CONCEPT_MAP is not None:
+        return
     try:
-        index_df = pro.index_basic()
+        frame = ak.stock_board_concept_name_ths()
     except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch index_basic from Tushare: %s", exc)
-        return {}
+        logger.warning("Failed to load THS concept name list: %s", exc)
+        _CONCEPT_NAME_LOOKUP = {}
+        _NORMALIZED_CONCEPT_MAP = {}
+        return
 
-    if index_df.empty:
-        logger.warning("Tushare index_basic returned empty dataset.")
-        return {}
+    names: List[str] = []
+    values = frame.get("name") if isinstance(frame, pd.DataFrame) else None
+    if values is not None:
+        for value in values:
+            if isinstance(value, str):
+                text = value.strip()
+                if text:
+                    names.append(text)
 
-    index_df = index_df.loc[index_df["name"].notna()].copy()
-    index_df["name"] = index_df["name"].astype(str).str.strip()
-    mapping: Dict[str, str] = {}
-    for _, row in index_df.iterrows():
-        name = row["name"]
-        ts_code = str(row.get("ts_code") or "").strip()
-        if not name or not ts_code:
-            continue
-        mapping[name] = ts_code
-    if not mapping and fuzzy:
-        logger.warning("No concept mapping generated from Tushare index_basic.")
-    return mapping
+    lookup = {name: name for name in names}
+    normalized: Dict[str, str] = {}
+    for name in names:
+        norm = _normalize_concept_label(name)
+        if norm and norm not in normalized:
+            normalized[norm] = name
+
+    _CONCEPT_NAME_LOOKUP = lookup
+    _NORMALIZED_CONCEPT_MAP = normalized
 
 
-def _resolve_concept_ts_code(pro, concept_name: str) -> Optional[str]:
-    concept_name = concept_name.strip()
-    mapping = _concept_ts_code_map(pro)
-    if concept_name in mapping:
-        return mapping[concept_name]
-    # fallback fuzzy match
-    candidates = {name: code for name, code in mapping.items() if concept_name in name or name in concept_name}
-    if candidates:
-        # choose the longest matching name to avoid partial collisions
-        selected = max(candidates.items(), key=lambda item: len(item[0]))
-        logger.info("Resolved concept '%s' to '%s' via fuzzy match (%s).", concept_name, selected[1], selected[0])
-        return selected[1]
-    logger.warning("Unable to resolve concept '%s' to a ts_code via Tushare index_basic.", concept_name)
+def _overlap_score(a: str, b: str) -> int:
+    if not a or not b:
+        return 0
+    set_a = {ch for ch in a if "\u4e00" <= ch <= "\u9fff"}
+    set_b = {ch for ch in b if "\u4e00" <= ch <= "\u9fff"}
+    return len(set_a & set_b)
+
+
+def _resolve_concept_symbol(concept_name: str) -> Optional[str]:
+    label = (concept_name or "").strip()
+    if not label:
+        return None
+
+    _ensure_concept_name_lookup()
+    if not _CONCEPT_NAME_LOOKUP:
+        return None
+
+    if label in _CONCEPT_NAME_LOOKUP:
+        return label
+
+    normalized = _normalize_concept_label(label)
+    alias_target = CONCEPT_SYNONYM_MAP.get(normalized) or CONCEPT_SYNONYM_MAP.get(label.lower())
+    if alias_target and alias_target in _CONCEPT_NAME_LOOKUP:
+        return alias_target
+
+    if normalized in _NORMALIZED_CONCEPT_MAP:
+        return _NORMALIZED_CONCEPT_MAP[normalized]
+
+    for keyword, target in CONCEPT_KEYWORD_HINTS:
+        if keyword in label and target in _CONCEPT_NAME_LOOKUP:
+            return target
+
+    best_name = None
+    best_score = 0.0
+    for candidate_norm, candidate_name in _NORMALIZED_CONCEPT_MAP.items():
+        overlap = _overlap_score(normalized, candidate_norm)
+        if overlap >= 2:
+            score = 0.8 + overlap * 0.05
+        else:
+            score = SequenceMatcher(None, normalized, candidate_norm).ratio()
+        if score > best_score:
+            best_score = score
+            best_name = candidate_name
+
+    if best_name and best_score >= 0.65:
+        return best_name
+
     return None
 
+def _fetch_history_from_ths(concept_name: str, start: str, end: str) -> pd.DataFrame:
+    resolved_symbol = _resolve_concept_symbol(concept_name)
+    if not resolved_symbol:
+        logger.warning("Unable to resolve THS concept symbol for %s", concept_name)
+        return pd.DataFrame()
 
-def _prepare_history_frame(
-    raw: pd.DataFrame,
-    *, concept_name: str, ts_code: str,
-) -> pd.DataFrame:
+    if resolved_symbol != concept_name:
+        logger.info("Resolved concept %s to %s for THS index fetch", concept_name, resolved_symbol)
+
+    try:
+        raw = ak.stock_board_concept_index_ths(symbol=resolved_symbol, start_date=start, end_date=end)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.warning("THS concept index history failed for %s (resolved %s): %s", concept_name, resolved_symbol, exc)
+        return pd.DataFrame()
+
     if raw.empty:
-        return pd.DataFrame(columns=["ts_code", "concept_name", "trade_date"])
-    frame = raw.copy()
-    frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce")
-    numeric_columns = [
-        "open",
-        "high",
-        "low",
-        "close",
-        "pre_close",
-        "change",
-        "pct_chg",
-        "vol",
-        "amount",
-    ]
-    for column in numeric_columns:
-        frame[column] = pd.to_numeric(frame.get(column), errors="coerce")
+        return pd.DataFrame()
 
+    frame = raw.copy()
+    rename_map = {
+        "日期": "trade_date",
+        "开盘价": "open",
+        "最高价": "high",
+        "最低价": "low",
+        "收盘价": "close",
+        "涨跌幅": "pct_chg",
+        "涨跌额": "change",
+        "成交量": "vol",
+        "成交额": "amount",
+    }
+    # support potential english column names
+    rename_map.update({col.lower(): rename_map[col] for col in list(rename_map.keys()) if col.lower() not in rename_map})
+    frame = frame.rename(columns=rename_map)
+
+    if "trade_date" not in frame.columns:
+        logger.warning("THS concept index history missing trade_date column for %s", concept_name)
+        return pd.DataFrame()
+
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce")
     frame = frame.loc[frame["trade_date"].notna()].copy()
     frame["trade_date"] = frame["trade_date"].dt.date
-    frame["ts_code"] = ts_code
+    numeric_columns = ["open", "high", "low", "close", "vol", "amount"]
+    for column in numeric_columns:
+        if column in frame.columns:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+
+    frame = frame.sort_values("trade_date")
+    frame["pre_close"] = frame["close"].shift(1)
+    frame["change"] = frame["close"] - frame["pre_close"]
+    frame["pct_chg"] = frame["change"] / frame["pre_close"] * 100
+    frame.loc[frame["pre_close"].isna(), ["change", "pct_chg"]] = None
+    frame.loc[frame["pre_close"] == 0, "pct_chg"] = None
+    frame["pct_chg"] = frame["pct_chg"].where(np.isfinite(frame["pct_chg"]))
+
+    frame["ts_code"] = f"THS-{concept_name}"
     frame["concept_name"] = concept_name
+
     ordered = [
         "ts_code",
         "concept_name",
@@ -114,6 +214,9 @@ def _prepare_history_frame(
         "vol",
         "amount",
     ]
+    for column in ordered:
+        if column not in frame.columns:
+            frame[column] = None
     return frame.loc[:, ordered]
 
 
@@ -131,13 +234,6 @@ def sync_concept_index_history(
     start, end = _normalise_dates(start_date, end_date)
 
     settings = load_settings(settings_path)
-    tushare_token = getattr(settings.tushare, "token", None)
-    if not tushare_token:
-        raise RuntimeError("Tushare token is required to sync concept index history.")
-
-    ts.set_token(tushare_token)
-    pro = ts.pro_api()
-
     dao = ConceptIndexHistoryDAO(settings.postgres)
 
     total_rows = 0
@@ -149,32 +245,26 @@ def sync_concept_index_history(
         if not concept_name:
             continue
 
-        ts_code = _resolve_concept_ts_code(pro, concept_name)
-        if not ts_code:
-            errors.append({"concept": concept_name, "error": "ts_code_not_found"})
+        ths_frame = _fetch_history_from_ths(concept_name, start, end)
+        if ths_frame.empty:
+            logger.warning("No THS concept index rows for %s within %s-%s", concept_name, start, end)
+            errors.append({"concept": concept_name, "error": "ths_no_data"})
             continue
 
-        try:
-            raw = pro.index_daily(ts_code=ts_code, start_date=start, end_date=end)
-        except Exception as exc:  # pragma: no cover - external dependency
-            logger.error("Tushare index_daily failed for %s (%s): %s", concept_name, ts_code, exc)
-            errors.append({"concept": concept_name, "ts_code": ts_code, "error": str(exc)})
-            continue
-
-        prepared = _prepare_history_frame(raw, concept_name=concept_name, ts_code=ts_code)
-        if prepared.empty:
-            logger.info("No index history rows for concept %s (%s) within %s-%s", concept_name, ts_code, start, end)
-            synced_concepts.append({"concept": concept_name, "ts_code": ts_code, "rows": 0})
-            continue
-
-        affected = dao.upsert(prepared)
+        affected = dao.upsert(ths_frame)
         total_rows += affected
-        synced_concepts.append({"concept": concept_name, "ts_code": ts_code, "rows": int(affected)})
+        synced_concepts.append(
+            {
+                "concept": concept_name,
+                "ts_code": ths_frame["ts_code"].iloc[0],
+                "rows": int(affected),
+                "source": "ths",
+            }
+        )
         logger.info(
-            "Stored %s concept index rows for %s (%s) covering %s-%s",
+            "Stored %s concept index rows for %s via THS covering %s-%s",
             affected,
             concept_name,
-            ts_code,
             start,
             end,
         )

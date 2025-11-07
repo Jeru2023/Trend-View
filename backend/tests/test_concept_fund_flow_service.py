@@ -10,18 +10,17 @@ class ConceptFundFlowServiceTests(unittest.TestCase):
         raw = pd.DataFrame(
             [
                 {
-                    "rank": "1",
-                    "concept": "华为海思概念股",
-                    "concept_index": "1750.270",
-                    "price_change_percent": "6.17",
-                    "stage_change_percent": "11.45%",
-                    "inflow": "45.26",
-                    "outflow": "41.72",
-                    "net_amount": "3.54",
-                    "company_count": "36",
-                    "leading_stock": "力源信息",
-                    "leading_stock_change_percent": "20.04%",
-                    "current_price": "6.11",
+                    "序号": "1",
+                    "行业": "算力租赁",
+                    "行业指数": "2030.55",
+                    "行业-涨跌幅": "4.65",
+                    "流入资金": "127.17亿",
+                    "流出资金": "9.51亿",
+                    "净额": "-5094.96万",
+                    "公司家数": "43",
+                    "领涨股": "东岳硅材",
+                    "领涨股-涨跌幅": "20.04%",
+                    "当前价": "11.38",
                 }
             ]
         )
@@ -29,13 +28,15 @@ class ConceptFundFlowServiceTests(unittest.TestCase):
         prepared = _prepare_frame(raw, "即时")
 
         self.assertEqual(prepared.loc[0, "symbol"], "即时")
-        self.assertEqual(prepared.loc[0, "concept"], "华为海思概念股")
+        self.assertEqual(prepared.loc[0, "concept"], "算力租赁")
         self.assertEqual(int(prepared.loc[0, "rank"]), 1)
-        self.assertAlmostEqual(prepared.loc[0, "concept_index"], 1750.27)
-        self.assertAlmostEqual(prepared.loc[0, "price_change_percent"], 6.17)
-        self.assertAlmostEqual(prepared.loc[0, "stage_change_percent"], 11.45)
+        self.assertAlmostEqual(prepared.loc[0, "concept_index"], 2030.55)
+        self.assertAlmostEqual(prepared.loc[0, "price_change_percent"], 4.65)
+        self.assertIsNone(prepared.loc[0, "stage_change_percent"])
         self.assertAlmostEqual(prepared.loc[0, "leading_stock_change_percent"], 20.04)
-        self.assertEqual(prepared.loc[0, "company_count"], 36)
+        self.assertEqual(prepared.loc[0, "company_count"], 43)
+        self.assertAlmostEqual(prepared.loc[0, "inflow"], 127.17e8)
+        self.assertAlmostEqual(prepared.loc[0, "net_amount"], -5094.96e4)
 
 
 if __name__ == "__main__":

@@ -193,6 +193,15 @@ const elements = {
     progress: document.getElementById("macro-insight-progress"),
     button: document.getElementById("run-macro-insight"),
   },
+  peripheralInsight: {
+    status: document.getElementById("peripheral-insight-status"),
+    updated: document.getElementById("peripheral-insight-updated"),
+    duration: document.getElementById("peripheral-insight-duration"),
+    rows: document.getElementById("peripheral-insight-rows"),
+    message: document.getElementById("peripheral-insight-message"),
+    progress: document.getElementById("peripheral-insight-progress"),
+    button: document.getElementById("run-peripheral-insight"),
+  },
   socialFinancing: {
     status: document.getElementById("social-financing-status"),
     updated: document.getElementById("social-financing-updated"),
@@ -280,15 +289,6 @@ const elements = {
     progress: document.getElementById("futures-realtime-progress"),
     button: document.getElementById("run-futures-realtime"),
   },
-  peripheralInsight: {
-    status: document.getElementById("peripheral-insight-status"),
-    updated: document.getElementById("peripheral-insight-updated"),
-    duration: document.getElementById("peripheral-insight-duration"),
-    rows: document.getElementById("peripheral-insight-rows"),
-    message: document.getElementById("peripheral-insight-message"),
-    progress: document.getElementById("peripheral-insight-progress"),
-    button: document.getElementById("run-peripheral-insight"),
-  },
   fedStatements: {
     status: document.getElementById("fed-statements-status"),
     updated: document.getElementById("fed-statements-updated"),
@@ -361,23 +361,17 @@ const elements = {
     progress: document.getElementById("concept-fund-flow-progress"),
     button: document.getElementById("run-concept-fund-flow"),
   },
-  conceptInsight: {
-    status: document.getElementById("concept-insight-status"),
-    updated: document.getElementById("concept-insight-updated"),
-    duration: document.getElementById("concept-insight-duration"),
-    rows: document.getElementById("concept-insight-rows"),
-    message: document.getElementById("concept-insight-message"),
-    progress: document.getElementById("concept-insight-progress"),
-    button: document.getElementById("run-concept-insight"),
-  },
-  industryInsight: {
-    status: document.getElementById("industry-insight-status"),
-    updated: document.getElementById("industry-insight-updated"),
-    duration: document.getElementById("industry-insight-duration"),
-    rows: document.getElementById("industry-insight-rows"),
-    message: document.getElementById("industry-insight-message"),
-    progress: document.getElementById("industry-insight-progress"),
-    button: document.getElementById("run-industry-insight"),
+  conceptIndexHistory: {
+    status: document.getElementById("concept-index-history-status"),
+    updated: document.getElementById("concept-index-history-updated"),
+    duration: document.getElementById("concept-index-history-duration"),
+    rows: document.getElementById("concept-index-history-rows"),
+    message: document.getElementById("concept-index-history-message"),
+    progress: document.getElementById("concept-index-history-progress"),
+    button: document.getElementById("run-concept-index-history"),
+    conceptInput: document.getElementById("concept-index-history-concepts"),
+    lookbackInput: document.getElementById("concept-index-history-lookback"),
+    endDateInput: document.getElementById("concept-index-history-end-date"),
   },
   individualFundFlow: {
     status: document.getElementById("individual-fund-flow-status"),
@@ -451,6 +445,15 @@ const elements = {
     progress: document.getElementById("stock-main-composition-progress"),
     button: document.getElementById("run-stock-main-composition"),
   },
+  marketOverview: {
+    status: document.getElementById("market-overview-status"),
+    updated: document.getElementById("market-overview-updated"),
+    duration: document.getElementById("market-overview-duration"),
+    rows: document.getElementById("market-overview-rows"),
+    message: document.getElementById("market-overview-message"),
+    progress: document.getElementById("market-overview-progress"),
+    button: document.getElementById("run-market-overview"),
+  },
   marketInsight: {
     status: document.getElementById("market-insight-status"),
     updated: document.getElementById("market-insight-updated"),
@@ -460,14 +463,23 @@ const elements = {
     progress: document.getElementById("market-insight-progress"),
     button: document.getElementById("run-market-insight"),
   },
-  sectorInsight: {
-    status: document.getElementById("sector-insight-status"),
-    updated: document.getElementById("sector-insight-updated"),
-    duration: document.getElementById("sector-insight-duration"),
-    rows: document.getElementById("sector-insight-rows"),
-    message: document.getElementById("sector-insight-message"),
-    progress: document.getElementById("sector-insight-progress"),
-    button: document.getElementById("run-sector-insight"),
+  industryInsight: {
+    status: document.getElementById("industry-insight-status"),
+    updated: document.getElementById("industry-insight-updated"),
+    duration: document.getElementById("industry-insight-duration"),
+    rows: document.getElementById("industry-insight-rows"),
+    message: document.getElementById("industry-insight-message"),
+    progress: document.getElementById("industry-insight-progress"),
+    button: document.getElementById("run-industry-insight"),
+  },
+  conceptInsight: {
+    status: document.getElementById("concept-insight-status"),
+    updated: document.getElementById("concept-insight-updated"),
+    duration: document.getElementById("concept-insight-duration"),
+    rows: document.getElementById("concept-insight-rows"),
+    message: document.getElementById("concept-insight-message"),
+    progress: document.getElementById("concept-insight-progress"),
+    button: document.getElementById("run-concept-insight"),
   },
 };
 
@@ -508,6 +520,40 @@ function formatDuration(seconds) {
   if (mins === 0) return `${secs.toFixed(1)} s`;
   return `${mins}m ${secs.toFixed(0)}s`;
 }
+
+function formatYmd(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const y = date.getFullYear();
+  const m = `${date.getMonth() + 1}`.padStart(2, "0");
+  const d = `${date.getDate()}`.padStart(2, "0");
+  return `${y}${m}${d}`;
+}
+
+function parseDateInputValue(value) {
+  if (!value) return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const parsed = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
+function normalizeConceptList(raw) {
+  if (!raw) return [];
+  return Array.from(
+    new Set(
+      raw
+        .split(/[\n,，、]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 function setLang(lang) {
   persistLanguage(lang);
   currentLang = lang;
@@ -533,6 +579,14 @@ function applyTranslations() {
         el.textContent = value;
       }
     });
+
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const key = el.dataset.i18nPlaceholder;
+    const value = dict[key];
+    if (typeof value === "string") {
+      el.setAttribute("placeholder", value);
+    }
+  });
 
   if (elements.macroLeverage.infoButton) {
     const tooltip = dict.macroLeverageTooltip || "";
@@ -719,11 +773,11 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
-    const marketInsightSnapshot = jobs.market_insight || {
+    const marketOverviewSnapshot = jobs.market_overview || {
       status: "idle",
       progress: 0,
     };
-    const sectorInsightSnapshot = jobs.sector_insight || {
+    const marketInsightSnapshot = jobs.market_insight || {
       status: "idle",
       progress: 0,
     };
@@ -752,6 +806,10 @@ async function loadStatus() {
       progress: 0,
     };
     const conceptFundFlowSnapshot = jobs.concept_fund_flow || {
+      status: "idle",
+      progress: 0,
+    };
+    const conceptIndexHistorySnapshot = jobs.concept_index_history || {
       status: "idle",
       progress: 0,
     };
@@ -825,6 +883,7 @@ async function loadStatus() {
     updateJobCard(elements.realtimeIndex, realtimeSnapshot);
     updateJobCard(elements.macroLeverage, leverageSnapshot);
     updateJobCard(elements.macroInsight, macroInsightSnapshot);
+    updateJobCard(elements.marketOverview, marketOverviewSnapshot);
     updateJobCard(elements.socialFinancing, socialFinancingSnapshot);
     updateJobCard(elements.cpiMonthly, cpiSnapshot);
     updateJobCard(elements.ppiMonthly, ppiSnapshot);
@@ -837,10 +896,10 @@ async function loadStatus() {
     updateJobCard(elements.fedStatements, fedStatementsSnapshot);
     updateJobCard(elements.dollarIndex, dollarIndexSnapshot);
     updateJobCard(elements.marketInsight, marketInsightSnapshot);
-    updateJobCard(elements.sectorInsight, sectorInsightSnapshot);
     updateJobCard(elements.profitForecast, profitForecastSnapshot);
     updateJobCard(elements.industryFundFlow, industryFundFlowSnapshot);
     updateJobCard(elements.conceptFundFlow, conceptFundFlowSnapshot);
+    updateJobCard(elements.conceptIndexHistory, conceptIndexHistorySnapshot);
     updateJobCard(elements.conceptInsight, conceptInsightSnapshot);
     updateJobCard(elements.industryInsight, industryInsightSnapshot);
     updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
@@ -883,8 +942,8 @@ async function loadStatus() {
       realtimeSnapshot,
       leverageSnapshot,
       macroInsightSnapshot,
+      marketOverviewSnapshot,
       marketInsightSnapshot,
-      sectorInsightSnapshot,
       socialFinancingSnapshot,
       cpiSnapshot,
       ppiSnapshot,
@@ -898,6 +957,7 @@ async function loadStatus() {
       dollarIndexSnapshot,
       industryFundFlowSnapshot,
       conceptFundFlowSnapshot,
+      conceptIndexHistorySnapshot,
       conceptInsightSnapshot,
       industryInsightSnapshot,
       individualFundFlowSnapshot,
@@ -1101,6 +1161,44 @@ function initActions() {
       })
     );
   }
+  if (elements.conceptIndexHistory.button) {
+    elements.conceptIndexHistory.button.addEventListener("click", () => {
+      const conceptInput = elements.conceptIndexHistory.conceptInput;
+      const rawConcepts = conceptInput ? conceptInput.value : "";
+      const concepts = normalizeConceptList(rawConcepts);
+      if (!concepts.length) {
+        const dict = translations[currentLang] || translations.zh || translations.en;
+        window.alert(
+          (dict && dict.conceptIndexHistoryConceptRequired) ||
+            "Please enter at least one concept before running."
+        );
+        return;
+      }
+      const lookbackField = elements.conceptIndexHistory.lookbackInput;
+      let lookbackDays = Number(lookbackField ? lookbackField.value : 0);
+      if (!Number.isFinite(lookbackDays)) {
+        lookbackDays = 90;
+      }
+      lookbackDays = Math.max(30, Math.min(lookbackDays, 365));
+
+      const endDateField = elements.conceptIndexHistory.endDateInput;
+      const endDate =
+        parseDateInputValue(endDateField && endDateField.value) || new Date();
+      const endDateStr = formatYmd(endDate);
+      const startDate = new Date(endDate);
+      startDate.setDate(endDate.getDate() - (lookbackDays - 1));
+      const startDateStr = formatYmd(startDate);
+      if (!startDateStr || !endDateStr) {
+        console.warn("Invalid date range for concept index history sync.");
+        return;
+      }
+      triggerJob("/control/sync/concept-index-history", {
+        concepts,
+        startDate: startDateStr,
+        endDate: endDateStr,
+      });
+    });
+  }
   if (elements.conceptInsight.button) {
     elements.conceptInsight.button.addEventListener("click", () =>
       triggerJob("/control/sync/concept-insight", {
@@ -1182,14 +1280,14 @@ function initActions() {
       triggerJob("/control/sync/macro-insight", { runLLM: true })
     );
   }
+  if (elements.marketOverview.button) {
+    elements.marketOverview.button.addEventListener("click", () =>
+      triggerJob("/control/sync/market-overview", { runLLM: true })
+    );
+  }
   if (elements.marketInsight.button) {
     elements.marketInsight.button.addEventListener("click", () =>
       triggerJob("/control/sync/market-insight", { lookbackHours: 24, articleLimit: 40 })
-    );
-  }
-  if (elements.sectorInsight.button) {
-    elements.sectorInsight.button.addEventListener("click", () =>
-      triggerJob("/control/sync/sector-insight", { lookbackHours: 24, articleLimit: 60 })
     );
   }
   if (elements.socialFinancing.button) {
@@ -1350,9 +1448,37 @@ function initActions() {
   );
 }
 
+async function prefillConceptIndexHistoryConcepts() {
+  const conceptField = elements.conceptIndexHistory?.conceptInput;
+  if (!conceptField || conceptField.value.trim()) {
+    return;
+  }
+  try {
+    const response = await fetch(
+      `${API_BASE}/fund-flow/concept?symbol=${encodeURIComponent("即时")}&limit=12`
+    );
+    if (!response.ok) {
+      return;
+    }
+    const data = await response.json();
+    const names = Array.isArray(data.items)
+      ? data.items
+          .map((item) => item.concept)
+          .filter((name) => typeof name === "string" && name.trim())
+      : [];
+    if (names.length && !conceptField.value.trim()) {
+      const deduped = Array.from(new Set(names));
+      conceptField.value = deduped.slice(0, 10).join("\n");
+    }
+  } catch (error) {
+    console.warn("Failed to prefill concept list", error);
+  }
+}
+
 // Boot
 initLanguageSwitch();
 initControlTabs();
 initActions();
 setLang(currentLang);
 loadStatus();
+prefillConceptIndexHistoryConcepts();

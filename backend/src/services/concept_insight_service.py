@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Any, Dict, List, Optional, Sequence
 
 from zoneinfo import ZoneInfo
@@ -330,6 +330,14 @@ def build_concept_snapshot(
     }
 
 
+def _json_default(value: object) -> object:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
+
+
 def generate_concept_insight_summary(
     *,
     lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
@@ -348,7 +356,7 @@ def generate_concept_insight_summary(
     if not snapshot.get("concepts"):
         raise ValueError("No concept data available for insight generation")
 
-    payload_json = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
+    payload_json = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"), default=_json_default)
     prompt = CONCEPT_INSIGHT_PROMPT.replace("{concept_payload}", payload_json)
     prompt = prompt.replace("{lookback_hours}", str(int(lookback_hours)))
 
@@ -430,7 +438,7 @@ def generate_concept_insight_summary(
         "window_start": window_start.replace(tzinfo=None),
         "window_end": window_end.replace(tzinfo=None),
         "concept_count": snapshot.get("conceptCount"),
-        "summary_snapshot": json.dumps(snapshot, ensure_ascii=False),
+        "summary_snapshot": json.dumps(snapshot, ensure_ascii=False, default=_json_default),
         "summary_json": json.dumps(summary_json, ensure_ascii=False) if summary_json is not None else None,
         "raw_response": raw_response,
         "referenced_concepts": json.dumps([concept.get("name") for concept in snapshot.get("concepts", [])], ensure_ascii=False),

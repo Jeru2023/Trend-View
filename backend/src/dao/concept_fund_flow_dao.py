@@ -214,6 +214,18 @@ class ConceptFundFlowDAO(PostgresDAOBase):
 
         return {"total": int(total), "items": items}
 
+    def truncate(self) -> None:
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL("TRUNCATE TABLE {schema}.{table}").format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self._table_name),
+                    )
+                )
+            conn.commit()
+
 
 __all__ = [
     "CONCEPT_FUND_FLOW_FIELDS",

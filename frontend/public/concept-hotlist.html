@@ -73,23 +73,46 @@
             </div>
           </section>
 
-          <section class="insight-section">
-            <header class="insight-section__header">
+          <section class="hotlist-hot">
+            <header class="hotlist-hot__header">
               <div>
-                <h2 class="insight-section__title" data-i18n="conceptHotlist.conceptTitle">热门概念 TOP 10</h2>
+                <h2 class="insight-section__title" data-i18n="conceptHotlist.conceptTitle">热门概念 TOP 5</h2>
                 <p class="insight-section__subtitle" data-i18n="conceptHotlist.conceptSubtitle">
-                  统计概念资金流排名及龙头表现。
+                  资金排名靠前的主题，点击标签可查看行情与阶段表现。
                 </p>
               </div>
+              <div class="hotlist-hot__meta">
+                <span data-i18n="conceptHotlist.generatedAtLabel">榜单日期</span>
+                <strong id="concept-hotlist-hot-date">--</strong>
+              </div>
             </header>
-            <div id="concept-hotlist-grid" class="flow-card-grid" data-empty-placeholder></div>
+            <div class="hotlist-hot__layout">
+              <div
+                id="concept-hotlist-tabs"
+                class="hotlist-hot__tabs"
+                data-empty-zh="暂无热门概念"
+                data-empty-en="No hot concepts."
+              ></div>
+              <div class="hotlist-hot__panel">
+                <div class="hotlist-hot__chart-card">
+                  <div
+                    id="concept-hotlist-chart"
+                    class="hotlist-hot__chart"
+                    data-empty-zh="暂无行情"
+                    data-empty-en="No chart data."
+                  ></div>
+                </div>
+                <div id="concept-hotlist-detail"></div>
+              </div>
+            </div>
           </section>
+
         </section>
       </main>
     </div>
 
     <script src="i18n.js?v=20270437"></script>
     <script src="sidebar.js?v=20270438"></script>
-    <script type="module" src="concept-hotlist.js?v=20270437"></script>
+    <script type="module" src="concept-hotlist.js?v=20270438"></script>
   </body>
 </html>

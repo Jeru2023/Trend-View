@@ -52,6 +52,9 @@
           </header>
 
           <nav class="control-tabs" aria-label="Job category shortcuts">
+            <a class="control-tabs__link" href="#group-reasoning" data-i18n="reasoningGroupTitle">
+              推理任务
+            </a>
             <a class="control-tabs__link" href="#group-aggregate" data-i18n="aggregateGroupTitle">
               Aggregate Tasks
             </a>
@@ -77,6 +80,174 @@
               News & Insights
             </a>
           </nav>
+
+          <div class="control-group" id="group-reasoning">
+            <header class="control-group__header">
+              <h3 data-i18n="reasoningGroupTitle">推理任务</h3>
+            </header>
+            <div class="control-grid">
+              <div class="card" id="peripheral-insight-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="peripheralInsightTitle">外围洞察</h3>
+                    <p class="card__subtitle" data-i18n="peripheralInsightSubtitle">
+                      Aggregate overseas market metrics and request a DeepSeek summary.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-peripheral-insight" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="peripheral-insight-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="peripheral-insight-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="peripheral-insight-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="peripheral-insight-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="peripheral-insight-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="peripheral-insight-message"></p>
+              </div>
+
+              <div class="card" id="market-overview-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="marketOverviewTitle">大盘洞察</h3>
+                    <p class="card__subtitle" data-i18n="marketOverviewSubtitle">
+                      Generate consolidated market overview and optional LLM summary.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-market-overview" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="market-overview-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="market-overview-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="market-overview-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="market-overview-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="market-overview-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="market-overview-message"></p>
+              </div>
+
+              <div class="card" id="industry-insight-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="industryInsightTitle">行业推理</h3>
+                    <p class="card__subtitle" data-i18n="industryInsightSubtitle">
+                      Generate DeepSeek reasoning based on multi-period industry fund-flow hotlists.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-industry-insight" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="industry-insight-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="industry-insight-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="industry-insight-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="industry-insight-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="industry-insight-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="industry-insight-message"></p>
+              </div>
+
+              <div class="card" id="concept-insight-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="conceptInsightTitle">概念推理</h3>
+                    <p class="card__subtitle" data-i18n="conceptInsightSubtitle">
+                      Merge fund flow hotlist, concept index history, and curated news to generate AI reasoning.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-concept-insight" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="concept-insight-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="concept-insight-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="concept-insight-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="concept-insight-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="concept-insight-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="concept-insight-message"></p>
+              </div>
+
+            </div>
+          </div>
 
           <div class="control-group" id="group-aggregate">
             <header class="control-group__header">
@@ -202,45 +373,6 @@
               <p class="job-message" id="fund-flow-aggregate-message"></p>
             </div>
 
-            <div class="card" id="peripheral-insight-card">
-              <div class="card__header">
-                <div>
-                  <h3 data-i18n="peripheralInsightTitle">Peripheral Insight</h3>
-                  <p class="card__subtitle" data-i18n="peripheralInsightSubtitle">
-                      Aggregate overseas market metrics and request a DeepSeek summary.
-                    </p>
-                  </div>
-                  <button class="primary-btn" id="run-peripheral-insight" data-i18n="runNow">
-                    Run
-                  </button>
-                </div>
-                <div class="progress" aria-hidden="true">
-                  <div class="progress__bar" id="peripheral-insight-progress"></div>
-                </div>
-                <div class="job-meta">
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="lastStatus">Status</span>
-                      <strong id="peripheral-insight-status">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="records">Records</span>
-                      <strong id="peripheral-insight-rows">&mdash;</strong>
-                    </div>
-                  </div>
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="dataUpdated">Data Updated</span>
-                      <strong id="peripheral-insight-updated">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="lastDuration">Last Duration</span>
-                      <strong id="peripheral-insight-duration">&mdash;</strong>
-                    </div>
-                  </div>
-                </div>
-                <p class="job-message" id="peripheral-insight-message"></p>
-              </div>
             </div>
           </div>
 
@@ -948,85 +1080,76 @@
                 <p class="job-message" id="concept-fund-flow-message"></p>
               </div>
 
-              <div class="card" id="concept-insight-card">
+              <div class="card" id="concept-index-history-card">
                 <div class="card__header">
                   <div>
-                    <h3 data-i18n="conceptInsightTitle">Concept Insight</h3>
-                    <p class="card__subtitle" data-i18n="conceptInsightSubtitle">
-                      Merge fund flow hotlist, concept index history, and curated news to generate AI reasoning.
+                    <h3 data-i18n="conceptIndexHistoryTitle">Concept Index History</h3>
+                    <p class="card__subtitle" data-i18n="conceptIndexHistorySubtitle">
+                      Pull Tonghuashun concept candlesticks for the selected names (default 90 trading days).
                     </p>
                   </div>
-                  <button class="primary-btn" id="run-concept-insight" data-i18n="runNow">
+                  <button class="primary-btn" id="run-concept-index-history" data-i18n="runNow">
                     Run
                   </button>
                 </div>
+                <div class="card__form">
+                  <label class="card__form-field" for="concept-index-history-concepts">
+                    <span data-i18n="conceptIndexHistoryConceptLabel">Concept list</span>
+                    <textarea
+                      id="concept-index-history-concepts"
+                      rows="4"
+                      data-i18n-placeholder="conceptIndexHistoryConceptPlaceholder"
+                      placeholder="AI算力,机器人,卫星导航"
+                    ></textarea>
+                    <small data-i18n="conceptIndexHistoryAutoTip">
+                      留空将自动填入当前热门概念，可在运行前调整。
+                    </small>
+                  </label>
+                  <div class="card__form-row">
+                    <label class="card__form-field" for="concept-index-history-lookback">
+                      <span data-i18n="conceptIndexHistoryLookbackLabel">Lookback days</span>
+                      <input
+                        type="number"
+                        id="concept-index-history-lookback"
+                        min="30"
+                        max="365"
+                        value="90"
+                      />
+                    </label>
+                    <label class="card__form-field" for="concept-index-history-end-date">
+                      <span data-i18n="conceptIndexHistoryEndDateLabel">End date</span>
+                      <input type="date" id="concept-index-history-end-date" />
+                    </label>
+                  </div>
+                </div>
                 <div class="progress" aria-hidden="true">
-                  <div class="progress__bar" id="concept-insight-progress"></div>
+                  <div class="progress__bar" id="concept-index-history-progress"></div>
                 </div>
                 <div class="job-meta">
                   <div class="job-meta__row">
                     <div class="job-meta__item">
                       <span data-i18n="lastStatus">Status</span>
-                      <strong id="concept-insight-status">&mdash;</strong>
+                      <strong id="concept-index-history-status">&mdash;</strong>
                     </div>
                     <div class="job-meta__item">
                       <span data-i18n="records">Records</span>
-                      <strong id="concept-insight-rows">&mdash;</strong>
+                      <strong id="concept-index-history-rows">&mdash;</strong>
                     </div>
                   </div>
                   <div class="job-meta__row">
                     <div class="job-meta__item">
                       <span data-i18n="dataUpdated">Data Updated</span>
-                      <strong id="concept-insight-updated">&mdash;</strong>
+                      <strong id="concept-index-history-updated">&mdash;</strong>
                     </div>
                     <div class="job-meta__item">
                       <span data-i18n="lastDuration">Last Duration</span>
-                      <strong id="concept-insight-duration">&mdash;</strong>
+                      <strong id="concept-index-history-duration">&mdash;</strong>
                     </div>
                   </div>
                 </div>
-                <p class="job-message" id="concept-insight-message"></p>
+                <p class="job-message" id="concept-index-history-message"></p>
               </div>
 
-              <div class="card" id="industry-insight-card">
-                <div class="card__header">
-                  <div>
-                    <h3 data-i18n="industryInsightTitle">Industry Insight</h3>
-                    <p class="card__subtitle" data-i18n="industryInsightSubtitle">
-                      Generate DeepSeek reasoning based on multi-period industry fund-flow hotlists.
-                    </p>
-                  </div>
-                  <button class="primary-btn" id="run-industry-insight" data-i18n="runNow">
-                    Run
-                  </button>
-                </div>
-                <div class="progress" aria-hidden="true">
-                  <div class="progress__bar" id="industry-insight-progress"></div>
-                </div>
-                <div class="job-meta">
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="lastStatus">Status</span>
-                      <strong id="industry-insight-status">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="records">Records</span>
-                      <strong id="industry-insight-rows">&mdash;</strong>
-                    </div>
-                  </div>
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="dataUpdated">Data Updated</span>
-                      <strong id="industry-insight-updated">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="lastDuration">Last Duration</span>
-                      <strong id="industry-insight-duration">&mdash;</strong>
-                    </div>
-                  </div>
-                </div>
-                <p class="job-message" id="industry-insight-message"></p>
-              </div>
 
               <div class="card" id="individual-fund-flow-card">
                 <div class="card__header">
@@ -1838,49 +1961,10 @@
               <h3 data-i18n="newsGroupTitle">News & Insights</h3>
             </header>
             <div class="control-grid">
-              <div class="card" id="sector-insight-card">
-                <div class="card__header">
-                  <div>
-                    <h3 data-i18n="sectorInsightTitle">Sector Insight Reasoning</h3>
-                    <p class="card__subtitle" data-i18n="sectorInsightSubtitle">
-                      Aggregate sector/theme headlines and request DeepSeek Reasoner for AI guidance.
-                    </p>
-                  </div>
-                  <button class="primary-btn" id="run-sector-insight" data-i18n="runNow">
-                    Run
-                  </button>
-                </div>
-                <div class="progress" aria-hidden="true">
-                  <div class="progress__bar" id="sector-insight-progress"></div>
-                </div>
-                <div class="job-meta">
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="lastStatus">Status</span>
-                      <strong id="sector-insight-status">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="records">Records</span>
-                      <strong id="sector-insight-rows">&mdash;</strong>
-                    </div>
-                  </div>
-                  <div class="job-meta__row">
-                    <div class="job-meta__item">
-                      <span data-i18n="dataUpdated">Data Updated</span>
-                      <strong id="sector-insight-updated">&mdash;</strong>
-                    </div>
-                    <div class="job-meta__item">
-                      <span data-i18n="lastDuration">Last Duration</span>
-                      <strong id="sector-insight-duration">&mdash;</strong>
-                    </div>
-                  </div>
-                </div>
-                <p class="job-message" id="sector-insight-message"></p>
-              </div>
               <div class="card" id="market-insight-card">
                 <div class="card__header">
                   <div>
-                    <h3 data-i18n="marketInsightTitle">Market Insight Reasoning</h3>
+                    <h3 data-i18n="marketInsightTitle">大盘推理</h3>
                     <p class="card__subtitle" data-i18n="marketInsightSubtitle">
                       Refresh DeepSeek reasoner output using 24h classified headlines.
                     </p>

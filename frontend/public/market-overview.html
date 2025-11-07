@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-i18n="title">Trend View - Market Reasoning</title>
+    <title data-i18n="title">Trend View - Market Overview</title>
     <link rel="stylesheet" href="styles.css?v=20270420" />
     <script>
       (function () {
@@ -33,9 +33,9 @@
       <main class="content">
         <header class="content__header">
           <div>
-            <h1 class="page-heading" data-i18n="pageTitle">Market Reasoning</h1>
+            <h1 class="page-heading" data-i18n="pageTitle">Market Overview</h1>
             <p class="page-subtitle" data-i18n="pageSubtitle">
-              Consolidated indices, fund flows, insights, and macro signals for all-in-one market reasoning.
+              Consolidated indices, fund flows, insights, and macro signals for a daily market overview.
             </p>
           </div>
           <div class="header-actions">
@@ -48,7 +48,7 @@
 
         <section class="page">
           <div class="macro-insight-meta">
-            <button class="primary-btn" id="market-overview-reason" data-i18n="reasonButton">Start Reasoning</button>
+            <button class="primary-btn" id="market-overview-reason" data-i18n="reasonButton">Generate Insight</button>
             <div class="macro-insight-meta__timestamps">
               <span data-i18n="lastReasoned">Last reasoning</span>
               <strong id="market-overview-reasoned-at">--</strong>
@@ -63,14 +63,14 @@
             <div
               class="market-overview-summary"
               id="market-overview-summary"
-              data-empty-en="No reasoning yet. Click start to generate."
-              data-empty-zh="暂无推理结果，点击开始生成。"
+              data-empty-en="No insight yet. Click start to generate."
+              data-empty-zh="暂无洞察结果，点击开始生成。"
             ></div>
             <pre
               class="macro-overview-stream is-hidden"
               id="market-overview-stream"
-              data-empty-en="Click start to begin reasoning."
-              data-empty-zh="点击开始获取推理结果。"
+              data-empty-en="Click start to begin generating insight."
+              data-empty-zh="点击开始获取洞察结果。"
             ></pre>
           </article>
 
@@ -162,7 +162,7 @@
           <section class="insight-panel insight-panel--sources">
             <h3 data-i18n="sourceInsightsTitle">Source Insights</h3>
             <div class="market-overview-source-insights">
-              <article class="source-insight" id="market-overview-source-market" data-empty-en="No market insight." data-empty-zh="暂无市场推理。">
+              <article class="source-insight" id="market-overview-source-market" data-empty-en="No market insight." data-empty-zh="暂无市场洞察。">
                 <header class="source-insight__header">
                   <h4 data-i18n="marketInsightTitle">Market Insight</h4>
                   <div class="source-insight__timestamp">
@@ -172,7 +172,7 @@
                 </header>
                 <pre class="source-insight__body" id="market-overview-source-market-body"></pre>
               </article>
-              <article class="source-insight" id="market-overview-source-peripheral" data-empty-en="No peripheral insight." data-empty-zh="暂无外围推理。">
+              <article class="source-insight" id="market-overview-source-peripheral" data-empty-en="No peripheral insight." data-empty-zh="暂无外围洞察。">
                 <header class="source-insight__header">
                   <h4 data-i18n="peripheralInsightTitle">Peripheral Insight</h4>
                   <div class="source-insight__timestamp">
@@ -182,7 +182,7 @@
                 </header>
                 <pre class="source-insight__body" id="market-overview-source-peripheral-body"></pre>
               </article>
-              <article class="source-insight" id="market-overview-source-macro" data-empty-en="No macro insight." data-empty-zh="暂无宏观推理。">
+              <article class="source-insight" id="market-overview-source-macro" data-empty-en="No macro insight." data-empty-zh="暂无宏观洞察。">
                 <header class="source-insight__header">
                   <h4 data-i18n="macroInsightTitle">Macro Insight</h4>
                   <div class="source-insight__timestamp">

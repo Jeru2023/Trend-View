@@ -67,6 +67,7 @@ class SyncMonitor:
             "peripheral_insight": JobProgress(),
             "macro_aggregate": JobProgress(),
             "fund_flow_aggregate": JobProgress(),
+            "market_overview": JobProgress(),
             "market_insight": JobProgress(),
             "sector_insight": JobProgress(),
             "industry_fund_flow": JobProgress(),
