@@ -80,35 +80,154 @@
             </aside>
 
             <div class="concept-market__main">
-              <section class="concept-market__chart card">
-                <div class="concept-market__chart-header">
-                  <div class="concept-market__chart-title-wrap">
-                    <h3 id="concept-market-chart-title" data-i18n="conceptMarket.chartTitle">概念蜡烛图</h3>
-                    <span id="concept-market-code" class="concept-market__chart-code">--</span>
-                    <span class="concept-market__chart-subtitle" data-i18n="conceptMarket.chartSubtitle">
-                      最近 180 个交易日
-                    </span>
-                  </div>
+              <div class="concept-market__tabs" role="tablist">
+                <button
+                  type="button"
+                  class="concept-market__tab-btn is-active"
+                  data-tab="chart"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="concept-market-panel-chart"
+                  data-i18n="conceptMarket.tabChart"
+                >
+                  图表
+                </button>
+                <button
+                  type="button"
+                  class="concept-market__tab-btn"
+                  data-tab="constituents"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="concept-market-panel-constituents"
+                  data-i18n="conceptMarket.tabConstituents"
+                >
+                  成份股
+                </button>
+                <button
+                  type="button"
+                  class="concept-market__tab-btn"
+                  data-tab="volume"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="concept-market-panel-volume"
+                  data-i18n="conceptMarket.tabVolume"
+                >
+                  量价分析
+                </button>
+              </div>
+              <div class="concept-market__tab-panels">
+                <div
+                  class="concept-market__tab-panel is-active"
+                  data-tab-panel="chart"
+                  id="concept-market-panel-chart"
+                  role="tabpanel"
+                >
+                  <section class="concept-market__chart card">
+                    <div class="concept-market__chart-header">
+                      <div class="concept-market__chart-title-wrap">
+                        <h3 id="concept-market-chart-title" data-i18n="conceptMarket.chartTitle">概念蜡烛图</h3>
+                        <span id="concept-market-code" class="concept-market__chart-code">--</span>
+                        <span class="concept-market__chart-subtitle" data-i18n="conceptMarket.chartSubtitle">
+                          最近 180 个交易日
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      id="concept-market-chart"
+                      class="concept-market__chart-canvas"
+                      data-empty-i18n="conceptMarket.noChartData"
+                    ></div>
+                  </section>
                 </div>
                 <div
-                  id="concept-market-chart"
-                  class="concept-market__chart-canvas"
-                  data-empty-i18n="conceptMarket.noChartData"
-                ></div>
-              </section>
-
-              <section class="concept-market__constituents card">
-                <div class="concept-market__constituents-header">
-                  <div>
-                    <h3 data-i18n="conceptMarket.constituentTitle">概念成份股</h3>
-                  </div>
+                  class="concept-market__tab-panel"
+                  data-tab-panel="constituents"
+                  id="concept-market-panel-constituents"
+                  role="tabpanel"
+                  hidden
+                >
+                  <section class="concept-market__constituents card">
+                    <div class="concept-market__constituents-header">
+                      <div>
+                        <h3 data-i18n="conceptMarket.constituentTitle">概念成份股</h3>
+                      </div>
+                    </div>
+                    <div
+                      id="concept-market-constituents"
+                      class="concept-market__constituent-list"
+                      data-empty-i18n="conceptMarket.constituentEmpty"
+                    ></div>
+                  </section>
                 </div>
                 <div
-                  id="concept-market-constituents"
-                  class="concept-market__constituent-list"
-                  data-empty-i18n="conceptMarket.constituentEmpty"
-                ></div>
-              </section>
+                  class="concept-market__tab-panel"
+                  data-tab-panel="volume"
+                  id="concept-market-panel-volume"
+                  role="tabpanel"
+                  hidden
+                >
+                  <section class="concept-market__volume card">
+                    <div class="concept-market__volume-header">
+                      <div>
+                        <h3 data-i18n="conceptMarket.volumeTitle">量价分析</h3>
+                        <p class="concept-market__volume-hint" data-i18n="conceptMarket.volumeHint">
+                          基于最近 90 个交易日指数量价表现，使用威科夫方法推理主力意图。
+                        </p>
+                      </div>
+                      <div class="concept-market__volume-actions">
+                        <button
+                          type="button"
+                          class="btn btn--primary"
+                          id="concept-volume-run"
+                          data-i18n="conceptMarket.volumeButton"
+                        >
+                          生成推理
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn--ghost"
+                          id="concept-volume-cancel"
+                          hidden
+                          data-i18n="conceptMarket.volumeCancel"
+                        >
+                          停止
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      id="concept-volume-output"
+                      class="concept-market__volume-output"
+                      data-empty="1"
+                      data-empty-i18n="conceptMarket.volumeEmpty"
+                    ></div>
+                    <div class="concept-market__volume-meta">
+                      <span id="concept-volume-meta" data-i18n="conceptMarket.volumeMetaEmpty">暂无历史记录</span>
+                      <button
+                        type="button"
+                        class="link-btn concept-market__volume-history-toggle"
+                        id="concept-volume-history-toggle"
+                        data-i18n="conceptMarket.volumeHistoryButton"
+                      >
+                        历史记录
+                      </button>
+                    </div>
+                    <div class="concept-market__volume-history" id="concept-volume-history" hidden>
+                      <div class="concept-market__volume-history-header">
+                        <h4 data-i18n="conceptMarket.volumeHistoryTitle">历史推理</h4>
+                        <button type="button" class="link-btn" id="concept-volume-history-close" data-i18n="conceptMarket.volumeHistoryClose">
+                          关闭
+                        </button>
+                      </div>
+                      <div
+                        id="concept-volume-history-list"
+                        class="concept-market__volume-history-list"
+                        data-empty="1"
+                        data-empty-i18n="conceptMarket.volumeHistoryEmpty"
+                      ></div>
+                    </div>
+                  </section>
+                </div>
+              </div>
             </div>
           </section>
         </section>

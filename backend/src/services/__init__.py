@@ -33,6 +33,21 @@ from .concept_insight_service import (
     get_latest_concept_insight,
     list_concept_insights,
 )
+from .concept_constituent_service import list_concept_constituents, sync_concept_directory
+from .concept_market_service import (
+    search_concepts,
+    list_all_concepts,
+    list_concept_watchlist,
+    get_concept_status,
+    set_concept_watch_state,
+    refresh_concept_history,
+)
+from .concept_volume_price_service import (
+    build_volume_price_dataset,
+    generate_concept_volume_price_reasoning,
+    get_latest_volume_price_reasoning,
+    list_volume_price_history,
+)
 from .industry_insight_service import (
     build_industry_snapshot,
     generate_industry_insight_summary,
@@ -155,6 +170,18 @@ __all__ = [
     "list_industry_fund_flow",
     "list_concept_fund_flow",
     "list_concept_index_history",
+    "list_concept_constituents",
+    "sync_concept_directory",
+    "search_concepts",
+    "list_all_concepts",
+    "list_concept_watchlist",
+    "get_concept_status",
+    "set_concept_watch_state",
+    "refresh_concept_history",
+    "build_volume_price_dataset",
+    "generate_concept_volume_price_reasoning",
+    "get_latest_volume_price_reasoning",
+    "list_volume_price_history",
     "list_concept_insights",
     "build_industry_snapshot",
     "generate_industry_insight_summary",

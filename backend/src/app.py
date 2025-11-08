@@ -10,11 +10,11 @@ import math
 import logging
 import time
 from datetime import date, datetime, timedelta
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union, Set
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Path
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -55,6 +55,8 @@ from .dao import (
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
     ConceptIndexHistoryDAO,
+    ConceptConstituentDAO,
+    ConceptDirectoryDAO,
     ConceptInsightDAO,
     IndustryInsightDAO,
     IndividualFundFlowDAO,
@@ -155,6 +157,16 @@ from .services import (
     generate_concept_insight_summary,
     get_latest_concept_insight,
     build_concept_snapshot,
+    search_concepts,
+    list_concept_watchlist,
+    get_concept_status,
+    set_concept_watch_state,
+    refresh_concept_history,
+    generate_concept_volume_price_reasoning,
+    get_latest_volume_price_reasoning,
+    list_volume_price_history,
+    list_concept_constituents,
+    sync_concept_directory,
     sync_individual_fund_flow,
     sync_big_deal_fund_flow,
     sync_hsgt_fund_flow,
@@ -706,6 +718,13 @@ class SyncGlobalFlashRequest(BaseModel):
 class SyncGlobalFlashResponse(BaseModel):
     rows: int
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncConceptDirectoryRequest(BaseModel):
+    refresh: bool = Field(True, alias="refresh")
 
     class Config:
         allow_population_by_field_name = True
@@ -2385,6 +2404,127 @@ class ConceptFundFlowListResponse(BaseModel):
     items: List[ConceptFundFlowRecord]
 
 
+class ConceptSearchItem(BaseModel):
+    name: str
+    code: str
+
+
+class ConceptSearchResponse(BaseModel):
+    items: List[ConceptSearchItem]
+
+
+class ConceptWatchEntry(BaseModel):
+    concept: str
+    concept_code: str = Field(..., alias="conceptCode")
+    is_watched: bool = Field(True, alias="isWatched")
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    created_at: Optional[datetime] = Field(None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptWatchlistResponse(BaseModel):
+    items: List[ConceptWatchEntry]
+
+
+class ConceptWatchRequest(BaseModel):
+    concept: str
+
+
+class ConceptStatusResponse(BaseModel):
+    concept: str
+    concept_code: str = Field(..., alias="conceptCode")
+    is_watched: bool = Field(..., alias="isWatched")
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptRefreshRequest(BaseModel):
+    concept: str
+    lookback_days: Optional[int] = Field(180, alias="lookbackDays", ge=1, le=1095)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptVolumePriceRequest(BaseModel):
+    concept: str
+    lookback_days: int = Field(90, alias="lookbackDays", ge=30, le=240)
+    run_llm: bool = Field(True, alias="runLlm")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptRefreshResponse(BaseModel):
+    concept: str
+    concept_code: str = Field(..., alias="conceptCode")
+    start_date: Optional[str] = Field(None, alias="startDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+    total_rows: Optional[int] = Field(None, alias="totalRows")
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+    is_watched: bool = Field(False, alias="isWatched")
+    errors: List[Dict[str, Any]] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptConstituentItem(BaseModel):
+    rank: Optional[int] = None
+    symbol: Optional[str] = None
+    name: Optional[str] = None
+    last_price: Optional[float] = Field(None, alias="lastPrice")
+    change_percent: Optional[float] = Field(None, alias="changePercent")
+    change_amount: Optional[float] = Field(None, alias="changeAmount")
+    speed_percent: Optional[float] = Field(None, alias="speedPercent")
+    turnover_rate: Optional[float] = Field(None, alias="turnoverRate")
+    volume_ratio: Optional[float] = Field(None, alias="volumeRatio")
+    amplitude_percent: Optional[float] = Field(None, alias="amplitudePercent")
+    turnover_amount: Optional[float] = Field(None, alias="turnoverAmount")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptConstituentResponse(BaseModel):
+    concept: str
+    concept_code: str = Field(..., alias="conceptCode")
+    total_pages: int = Field(..., alias="totalPages")
+    pages_fetched: int = Field(..., alias="pagesFetched")
+    blocked: bool
+    items: List[ConceptConstituentItem]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptVolumePriceRecord(BaseModel):
+    id: int
+    concept: str
+    concept_code: str = Field(..., alias="conceptCode")
+    lookback_days: int = Field(..., alias="lookbackDays")
+    summary: Dict[str, Any]
+    raw_text: str = Field(..., alias="rawText")
+    model: Optional[str]
+    generated_at: datetime = Field(..., alias="generatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ConceptVolumePriceHistoryResponse(BaseModel):
+    total: int
+    items: List[ConceptVolumePriceRecord]
+
+
 class ConceptIndexBar(BaseModel):
     trade_date: date = Field(..., alias="tradeDate")
     open: Optional[float] = None
@@ -2739,6 +2879,47 @@ async def _run_stock_basic_job(list_statuses: Optional[List[str]], market: Optio
             elapsed = time.perf_counter() - started
             monitor.finish(
                 "stock_basic",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_concept_directory_job() -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        try:
+            result = sync_concept_directory(settings_path=None)
+            stats: Dict[str, object] = {}
+            try:
+                stats = ConceptDirectoryDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh concept_directory stats: %s", stats_exc)
+            elapsed = time.perf_counter() - started
+            total_rows = None
+            finished_at = None
+            if isinstance(stats, dict):
+                total_rows = stats.get("count")
+                finished_at = stats.get("updated_at")
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "concept_directory",
+                success=True,
+                total_rows=total_rows,
+                message="Concept directory synced",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "concept_directory",
                 success=False,
                 error=str(exc),
                 last_duration=elapsed,
@@ -5039,6 +5220,14 @@ def _job_running(job: str) -> bool:
     return True
 
 
+async def start_concept_directory_job() -> None:
+    if _job_running("concept_directory"):
+        raise HTTPException(status_code=409, detail="Concept directory sync already running")
+    monitor.start("concept_directory", message="Syncing concept directory")
+    monitor.update("concept_directory", progress=0.0)
+    asyncio.create_task(_run_concept_directory_job())
+
+
 async def start_stock_basic_job(payload: SyncStockBasicRequest) -> None:
     if _job_running("stock_basic"):
         raise HTTPException(status_code=409, detail="Stock basic sync already running")
@@ -6204,6 +6393,7 @@ def health_check() -> dict[str, str]:
 def list_stocks(
     keyword: Optional[str] = Query(None, description="Keyword to search code/name/industry"),
     industry: Optional[str] = Query(None, description="Filter by industry"),
+    concept: Optional[str] = Query(None, description="Filter by concept name"),
     exchange: Optional[str] = Query(None, description="Filter by exchange"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -6307,10 +6497,48 @@ def list_stocks(
         favorite_group_specified=group_specified,
     )
 
+    def _normalize_symbol(value: Optional[object]) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip().upper()
+        if not text:
+            return None
+        if "." in text:
+            text = text.split(".", 1)[0]
+        if len(text) > 2 and text[:2] in {"SH", "SZ", "BJ"}:
+            text = text[2:]
+        return text or None
+
+    concept_filter = concept.strip() if concept else None
+    concept_symbol_filter: Optional[Set[str]] = None
+    if concept_filter:
+        settings = load_settings()
+        concept_dao = ConceptConstituentDAO(settings.postgres)
+        entries = concept_dao.list_entries(concept_filter)
+        concept_symbol_filter = set()
+        for entry in entries:
+            symbol = entry.get("symbol")
+            normalized_symbol = _normalize_symbol(symbol)
+            if normalized_symbol:
+                concept_symbol_filter.add(normalized_symbol)
+
+    def _matches_concept(payload: dict[str, object]) -> bool:
+        if concept_symbol_filter is None:
+            return True
+        if not concept_symbol_filter:
+            return False
+        code = payload.get("code") or payload.get("symbol")
+        normalized_code = _normalize_symbol(code)
+        if not normalized_code:
+            return False
+        return normalized_code in concept_symbol_filter
+
+    source_items = [item for item in result["items"] if _matches_concept(item)]
+
     available_industries = sorted(
         {
             item.get("industry")
-            for item in result["items"]
+            for item in source_items
             if isinstance(item.get("industry"), str) and item.get("industry")
         }
     )
@@ -6377,6 +6605,7 @@ def list_stocks(
         and net_income_yoy_min is None
         and (industry is None or industry.lower() == "all")
         and (exchange is None or exchange.lower() == "all")
+        and not concept_filter
     )
 
     sort_field = None
@@ -6388,9 +6617,9 @@ def list_stocks(
         sort_direction = "desc"
 
     if effective_favorites_only or keyword_bypass or (keyword_only_search and filters_at_defaults):
-        filtered_items = list(result["items"])
+        filtered_items = list(source_items)
     else:
-        filtered_items = [item for item in result["items"] if _passes_filters(item)]
+        filtered_items = [item for item in source_items if _passes_filters(item)]
 
     if sort_field:
         reverse = sort_direction != "asc"
@@ -7551,6 +7780,193 @@ def get_fund_flow_sector_hotlist() -> FundFlowSectorHotlistResponse:
     )
 
 
+@app.get("/concepts/search", response_model=ConceptSearchResponse)
+def search_concepts_api(
+    q: Optional[str] = Query(None, description="Optional keyword to filter concepts."),
+    limit: int = Query(20, ge=1, le=100),
+) -> ConceptSearchResponse:
+    items = [ConceptSearchItem(**entry) for entry in search_concepts(q, limit=limit)]
+    return ConceptSearchResponse(items=items)
+
+
+@app.get("/concepts/watchlist", response_model=ConceptWatchlistResponse)
+def list_concept_watchlist_api() -> ConceptWatchlistResponse:
+    items = [ConceptWatchEntry(**entry) for entry in list_concept_watchlist()]
+    return ConceptWatchlistResponse(items=items)
+
+
+@app.post("/concepts/watchlist", response_model=ConceptWatchEntry)
+def add_concept_watch(payload: ConceptWatchRequest = Body(...)) -> ConceptWatchEntry:
+    result = set_concept_watch_state(payload.concept, watch=True)
+    return ConceptWatchEntry(**result)
+
+
+@app.delete("/concepts/watchlist/{concept}", response_model=ConceptWatchEntry)
+def remove_concept_watch(concept: str = Path(..., min_length=1)) -> ConceptWatchEntry:
+    result = set_concept_watch_state(concept, watch=False)
+    return ConceptWatchEntry(**result)
+
+
+@app.get("/concepts/status", response_model=ConceptStatusResponse)
+def get_concept_status_api(concept: str = Query(..., min_length=1)) -> ConceptStatusResponse:
+    data = get_concept_status(concept)
+    return ConceptStatusResponse(**data)
+
+
+@app.post("/concepts/refresh-history", response_model=ConceptRefreshResponse)
+def refresh_concept_history_api(payload: ConceptRefreshRequest = Body(...)) -> ConceptRefreshResponse:
+    result = refresh_concept_history(
+        payload.concept,
+        lookback_days=payload.lookback_days or 180,
+    )
+    return ConceptRefreshResponse(**result)
+
+
+@app.get("/concepts/constituents", response_model=ConceptConstituentResponse)
+def get_concept_constituents_api(
+    concept: str = Query(..., min_length=1),
+    max_pages: Optional[int] = Query(None, ge=1, le=10, alias="maxPages"),
+    refresh: bool = Query(False, description="Set true to fetch new THS data."),
+) -> ConceptConstituentResponse:
+    result = list_concept_constituents(concept, max_pages=max_pages, refresh=refresh)
+    return ConceptConstituentResponse(**result)
+
+
+@app.get("/concepts/volume-price-analysis/latest", response_model=ConceptVolumePriceRecord)
+def get_concept_volume_price_latest(concept: str = Query(..., min_length=1)) -> ConceptVolumePriceRecord:
+    record = get_latest_volume_price_reasoning(concept)
+    if not record:
+        raise HTTPException(status_code=404, detail="Volume/price reasoning not found for concept.")
+    return ConceptVolumePriceRecord(**record)
+
+
+@app.get("/concepts/volume-price-analysis/history", response_model=ConceptVolumePriceHistoryResponse)
+def list_concept_volume_price_history(
+    concept: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+) -> ConceptVolumePriceHistoryResponse:
+    result = list_volume_price_history(concept, limit=limit, offset=offset)
+    items = [ConceptVolumePriceRecord(**entry) for entry in result.get("items", []) if entry]
+    return ConceptVolumePriceHistoryResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.post("/concepts/volume-price-analysis")
+def stream_concept_volume_price_analysis(payload: ConceptVolumePriceRequest = Body(...)) -> StreamingResponse:
+    def _stringify_value(value: Any) -> str:
+        if isinstance(value, dict):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except (TypeError, ValueError):
+                return str(value)
+        if isinstance(value, (list, tuple)):
+            return "；".join(str(item) for item in value)
+        return str(value)
+
+    def format_summary(summary_payload: Any, raw_text: Optional[str]) -> List[str]:
+        parsed_summary: Optional[Dict[str, Any]] = None
+        if isinstance(summary_payload, dict):
+            parsed_summary = summary_payload
+        elif isinstance(summary_payload, str) and summary_payload.strip():
+            try:
+                parsed_summary = json.loads(summary_payload)
+            except (TypeError, json.JSONDecodeError):
+                parsed_summary = None
+        elif raw_text and raw_text.strip():
+            try:
+                parsed_summary = json.loads(raw_text)
+            except (TypeError, json.JSONDecodeError):
+                parsed_summary = None
+
+        lines: List[str] = []
+        if parsed_summary:
+            phase = parsed_summary.get("wyckoffPhase")
+            confidence = parsed_summary.get("confidence")
+            if phase or confidence is not None:
+                header = f"【阶段判定】{phase or '--'}"
+                if confidence is not None:
+                    try:
+                        confidence_value = float(confidence)
+                        header += f" · 置信度 {confidence_value * 100:.0f}%"
+                    except (TypeError, ValueError):
+                        header += f" · 置信度 {confidence}"
+                lines.append(header)
+                lines.append("")
+
+            summary_text = parsed_summary.get("stageSummary")
+            if summary_text:
+                lines.append("【量价结论】")
+                if isinstance(summary_text, (list, tuple)):
+                    lines.extend(str(item) for item in summary_text if item is not None)
+                else:
+                    lines.extend(str(summary_text).splitlines())
+                lines.append("")
+
+            intent = parsed_summary.get("compositeIntent")
+            if intent:
+                lines.append(f"【主力意图】{intent}")
+                lines.append("")
+
+            def _append_section(label: str, items: Any) -> None:
+                if not items:
+                    return
+                values = items
+                if isinstance(items, (list, tuple)):
+                    formatted = [str(item) if not isinstance(item, dict) else _stringify_value(item) for item in items]
+                else:
+                    formatted = [str(items)]
+                lines.append(f"【{label}】")
+                for idx, item in enumerate(formatted, start=1):
+                    lines.append(f"{idx}. {item}")
+                lines.append("")
+
+            _append_section("量能信号", parsed_summary.get("volumeSignals"))
+            _append_section("价格/结构信号", parsed_summary.get("priceSignals"))
+            _append_section("策略建议", parsed_summary.get("strategy"))
+            _append_section("风险提示", parsed_summary.get("risks"))
+            _append_section("后续观察", parsed_summary.get("checklist"))
+
+        if not lines:
+            fallback = raw_text or (summary_payload if isinstance(summary_payload, str) else "")
+            fallback_text = str(fallback or "").strip()
+            if fallback_text:
+                lines = fallback_text.splitlines()
+            else:
+                lines = ["暂无推理输出。"]
+
+        return lines
+
+    def stream_generator():
+        result = generate_concept_volume_price_reasoning(
+            payload.concept,
+            lookback_days=payload.lookback_days,
+            run_llm=payload.run_llm,
+        )
+        header_parts = [
+            f"概念: {result.get('concept')} ({result.get('conceptCode')})",
+            f"样本: 最近{result.get('lookbackDays')}个交易日",
+        ]
+        stats = result.get("statistics") or {}
+        change_percent = stats.get("changePercent")
+        if change_percent is not None:
+            header_parts.append(f"区间涨跌幅 {change_percent}%")
+        avg_volume = stats.get("avgVolume")
+        if avg_volume is not None:
+            header_parts.append(f"平均成交量 {avg_volume}")
+        model_name = result.get("model")
+        if model_name:
+            header_parts.append(f"模型 {model_name}")
+        generated_at = result.get("generatedAt")
+        if generated_at:
+            header_parts.append(f"时间 {generated_at}")
+        yield " · ".join(str(part) for part in header_parts if part) + "\n\n"
+
+        for line in format_summary(result.get("summary"), result.get("rawText")):
+            yield line + "\n"
+
+    return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")
+
+
 @app.get("/market/industry-insight", response_model=IndustryInsightResponse)
 def get_industry_insight_api(
     lookback_hours: int = Query(
@@ -8208,6 +8624,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect concept_index_history stats: %s", exc)
         stats_map["concept_index_history"] = {}
     try:
+        stats_map["concept_directory"] = ConceptDirectoryDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect concept_directory stats: %s", exc)
+        stats_map["concept_directory"] = {}
+    try:
         stats_map["concept_insight"] = ConceptInsightDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect concept_insight stats: %s", exc)
@@ -8583,6 +9004,14 @@ async def control_sync_sector_insight(payload: SyncSectorInsightRequest) -> dict
 @app.post("/control/sync/stock-basic")
 async def control_sync_stock_basic(payload: SyncStockBasicRequest) -> dict[str, str]:
     await start_stock_basic_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/concept-directory")
+async def control_sync_concept_directory(payload: SyncConceptDirectoryRequest) -> dict[str, str]:
+    if not payload.refresh:
+        return {"status": "skipped"}
+    await start_concept_directory_job()
     return {"status": "started"}
 
 

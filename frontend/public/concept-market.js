@@ -13,6 +13,7 @@ const DEFAULT_LOOKBACK = 180;
 const SEARCH_DEBOUNCE_MS = 250;
 const CONSTITUENT_MAX_PAGES = null;
 const ECHARTS_CDN = "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js";
+const VOLUME_ANALYSIS_LOOKBACK = 90;
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
@@ -25,6 +26,16 @@ const elements = {
   lastSync: document.getElementById("concept-market-last-sync"),
   watchlist: document.getElementById("concept-market-watchlist"),
   constituentList: document.getElementById("concept-market-constituents"),
+  tabButtons: Array.from(document.querySelectorAll(".concept-market__tab-btn")),
+  tabPanels: Array.from(document.querySelectorAll(".concept-market__tab-panel")),
+  volumeOutput: document.getElementById("concept-volume-output"),
+  volumeRunButton: document.getElementById("concept-volume-run"),
+  volumeCancelButton: document.getElementById("concept-volume-cancel"),
+  volumeMeta: document.getElementById("concept-volume-meta"),
+  volumeHistoryToggle: document.getElementById("concept-volume-history-toggle"),
+  volumeHistoryClose: document.getElementById("concept-volume-history-close"),
+  volumeHistorySection: document.getElementById("concept-volume-history"),
+  volumeHistoryList: document.getElementById("concept-volume-history-list"),
 };
 
 const state = {
@@ -51,6 +62,23 @@ const state = {
   skipNextConstituentLoad: false,
   constituentSortKey: null,
   constituentSortOrder: "desc",
+  volumeAnalysis: {
+    running: false,
+    content: "",
+    error: null,
+    controller: null,
+    lastConcept: null,
+    meta: null,
+  },
+  volumeAnalysisCache: new Map(),
+  volumeHistory: {
+    concept: null,
+    visible: false,
+    loading: false,
+    error: null,
+    items: [],
+  },
+  activeTab: "chart",
 };
 
 let echartsLoader = null;
@@ -127,6 +155,74 @@ function formatDateOnly(value) {
   if (Number.isNaN(date.getTime())) return "--";
   const locale = state.lang === "zh" ? "zh-CN" : "en-US";
   return date.toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function formatDateTime(value) {
+  if (!value) return "--";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const locale = state.lang === "zh" ? "zh-CN" : "en-US";
+  const options =
+    state.lang === "zh"
+      ? { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }
+      : { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false };
+  return date.toLocaleString(locale, options);
+}
+
+function parseJSON(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatVolumeSummary(summary) {
+  const payload = parseJSON(summary) || {};
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const dict = getDict();
+  const sections = [];
+  const parts = [];
+  if (payload.wyckoffPhase) {
+    const label = dict.volumeLabelPhase || "阶段";
+    parts.push(`${label}：${payload.wyckoffPhase}`);
+  }
+  if (payload.compositeIntent) {
+    const label = dict.volumeLabelIntent || "主力意图";
+    parts.push(`${label}：${payload.compositeIntent}`);
+  }
+  if (payload.confidence != null && Number.isFinite(Number(payload.confidence))) {
+    const confidenceLabel = dict.volumeLabelConfidence || "置信度";
+    parts.push(`${confidenceLabel}：${(Number(payload.confidence) * 100).toFixed(0)}%`);
+  }
+  if (parts.length) {
+    sections.push(parts.join(" · "));
+  }
+  if (payload.stageSummary) {
+    sections.push(`【${dict.volumeLabelSummary || "量价结论"}】`);
+    sections.push(String(payload.stageSummary));
+  }
+  const listSections = [
+    { key: "volumeSignals", label: dict.volumeLabelVolumeSignals || "量能信号" },
+    { key: "priceSignals", label: dict.volumeLabelPriceSignals || "价格/结构信号" },
+    { key: "strategy", label: dict.volumeLabelStrategy || "策略建议" },
+    { key: "risks", label: dict.volumeLabelRisks || "风险提示" },
+    { key: "checklist", label: dict.volumeLabelChecklist || "后续观察" },
+  ];
+  listSections.forEach(({ key, label }) => {
+    const items = payload[key];
+    if (Array.isArray(items) && items.length) {
+      sections.push(`【${label}】`);
+      items.forEach((item, index) => {
+        sections.push(`${index + 1}. ${typeof item === "object" ? JSON.stringify(item) : String(item)}`);
+      });
+    }
+  });
+  return sections.length ? sections.join("\n") : null;
 }
 
 function handleLanguageSwitch(event) {
@@ -303,6 +399,14 @@ function selectConcept(name, code, source = "search") {
   } else {
     loadConceptConstituents(name);
   }
+  applyVolumeAnalysisCache(name);
+  state.volumeHistory.items = [];
+  state.volumeHistory.error = null;
+  state.volumeHistory.loading = false;
+  state.volumeHistory.concept = null;
+  toggleVolumeHistory(false);
+  renderVolumeHistoryList();
+  fetchLatestVolumeAnalysis(name, { force: true });
 }
 
 async function loadConceptStatus(concept) {
@@ -401,6 +505,8 @@ function renderWatchlist() {
     state.constituentMeta = null;
     state.constituentError = null;
     renderConstituents();
+    applyVolumeAnalysisCache(null);
+    resetVolumeHistoryState();
     return;
   }
   delete container.dataset.emptyI18n;
@@ -462,12 +568,16 @@ function renderWatchlist() {
       syncButton.addEventListener("click", async (event) => {
         event.stopPropagation();
         syncButton.disabled = true;
+        syncButton.classList.add("is-syncing");
+        syncButton.setAttribute("aria-busy", "true");
         state.skipNextConstituentLoad = true;
         selectConcept(entry.concept, entry.conceptCode, "watchlist");
         try {
           await refreshConcept();
         } finally {
           syncButton.disabled = false;
+          syncButton.classList.remove("is-syncing");
+          syncButton.removeAttribute("aria-busy");
         }
       });
     }
@@ -504,6 +614,417 @@ function renderWatchlist() {
   } else {
     updateWatchlistHighlight();
   }
+}
+
+function setActiveTab(tab, { force = false } = {}) {
+  if (!tab || (!force && tab === state.activeTab)) {
+    return;
+  }
+  state.activeTab = tab;
+  if (elements.tabButtons) {
+    elements.tabButtons.forEach((button) => {
+      const isActive = button.dataset.tab === tab;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+      button.tabIndex = isActive ? 0 : -1;
+    });
+  }
+  if (elements.tabPanels) {
+    elements.tabPanels.forEach((panel) => {
+      const isActive = panel.dataset.tabPanel === tab;
+      panel.classList.toggle("is-active", isActive);
+      panel.hidden = !isActive;
+    });
+  }
+  if (tab === "chart" && state.chartInstance) {
+    window.requestAnimationFrame(() => {
+      if (state.chartInstance) {
+        state.chartInstance.resize();
+      }
+    });
+  }
+  if (tab === "volume") {
+    ensureVolumeAnalysisLoaded();
+    updateVolumeAnalysisOutput();
+  }
+}
+
+function initTabs() {
+  if (!elements.tabButtons || !elements.tabButtons.length) return;
+  elements.tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const tab = button.dataset.tab;
+      if (tab) {
+        setActiveTab(tab);
+      }
+    });
+  });
+  setActiveTab(state.activeTab, { force: true });
+}
+
+function normalizeVolumeRecord(record) {
+  if (!record) return null;
+  const parsedSummary = parseJSON(record.summary) || record.summary;
+  return {
+    id: record.id,
+    concept: record.concept,
+    conceptCode: record.conceptCode,
+    lookbackDays: record.lookbackDays,
+    summary: parsedSummary || {},
+    rawText: record.rawText || "",
+    model: record.model || null,
+    generatedAt: record.generatedAt,
+  };
+}
+
+async function fetchLatestVolumeAnalysis(concept, { force = false } = {}) {
+  if (!concept) {
+    applyVolumeAnalysisCache(null);
+    return;
+  }
+  if (!force) {
+    const cached = state.volumeAnalysisCache.get(concept);
+    if (cached && !state.volumeAnalysis.running) {
+      state.volumeAnalysis.content = cached.content || "";
+      state.volumeAnalysis.meta = cached.meta || null;
+      state.volumeAnalysis.error = null;
+      state.volumeAnalysis.lastConcept = concept;
+      updateVolumeAnalysisOutput();
+      return;
+    }
+  }
+  try {
+    const data = await fetchJSON(
+      `${API_BASE}/concepts/volume-price-analysis/latest?concept=${encodeURIComponent(concept)}`
+    );
+    const record = normalizeVolumeRecord(data);
+    if (record) {
+      const formatted = formatVolumeSummary(record.summary) || record.rawText || "";
+      state.volumeAnalysisCache.set(concept, { content: formatted, meta: record });
+      if (state.currentConcept === concept && !state.volumeAnalysis.running) {
+        state.volumeAnalysis.content = formatted;
+        state.volumeAnalysis.meta = record;
+        state.volumeAnalysis.error = null;
+        state.volumeAnalysis.lastConcept = concept;
+        updateVolumeAnalysisOutput();
+      }
+    } else if (state.currentConcept === concept && !state.volumeAnalysis.running) {
+      state.volumeAnalysis.content = "";
+      state.volumeAnalysis.meta = null;
+      state.volumeAnalysis.error = null;
+      state.volumeAnalysis.lastConcept = concept;
+      updateVolumeAnalysisOutput();
+    }
+  } catch (error) {
+    if (error && typeof error.message === "string" && error.message.includes("404")) {
+      state.volumeAnalysisCache.set(concept, null);
+      if (state.currentConcept === concept && !state.volumeAnalysis.running) {
+        state.volumeAnalysis.content = "";
+        state.volumeAnalysis.meta = null;
+        state.volumeAnalysis.error = null;
+        state.volumeAnalysis.lastConcept = concept;
+        updateVolumeAnalysisOutput();
+      }
+      return;
+    }
+    console.error("Failed to load latest volume analysis", error);
+  }
+}
+
+function ensureVolumeAnalysisLoaded() {
+  if (!state.currentConcept) {
+    applyVolumeAnalysisCache(null);
+    return;
+  }
+  const cached = state.volumeAnalysisCache.get(state.currentConcept);
+  if (cached && !state.volumeAnalysis.running) {
+    state.volumeAnalysis.content = cached.content || "";
+    state.volumeAnalysis.meta = cached.meta || null;
+    state.volumeAnalysis.error = null;
+    state.volumeAnalysis.lastConcept = state.currentConcept;
+    updateVolumeAnalysisOutput();
+    return;
+  }
+  fetchLatestVolumeAnalysis(state.currentConcept, { force: true });
+}
+
+async function fetchVolumeHistory(concept, { force = false } = {}) {
+  if (!concept) {
+    state.volumeHistory.items = [];
+    state.volumeHistory.error = null;
+    state.volumeHistory.concept = null;
+    renderVolumeHistoryList();
+    return;
+  }
+  if (!force && state.volumeHistory.concept === concept && state.volumeHistory.items.length) {
+    renderVolumeHistoryList();
+    return;
+  }
+  state.volumeHistory.loading = true;
+  state.volumeHistory.error = null;
+  state.volumeHistory.concept = concept;
+  renderVolumeHistoryList();
+  try {
+    const data = await fetchJSON(
+      `${API_BASE}/concepts/volume-price-analysis/history?concept=${encodeURIComponent(concept)}&limit=10`
+    );
+    state.volumeHistory.items = Array.isArray(data.items) ? data.items : [];
+    state.volumeHistory.error = null;
+  } catch (error) {
+    console.error("Failed to load volume analysis history", error);
+    state.volumeHistory.items = [];
+    state.volumeHistory.error = getDict().volumeHistoryError || "历史记录获取失败。";
+  } finally {
+    state.volumeHistory.loading = false;
+    renderVolumeHistoryList();
+  }
+}
+
+function toggleVolumeHistory(show) {
+  const visible = Boolean(show);
+  state.volumeHistory.visible = visible;
+  if (elements.volumeHistorySection) {
+    elements.volumeHistorySection.hidden = !visible;
+  }
+  if (visible && state.currentConcept) {
+    fetchVolumeHistory(state.currentConcept, { force: true });
+  }
+}
+
+function resetVolumeHistoryState() {
+  state.volumeHistory.concept = null;
+  state.volumeHistory.items = [];
+  state.volumeHistory.error = null;
+  state.volumeHistory.loading = false;
+  state.volumeHistory.visible = false;
+  if (elements.volumeHistorySection) {
+    elements.volumeHistorySection.hidden = true;
+  }
+  renderVolumeHistoryList();
+}
+
+function renderVolumeHistoryList() {
+  const container = elements.volumeHistoryList;
+  if (!container) return;
+  const dict = getDict();
+  container.innerHTML = "";
+  container.removeAttribute("data-empty");
+  if (state.volumeHistory.loading) {
+    container.textContent = dict.volumeHistoryLoading || "加载历史记录…";
+    return;
+  }
+  if (state.volumeHistory.error) {
+    container.textContent = state.volumeHistory.error;
+    container.dataset.empty = "1";
+    return;
+  }
+  if (!state.volumeHistory.items.length) {
+    container.dataset.empty = "1";
+    return;
+  }
+  state.volumeHistory.items.forEach((entry) => {
+    const normalized = normalizeVolumeRecord(entry);
+    if (!normalized) return;
+    const displayText = formatVolumeSummary(normalized.summary) || normalized.rawText || "";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "concept-market__volume-history-item";
+    button.innerHTML = `
+      <div class="concept-market__volume-history-item-meta">
+        <strong>${formatDateTime(normalized.generatedAt)}</strong>
+        <span>${normalized.model || "DeepSeek"}</span>
+      </div>
+      <span>${normalized.lookbackDays ? `${normalized.lookbackDays}d` : ""}</span>
+    `;
+    button.addEventListener("click", () =>
+      applyVolumeHistoryEntry({
+        ...normalized,
+        rawText: displayText,
+      })
+    );
+    container.appendChild(button);
+  });
+}
+
+function applyVolumeHistoryEntry(entry) {
+  if (!entry) return;
+  cancelVolumeAnalysis({ silent: true });
+  state.volumeAnalysis.content = formatVolumeSummary(entry.summary) || entry.rawText || "";
+  state.volumeAnalysis.meta = entry;
+  state.volumeAnalysis.error = null;
+  state.volumeAnalysis.lastConcept = state.currentConcept;
+  if (entry.concept) {
+    state.volumeAnalysisCache.set(entry.concept, { content: state.volumeAnalysis.content, meta: entry });
+  }
+  updateVolumeAnalysisOutput();
+}
+
+function cancelVolumeAnalysis({ silent = false } = {}) {
+  if (state.volumeAnalysis.controller) {
+    state.volumeAnalysis.controller.abort();
+    state.volumeAnalysis.controller = null;
+  }
+  const wasRunning = state.volumeAnalysis.running;
+  state.volumeAnalysis.running = false;
+  if (silent) {
+    state.volumeAnalysis.error = null;
+  } else if (wasRunning) {
+    state.volumeAnalysis.error = getDict().volumeCancelled || "分析已取消。";
+  }
+  updateVolumeAnalysisOutput();
+}
+
+function applyVolumeAnalysisCache(concept) {
+  cancelVolumeAnalysis({ silent: true });
+  if (!concept) {
+    state.volumeAnalysis.content = "";
+    state.volumeAnalysis.error = null;
+    state.volumeAnalysis.meta = null;
+    state.volumeAnalysis.lastConcept = null;
+    updateVolumeAnalysisOutput();
+    return;
+  }
+  const cached = state.volumeAnalysisCache.get(concept);
+  if (cached) {
+    state.volumeAnalysis.content = cached.content || "";
+    state.volumeAnalysis.meta = cached.meta || null;
+  } else {
+    state.volumeAnalysis.content = "";
+    state.volumeAnalysis.meta = null;
+  }
+  state.volumeAnalysis.error = null;
+  state.volumeAnalysis.lastConcept = concept;
+  updateVolumeAnalysisOutput();
+}
+
+function updateVolumeAnalysisOutput() {
+  const container = elements.volumeOutput;
+  if (!container) return;
+  const dict = getDict();
+  container.removeAttribute("data-loading");
+  container.removeAttribute("data-error");
+  container.removeAttribute("data-empty");
+  if (state.volumeAnalysis.running) {
+    container.textContent = dict.volumeStreaming || "模型推理中…";
+    container.dataset.loading = "1";
+  } else if (state.volumeAnalysis.error) {
+    container.textContent = state.volumeAnalysis.error;
+    container.dataset.error = "1";
+  } else if (state.volumeAnalysis.content) {
+    container.textContent = state.volumeAnalysis.content;
+  } else {
+    container.textContent = dict.volumeEmpty || "请选择概念后点击推理。";
+    container.dataset.empty = "1";
+  }
+  if (elements.volumeRunButton) {
+    elements.volumeRunButton.disabled = state.volumeAnalysis.running || !state.currentConcept;
+    elements.volumeRunButton.textContent = state.volumeAnalysis.running
+      ? dict.volumeRunning || "生成中…"
+      : dict.volumeButton || "生成推理";
+  }
+  if (elements.volumeCancelButton) {
+    elements.volumeCancelButton.hidden = !state.volumeAnalysis.running;
+    elements.volumeCancelButton.disabled = !state.volumeAnalysis.running;
+  }
+  if (elements.volumeMeta) {
+    const meta = state.volumeAnalysis.meta;
+    if (meta && meta.generatedAt) {
+      const label = dict.volumeMetaLabel || "最新推理";
+      const timestamp = formatDateTime(meta.generatedAt);
+      const daysLabel = meta.lookbackDays ? `${meta.lookbackDays}d` : "";
+      const modelLabel = meta.model || "DeepSeek";
+      const segments = [label, timestamp, daysLabel, modelLabel].filter(Boolean);
+      elements.volumeMeta.textContent = segments.join(" · ");
+      elements.volumeMeta.dataset.empty = "0";
+    } else {
+      elements.volumeMeta.textContent = dict.volumeMetaEmpty || "暂无历史记录";
+      elements.volumeMeta.dataset.empty = "1";
+    }
+  }
+}
+
+async function runVolumeAnalysis() {
+  if (!state.currentConcept) {
+    setStatusMessage(getDict().noConceptSelected || "Select a concept first.", "error");
+    return;
+  }
+  const targetConcept = state.currentConcept;
+  cancelVolumeAnalysis({ silent: true });
+  const controller = new AbortController();
+  state.volumeAnalysis.running = true;
+  state.volumeAnalysis.controller = controller;
+  state.volumeAnalysis.error = null;
+  state.volumeAnalysis.content = "";
+  state.volumeAnalysis.meta = null;
+  state.volumeAnalysis.lastConcept = state.currentConcept;
+  updateVolumeAnalysisOutput();
+  try {
+    const response = await fetch(`${API_BASE}/concepts/volume-price-analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        concept: state.currentConcept,
+        lookbackDays: VOLUME_ANALYSIS_LOOKBACK,
+        runLlm: true,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    if (!response.body || !response.body.getReader) {
+      const text = await response.text();
+      state.volumeAnalysis.content = text;
+    } else {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let done = false;
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        if (value) {
+          state.volumeAnalysis.content += decoder.decode(value, { stream: !readerDone });
+          updateVolumeAnalysisOutput();
+        }
+        done = readerDone;
+      }
+      state.volumeAnalysis.content += decoder.decode();
+    }
+    if (targetConcept) {
+      await fetchLatestVolumeAnalysis(targetConcept, { force: true });
+      if (state.volumeHistory.visible && targetConcept === state.currentConcept) {
+        fetchVolumeHistory(targetConcept, { force: true });
+      }
+    }
+  } catch (error) {
+    const aborted = controller.signal.aborted || (error && error.name === "AbortError");
+    if (aborted) {
+      state.volumeAnalysis.error = getDict().volumeCancelled || "分析已取消。";
+    } else {
+      console.error("Volume-price reasoning failed", error);
+      state.volumeAnalysis.error = getDict().volumeError || "量价推理失败。";
+    }
+  } finally {
+    state.volumeAnalysis.running = false;
+    state.volumeAnalysis.controller = null;
+    updateVolumeAnalysisOutput();
+  }
+}
+
+function initVolumeAnalysis() {
+  if (elements.volumeRunButton) {
+    elements.volumeRunButton.addEventListener("click", runVolumeAnalysis);
+  }
+  if (elements.volumeCancelButton) {
+    elements.volumeCancelButton.addEventListener("click", () => cancelVolumeAnalysis());
+  }
+  if (elements.volumeHistoryToggle) {
+    elements.volumeHistoryToggle.addEventListener("click", () => toggleVolumeHistory(!state.volumeHistory.visible));
+  }
+  if (elements.volumeHistoryClose) {
+    elements.volumeHistoryClose.addEventListener("click", () => toggleVolumeHistory(false));
+  }
+  renderVolumeHistoryList();
+  updateVolumeAnalysisOutput();
 }
 
 function updateWatchlistHighlight() {
@@ -900,6 +1421,8 @@ function attachEventListeners() {
 function init() {
   initLanguage();
   attachEventListeners();
+  initTabs();
+  initVolumeAnalysis();
   renderConstituents();
   fetchWatchlist();
 }
