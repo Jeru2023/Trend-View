@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="pageTitle">Trend View - Stock Detail</title>
-    <link rel="stylesheet" href="styles.css?v=20261105" />
+    <link rel="stylesheet" href="styles.css?v=20261106" />
     <script>
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
@@ -136,103 +136,181 @@
           </div>
         </section>
 
-        <section class="detail-grid hidden" id="detail-grid">
-          <article class="detail-card detail-card--wide performance-card hidden" id="performance-card">
-            <header class="detail-card__header">
-              <h2 data-i18n="performanceCardTitle">Performance Highlights</h2>
-              <p class="detail-card__subtitle" data-i18n="performanceCardSubtitle">
-                Latest express and forecast snapshots.
-              </p>
-            </header>
-            <div class="performance-highlights">
-              <article class="performance-tile" id="performance-express-tile"></article>
-              <article class="performance-tile" id="performance-forecast-tile"></article>
-            </div>
-          </article>
+        <div class="detail-tabs" role="tablist">
+          <button class="detail-tabs__btn is-active" type="button" data-tab="overview">
+            <span data-i18n="tabOverview">Overview</span>
+          </button>
+          <button class="detail-tabs__btn" type="button" data-tab="news">
+            <span data-i18n="tabNews">News</span>
+          </button>
+          <button class="detail-tabs__btn" type="button" data-tab="volume">
+            <span data-i18n="tabVolume">Volume Analysis</span>
+          </button>
+        </div>
 
-          <article class="detail-card hidden" id="individual-fund-flow-card">
-            <header class="detail-card__header">
-              <h2 data-i18n="individualFundFlowCardTitle">Individual Fund Flow</h2>
-            </header>
-            <div class="individual-fund-flow-list" id="individual-fund-flow-list"></div>
-          </article>
+        <div class="detail-tab-panels">
+          <section class="detail-tab-panel is-active" data-tab-panel="overview">
+            <section class="detail-grid hidden" id="detail-grid">
+              <article class="detail-card detail-card--wide performance-card hidden" id="performance-card">
+                <header class="detail-card__header">
+                  <h2 data-i18n="performanceCardTitle">Performance Highlights</h2>
+                  <p class="detail-card__subtitle" data-i18n="performanceCardSubtitle">
+                    Latest express and forecast snapshots.
+                  </p>
+                </header>
+                <div class="performance-highlights">
+                  <article class="performance-tile" id="performance-express-tile"></article>
+                  <article class="performance-tile" id="performance-forecast-tile"></article>
+                </div>
+              </article>
 
-          <article class="detail-card hidden" id="big-deal-card">
-            <header class="detail-card__header">
-              <h2 data-i18n="bigDealCardTitle">Large Order Tracker</h2>
-              <p class="detail-card__subtitle" data-i18n="bigDealCardSubtitle">
-                Most recent big-deal transactions.
-              </p>
-            </header>
-            <div class="big-deal-list" id="big-deal-list"></div>
-          </article>
+              <article class="detail-card hidden" id="individual-fund-flow-card">
+                <header class="detail-card__header">
+                  <h2 data-i18n="individualFundFlowCardTitle">Individual Fund Flow</h2>
+                </header>
+                <div class="individual-fund-flow-list" id="individual-fund-flow-list"></div>
+              </article>
 
-          <article class="detail-card detail-card--wide" id="candlestick-card">
-            <header class="detail-card__header">
-              <h2 data-i18n="candlestickTitle">Daily Candlestick</h2>
-              <p class="detail-card__subtitle" data-i18n="candlestickSubtitle">
-                Latest trading range trend.
-              </p>
-            </header>
-            <div class="candlestick-chart" id="candlestick-chart"></div>
-            <div class="chart-empty hidden" id="candlestick-empty" data-i18n="noCandlestickData">
-              Price history is not available.
-            </div>
-          </article>
+              <article class="detail-card detail-card--wide hidden" id="big-deal-card">
+                <header class="detail-card__header">
+                  <h2 data-i18n="bigDealCardTitle">Large Order Tracker</h2>
+                  <p class="detail-card__subtitle" data-i18n="bigDealCardSubtitle">
+                    Most recent big-deal transactions.
+                  </p>
+                </header>
+                <div class="big-deal-list" id="big-deal-list"></div>
+              </article>
 
-          <div class="business-section hidden" id="business-composition-section">
-            <article class="detail-card detail-card--elevated hidden" id="main-business-card">
-              <header class="detail-card__header">
-                <h2 data-i18n="mainBusinessCardTitle">Business Overview</h2>
-                <p class="detail-card__subtitle" data-i18n="mainBusinessCardSubtitle">
-                  Tonghuashun main business snapshot.
-                </p>
+              <article class="detail-card detail-card--wide" id="candlestick-card">
+                <header class="detail-card__header">
+                  <h2 data-i18n="candlestickTitle">Daily Candlestick</h2>
+                  <p class="detail-card__subtitle" data-i18n="candlestickSubtitle">
+                    Latest trading range trend.
+                  </p>
+                </header>
+                <div class="candlestick-chart" id="candlestick-chart"></div>
+                <div class="chart-empty hidden" id="candlestick-empty" data-i18n="noCandlestickData">
+                  Price history is not available.
+                </div>
+              </article>
+
+              <div class="business-section hidden" id="business-composition-section">
+                <article class="detail-card detail-card--elevated hidden" id="main-business-card">
+                  <header class="detail-card__header">
+                    <h2 data-i18n="mainBusinessCardTitle">Business Overview</h2>
+                    <p class="detail-card__subtitle" data-i18n="mainBusinessCardSubtitle">
+                      Tonghuashun main business snapshot.
+                    </p>
+                  </header>
+                  <div class="business-info" id="main-business-list"></div>
+                  <p class="detail-empty hidden" id="main-business-empty" data-i18n="mainBusinessEmpty">
+                    Main business details are not available yet.
+                  </p>
+                </article>
+
+                <article class="detail-card detail-card--elevated hidden" id="main-composition-card">
+                  <header class="detail-card__header">
+                    <h2 data-i18n="mainCompositionCardTitle">Revenue Composition</h2>
+                    <p class="detail-card__subtitle" id="main-composition-report-date"></p>
+                  </header>
+                  <div class="composition-groups" id="main-composition-groups"></div>
+                  <p class="detail-empty hidden" id="main-composition-empty" data-i18n="mainCompositionEmpty">
+                    Main composition details are not available yet.
+                  </p>
+                </article>
+              </div>
+
+              <article class="detail-card detail-card--wide" id="stats-card">
+                <header class="detail-card__header">
+                  <h2 data-i18n="tradingStatsTitle">Trading Stats</h2>
+                </header>
+                <div class="detail-list" id="stats-list"></div>
+              </article>
+
+              <div class="financial-summary-row">
+                <article class="detail-card" id="fundamentals-card">
+                  <header class="detail-card__header">
+                    <h2 data-i18n="financialStatsTitle">Financial Stats</h2>
+                  </header>
+                  <div class="detail-list" id="fundamentals-list"></div>
+                </article>
+                <article class="detail-card" id="financial-card">
+                  <header class="detail-card__header">
+                    <h2 data-i18n="financialDataTitle">Financial Summary</h2>
+                  </header>
+                  <div class="detail-list" id="financial-list"></div>
+                </article>
+              </div>
+            </section>
+          </section>
+
+          <section class="detail-tab-panel" data-tab-panel="news">
+            <article class="detail-card detail-card--wide">
+              <header class="detail-card__header detail-card__header--row">
+                <div>
+                  <h2 data-i18n="newsTabTitle">Latest News</h2>
+                  <p class="detail-card__subtitle" data-i18n="newsTabSubtitle">
+                    Tagged headlines and flash updates related to this stock.
+                  </p>
+                </div>
+                <button class="secondary-btn" id="stock-news-refresh" type="button" data-i18n="refreshButton">
+                  Refresh
+                </button>
               </header>
-              <div class="business-info" id="main-business-list"></div>
-              <p class="detail-empty hidden" id="main-business-empty" data-i18n="mainBusinessEmpty">
-                Main business details are not available yet.
+              <div class="detail-news" id="stock-news-list"></div>
+              <p class="detail-empty hidden" id="stock-news-empty" data-i18n="newsEmpty">
+                No recent headlines matched this stock.
               </p>
             </article>
+          </section>
 
-            <article class="detail-card detail-card--elevated hidden" id="main-composition-card">
-              <header class="detail-card__header">
-                <h2 data-i18n="mainCompositionCardTitle">Revenue Composition</h2>
-                <p class="detail-card__subtitle" id="main-composition-report-date"></p>
+          <section class="detail-tab-panel" data-tab-panel="volume">
+            <article class="detail-card detail-card--wide">
+              <header class="detail-card__header detail-card__header--row">
+                <div>
+                  <h2 data-i18n="volumeTabTitle">Volume / Price Reasoning</h2>
+                  <p class="detail-card__subtitle" data-i18n="volumeTabSubtitle">
+                    Wyckoff-style analysis powered by DeepSeek Reasoner.
+                  </p>
+                </div>
+                <div class="detail-card__actions">
+                  <button
+                    class="secondary-btn"
+                    type="button"
+                    id="stock-volume-history-toggle"
+                    data-i18n="volumeHistoryButton"
+                  >
+                    History
+                  </button>
+                  <button class="primary-btn" type="button" id="stock-volume-run" data-i18n="runVolumeButton">
+                    Run Analysis
+                  </button>
+                </div>
               </header>
-              <div class="composition-groups" id="main-composition-groups"></div>
-              <p class="detail-empty hidden" id="main-composition-empty" data-i18n="mainCompositionEmpty">
-                Main composition details are not available yet.
+              <div class="detail-volume-output" id="stock-volume-output"></div>
+              <p class="detail-empty hidden" id="stock-volume-empty" data-i18n="volumeEmpty">
+                Select a stock and run the analysis to generate fresh insights.
               </p>
+              <div class="detail-volume-meta" id="stock-volume-meta"></div>
+              <div class="detail-volume-history" id="stock-volume-history" hidden>
+                <div class="detail-volume-history__header">
+                  <div>
+                    <h3 data-i18n="volumeHistoryTitle">Reasoning History</h3>
+                  </div>
+                  <button class="link-btn" type="button" id="stock-volume-history-close" data-i18n="volumeHistoryClose">
+                    Close
+                  </button>
+                </div>
+                <div class="detail-volume-history__list" id="stock-volume-history-list" data-empty="1"></div>
+              </div>
             </article>
-          </div>
-
-          <article class="detail-card detail-card--wide" id="stats-card">
-            <header class="detail-card__header">
-              <h2 data-i18n="tradingStatsTitle">Trading Stats</h2>
-            </header>
-            <div class="detail-list" id="stats-list"></div>
-          </article>
-
-          <div class="financial-summary-row">
-            <article class="detail-card" id="fundamentals-card">
-              <header class="detail-card__header">
-                <h2 data-i18n="financialStatsTitle">Financial Stats</h2>
-              </header>
-              <div class="detail-list" id="fundamentals-list"></div>
-            </article>
-            <article class="detail-card" id="financial-card">
-              <header class="detail-card__header">
-                <h2 data-i18n="financialDataTitle">Financial Summary</h2>
-              </header>
-              <div class="detail-list" id="financial-list"></div>
-            </article>
-          </div>
-        </section>
+          </section>
+        </div>
       </main>
     </div>
 
-    <script src="i18n.js?v=20270415"></script>
+    <script src="i18n.js?v=20270420"></script>
     <script src="sidebar.js?v=20270438"></script>
-    <script type="module" src="stock-detail.js?v=20261105"></script>
+    <script type="module" src="stock-detail.js?v=20261106"></script>
   </body>
 </html>
