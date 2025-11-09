@@ -12,7 +12,13 @@
 
 
 
+# import akshare as ak
+
+# stock_fund_flow_individual_df = ak.stock_fund_flow_individual(symbol="即时")
+# print(stock_fund_flow_individual_df)
+
 import akshare as ak
 
-stock_fund_flow_individual_df = ak.stock_fund_flow_individual(symbol="即时")
-print(stock_fund_flow_individual_df)
+concept_name = "磷化工"  # 先用概念字典/解析逻辑确定标准名称
+df = ak.stock_board_concept_cons_ths(symbol=concept_name)
+print(df.head())

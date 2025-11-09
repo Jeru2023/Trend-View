@@ -67,6 +67,7 @@ class PostgresSettings:
     concept_fund_flow_table: str
     concept_index_history_table: str
     concept_insight_table: str
+    concept_watchlist_table: str
     industry_insight_table: str
     individual_fund_flow_table: str
     big_deal_fund_flow_table: str
@@ -258,6 +259,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             concept_insight_table=str(
                 postgres_config.get("concept_insight_table", "concept_insights")
+            ),
+            concept_watchlist_table=str(
+                postgres_config.get("concept_watchlist_table", "concept_watchlist")
             ),
             industry_insight_table=str(
                 postgres_config.get("industry_insight_table", "industry_insights")

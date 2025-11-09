@@ -445,6 +445,15 @@ const elements = {
     progress: document.getElementById("stock-main-composition-progress"),
     button: document.getElementById("run-stock-main-composition"),
   },
+  conceptDirectory: {
+    status: document.getElementById("concept-directory-status"),
+    updated: document.getElementById("concept-directory-updated"),
+    duration: document.getElementById("concept-directory-duration"),
+    rows: document.getElementById("concept-directory-rows"),
+    message: document.getElementById("concept-directory-message"),
+    progress: document.getElementById("concept-directory-progress"),
+    button: document.getElementById("run-concept-directory"),
+  },
   marketOverview: {
     status: document.getElementById("market-overview-status"),
     updated: document.getElementById("market-overview-updated"),
@@ -681,6 +690,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const conceptDirectorySnapshot = jobs.concept_directory || {
+      status: "idle",
+      progress: 0,
+    };
     const dailySnapshot = jobs.daily_trade || {
       status: "idle",
       progress: 0,
@@ -910,6 +923,7 @@ async function loadStatus() {
     updateJobCard(elements.bigDealFundFlow, bigDealFundFlowSnapshot);
     updateJobCard(elements.stockMainBusiness, mainBusinessSnapshot);
     updateJobCard(elements.stockMainComposition, mainCompositionSnapshot);
+    updateJobCard(elements.conceptDirectory, conceptDirectorySnapshot);
     updateJobCard(elements.globalFlash, globalFlashSnapshot);
     updateJobCard(elements.globalFlashClassification, globalFlashClassifySnapshot);
     updateJobCard(elements.financeBreakfast, breakfastSnapshot);
@@ -971,6 +985,7 @@ async function loadStatus() {
       globalFlashSnapshot,
       globalFlashClassifySnapshot,
       breakfastSnapshot,
+      conceptDirectorySnapshot,
     ].some((snapshot) => snapshot.status === "running");
     if (shouldPoll && !pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
@@ -1136,6 +1151,11 @@ function initActions() {
   elements.financialIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/financial-indicators", {})
   );
+  if (elements.conceptDirectory.button) {
+    elements.conceptDirectory.button.addEventListener("click", () =>
+      triggerJob("/control/sync/concept-directory", {})
+    );
+  }
   elements.performanceExpress.button.addEventListener("click", () =>
     triggerJob("/control/sync/performance-express", {})
   );

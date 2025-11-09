@@ -10,4 +10,5 @@ greenlet==3.2.4
 akshare
 requests==2.32.3
 beautifulsoup4==4.12.3
+py-mini-racer==0.10.0
 pytest==8.4.2

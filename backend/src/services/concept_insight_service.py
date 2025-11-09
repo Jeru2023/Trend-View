@@ -21,6 +21,7 @@ from ..dao import (
     NewsInsightDAO,
 )
 from .concept_index_history_service import sync_concept_index_history
+from .concept_constituent_service import resolve_concept_label
 from .sector_fund_flow_service import build_sector_fund_flow_snapshot
 
 logger = logging.getLogger(__name__)
@@ -179,9 +180,6 @@ def _fetch_concept_news(
                           LOWER(COALESCE(i.impact_themes, '')) LIKE %s
                        OR LOWER(COALESCE(i.impact_industries, '')) LIKE %s
                        OR LOWER(COALESCE(i.impact_sectors, '')) LIKE %s
-                       OR LOWER(COALESCE(i.impact_summary, '')) LIKE %s
-                       OR LOWER(COALESCE(a.title, '')) LIKE %s
-                       OR LOWER(COALESCE(a.summary, '')) LIKE %s
                       )
                     ORDER BY a.published_at DESC
                     LIMIT %s
@@ -194,9 +192,6 @@ def _fetch_concept_news(
                 ),
                 (
                     window_start,
-                    f"%{concept_key}%",
-                    f"%{concept_key}%",
-                    f"%{concept_key}%",
                     f"%{concept_key}%",
                     f"%{concept_key}%",
                     f"%{concept_key}%",
@@ -492,6 +487,26 @@ def get_latest_concept_insight(*, settings_path: Optional[str] = None) -> Option
     return record
 
 
+def list_concept_news(
+    concept: str,
+    *,
+    lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
+    limit: int = 50,
+    settings_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    resolved = resolve_concept_label(concept, settings_path=settings_path)
+    settings = load_settings(settings_path)
+    article_dao = NewsArticleDAO(settings.postgres)
+    insight_dao = NewsInsightDAO(settings.postgres)
+    return _fetch_concept_news(
+        article_dao,
+        insight_dao,
+        resolved["name"],
+        lookback_hours=lookback_hours,
+        limit=max(1, min(limit, 200)),
+    )
+
+
 def list_concept_insights(*, limit: int = 10, settings_path: Optional[str] = None) -> List[Dict[str, Any]]:
     settings = load_settings(settings_path)
     concept_dao = ConceptInsightDAO(settings.postgres)
@@ -519,4 +534,5 @@ __all__ = [
     "generate_concept_insight_summary",
     "get_latest_concept_insight",
     "list_concept_insights",
+    "list_concept_news",
 ]

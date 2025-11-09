@@ -111,6 +111,7 @@ from .services import (
     generate_industry_insight_summary,
     get_latest_industry_insight,
     list_industry_insights,
+    list_industry_news,
     list_individual_fund_flow,
     list_big_deal_fund_flow,
     list_hsgt_fund_flow,
@@ -157,14 +158,28 @@ from .services import (
     generate_concept_insight_summary,
     get_latest_concept_insight,
     build_concept_snapshot,
+    list_concept_news,
     search_concepts,
+    search_industries,
+    list_all_concepts,
+    list_all_industries,
     list_concept_watchlist,
+    list_industry_watchlist,
     get_concept_status,
+    get_industry_status,
+    delete_concept_watch_entry,
+    delete_industry_watch_entry,
     set_concept_watch_state,
+    set_industry_watch_state,
     refresh_concept_history,
+    refresh_industry_history,
     generate_concept_volume_price_reasoning,
     get_latest_volume_price_reasoning,
     list_volume_price_history,
+    generate_industry_volume_price_reasoning,
+    get_latest_industry_volume_price_reasoning,
+    list_industry_volume_price_history,
+    list_industry_index_history,
     list_concept_constituents,
     sync_concept_directory,
     sync_individual_fund_flow,
@@ -209,6 +224,90 @@ def _parse_time_string(value: str) -> Tuple[int, int]:
 def _normalize_time_string(value: str) -> str:
     hour, minute = _parse_time_string(value)
     return f"{hour:02d}:{minute:02d}"
+
+
+def _stringify_value(value: Any) -> str:
+    if isinstance(value, dict):
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(value)
+    if isinstance(value, (list, tuple)):
+        return "；".join(str(item) for item in value)
+    return str(value)
+
+
+def _format_volume_summary_lines(summary_payload: Any, raw_text: Optional[str]) -> List[str]:
+    parsed_summary: Optional[Dict[str, Any]] = None
+    if isinstance(summary_payload, dict):
+        parsed_summary = summary_payload
+    elif isinstance(summary_payload, str) and summary_payload.strip():
+        try:
+            parsed_summary = json.loads(summary_payload)
+        except (TypeError, json.JSONDecodeError):
+            parsed_summary = None
+    elif raw_text and raw_text.strip():
+        try:
+            parsed_summary = json.loads(raw_text)
+        except (TypeError, json.JSONDecodeError):
+            parsed_summary = None
+
+    lines: List[str] = []
+    if parsed_summary:
+        phase = parsed_summary.get("wyckoffPhase")
+        confidence = parsed_summary.get("confidence")
+        if phase or confidence is not None:
+            header = f"【阶段判定】{phase or '--'}"
+            if confidence is not None:
+                try:
+                    confidence_value = float(confidence)
+                    header += f" · 置信度 {confidence_value * 100:.0f}%"
+                except (TypeError, ValueError):
+                    header += f" · 置信度 {confidence}"
+            lines.append(header)
+            lines.append("")
+
+        summary_text = parsed_summary.get("stageSummary")
+        if summary_text:
+            lines.append("【量价结论】")
+            if isinstance(summary_text, (list, tuple)):
+                lines.extend(str(item) for item in summary_text if item is not None)
+            else:
+                lines.extend(str(summary_text).splitlines())
+            lines.append("")
+
+        intent = parsed_summary.get("compositeIntent")
+        if intent:
+            lines.append(f"【主力意图】{intent}")
+            lines.append("")
+
+        def _append_section(label: str, items: Any) -> None:
+            if not items:
+                return
+            if isinstance(items, (list, tuple)):
+                formatted = [str(item) if not isinstance(item, dict) else _stringify_value(item) for item in items]
+            else:
+                formatted = [str(items)]
+            lines.append(f"【{label}】")
+            for idx, item in enumerate(formatted, start=1):
+                lines.append(f"{idx}. {item}")
+            lines.append("")
+
+        _append_section("量能信号", parsed_summary.get("volumeSignals"))
+        _append_section("价格/结构信号", parsed_summary.get("priceSignals"))
+        _append_section("策略建议", parsed_summary.get("strategy"))
+        _append_section("风险提示", parsed_summary.get("risks"))
+        _append_section("后续观察", parsed_summary.get("checklist"))
+
+    if not lines:
+        fallback = raw_text or (summary_payload if isinstance(summary_payload, str) else "")
+        fallback_text = str(fallback or "").strip()
+        if fallback_text:
+            lines = fallback_text.splitlines()
+        else:
+            lines = ["暂无推理输出。"]
+
+    return lines
 logger = logging.getLogger(__name__)
 
 
@@ -2506,6 +2605,98 @@ class ConceptConstituentResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class IndustrySearchItem(BaseModel):
+    name: str
+    code: str
+
+
+class IndustrySearchResponse(BaseModel):
+    items: List[IndustrySearchItem]
+
+
+class IndustryWatchEntry(BaseModel):
+    industry: str
+    industry_code: str = Field(..., alias="industryCode")
+    is_watched: bool = Field(True, alias="isWatched")
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    created_at: Optional[datetime] = Field(None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryWatchlistResponse(BaseModel):
+    items: List[IndustryWatchEntry]
+
+
+class IndustryWatchRequest(BaseModel):
+    industry: str
+
+
+class IndustryStatusResponse(BaseModel):
+    industry: str
+    industry_code: str = Field(..., alias="industryCode")
+    is_watched: bool = Field(..., alias="isWatched")
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryRefreshRequest(BaseModel):
+    industry: str
+    lookback_days: Optional[int] = Field(180, alias="lookbackDays", ge=1, le=1095)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryRefreshResponse(BaseModel):
+    industry: str
+    industry_code: str = Field(..., alias="industryCode")
+    start_date: Optional[str] = Field(None, alias="startDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+    total_rows: Optional[int] = Field(None, alias="totalRows")
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+    is_watched: bool = Field(False, alias="isWatched")
+    errors: List[str] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryIndexBar(BaseModel):
+    trade_date: date = Field(..., alias="tradeDate")
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    pct_chg: Optional[float] = Field(None, alias="pctChg")
+    vol: Optional[float] = None
+    amount: Optional[float] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryIndexHistoryResponse(BaseModel):
+    industry: str
+    total: int
+    rows: List[IndustryIndexBar]
+
+
+class IndustryNewsListResponse(BaseModel):
+    items: List[IndustryNewsArticle] = Field(default_factory=list)
+
+
+class ConceptNewsListResponse(BaseModel):
+    items: List[IndustryNewsArticle] = Field(default_factory=list)
+
+
 class ConceptVolumePriceRecord(BaseModel):
     id: int
     concept: str
@@ -2523,6 +2714,34 @@ class ConceptVolumePriceRecord(BaseModel):
 class ConceptVolumePriceHistoryResponse(BaseModel):
     total: int
     items: List[ConceptVolumePriceRecord]
+
+
+class IndustryVolumePriceRequest(BaseModel):
+    industry: str
+    lookback_days: int = Field(90, alias="lookbackDays", ge=30, le=240)
+    run_llm: bool = Field(True, alias="runLlm")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryVolumePriceRecord(BaseModel):
+    id: int
+    industry: str
+    industry_code: str = Field(..., alias="industryCode")
+    lookback_days: int = Field(..., alias="lookbackDays")
+    summary: Dict[str, Any]
+    raw_text: str = Field(..., alias="rawText")
+    model: Optional[str]
+    generated_at: datetime = Field(..., alias="generatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndustryVolumePriceHistoryResponse(BaseModel):
+    total: int
+    items: List[IndustryVolumePriceRecord]
 
 
 class ConceptIndexBar(BaseModel):
@@ -7780,6 +7999,78 @@ def get_fund_flow_sector_hotlist() -> FundFlowSectorHotlistResponse:
     )
 
 
+@app.get("/industries/search", response_model=IndustrySearchResponse)
+def search_industries_api(
+    q: Optional[str] = Query(None, description="Optional keyword to filter industries."),
+    limit: int = Query(20, ge=1, le=100),
+) -> IndustrySearchResponse:
+    items = [IndustrySearchItem(**entry) for entry in search_industries(q, limit=limit)]
+    return IndustrySearchResponse(items=items)
+
+
+@app.get("/industries/watchlist", response_model=IndustryWatchlistResponse)
+def list_industry_watchlist_api() -> IndustryWatchlistResponse:
+    items = [IndustryWatchEntry(**entry) for entry in list_industry_watchlist()]
+    return IndustryWatchlistResponse(items=items)
+
+
+@app.post("/industries/watchlist", response_model=IndustryWatchEntry)
+def add_industry_watch(payload: IndustryWatchRequest = Body(...)) -> IndustryWatchEntry:
+    result = set_industry_watch_state(payload.industry, watch=True)
+    return IndustryWatchEntry(**result)
+
+
+@app.delete("/industries/watchlist/{industry}", response_model=IndustryWatchEntry)
+def remove_industry_watch(
+    industry: str = Path(..., min_length=1),
+    permanent: bool = Query(False, description="When true, delete the entry instead of toggling watch state."),
+) -> IndustryWatchEntry:
+    if permanent:
+        result = delete_industry_watch_entry(industry)
+    else:
+        result = set_industry_watch_state(industry, watch=False)
+    return IndustryWatchEntry(**result)
+
+
+@app.get("/industries/status", response_model=IndustryStatusResponse)
+def get_industry_status_api(industry: str = Query(..., min_length=1)) -> IndustryStatusResponse:
+    data = get_industry_status(industry)
+    return IndustryStatusResponse(**data)
+
+
+@app.post("/industries/refresh-history", response_model=IndustryRefreshResponse)
+def refresh_industry_history_api(payload: IndustryRefreshRequest = Body(...)) -> IndustryRefreshResponse:
+    result = refresh_industry_history(
+        payload.industry,
+        lookback_days=payload.lookback_days or 180,
+    )
+    return IndustryRefreshResponse(**result)
+
+
+@app.get("/market/industry-index-history", response_model=IndustryIndexHistoryResponse)
+def get_industry_index_history_api(
+    industry: str = Query(..., min_length=1),
+    limit: int = Query(240, ge=30, le=600),
+) -> IndustryIndexHistoryResponse:
+    result = list_industry_index_history(industry, limit=limit)
+    rows = [IndustryIndexBar(**row) for row in result.get("rows", [])]
+    return IndustryIndexHistoryResponse(industry=industry, total=int(result.get("total", 0)), rows=rows)
+
+
+@app.get("/industries/news", response_model=IndustryNewsListResponse)
+def list_industry_news_api(
+    industry: str = Query(..., min_length=1),
+    lookback_hours: int = Query(48, ge=1, le=240, alias="lookbackHours"),
+    limit: int = Query(30, ge=1, le=100),
+) -> IndustryNewsListResponse:
+    try:
+        records = list_industry_news(industry, lookback_hours=lookback_hours, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items = [IndustryNewsArticle(**entry) for entry in records]
+    return IndustryNewsListResponse(items=items)
+
+
 @app.get("/concepts/search", response_model=ConceptSearchResponse)
 def search_concepts_api(
     q: Optional[str] = Query(None, description="Optional keyword to filter concepts."),
@@ -7802,8 +8093,14 @@ def add_concept_watch(payload: ConceptWatchRequest = Body(...)) -> ConceptWatchE
 
 
 @app.delete("/concepts/watchlist/{concept}", response_model=ConceptWatchEntry)
-def remove_concept_watch(concept: str = Path(..., min_length=1)) -> ConceptWatchEntry:
-    result = set_concept_watch_state(concept, watch=False)
+def remove_concept_watch(
+    concept: str = Path(..., min_length=1),
+    permanent: bool = Query(False, description="When true, delete the entry instead of toggling watch state."),
+) -> ConceptWatchEntry:
+    if permanent:
+        result = delete_concept_watch_entry(concept)
+    else:
+        result = set_concept_watch_state(concept, watch=False)
     return ConceptWatchEntry(**result)
 
 
@@ -7851,97 +8148,29 @@ def list_concept_volume_price_history(
     return ConceptVolumePriceHistoryResponse(total=int(result.get("total", 0)), items=items)
 
 
+@app.get("/concepts/news", response_model=ConceptNewsListResponse)
+def list_concept_news_api(
+    concept: str = Query(..., min_length=1),
+    lookback_hours: int = Query(48, ge=1, le=240, alias="lookbackHours"),
+    limit: int = Query(40, ge=1, le=100),
+) -> ConceptNewsListResponse:
+    try:
+        records = list_concept_news(concept, lookback_hours=lookback_hours, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items = [IndustryNewsArticle(**entry) for entry in records]
+    return ConceptNewsListResponse(items=items)
+
+
 @app.post("/concepts/volume-price-analysis")
 def stream_concept_volume_price_analysis(payload: ConceptVolumePriceRequest = Body(...)) -> StreamingResponse:
-    def _stringify_value(value: Any) -> str:
-        if isinstance(value, dict):
-            try:
-                return json.dumps(value, ensure_ascii=False)
-            except (TypeError, ValueError):
-                return str(value)
-        if isinstance(value, (list, tuple)):
-            return "；".join(str(item) for item in value)
-        return str(value)
-
-    def format_summary(summary_payload: Any, raw_text: Optional[str]) -> List[str]:
-        parsed_summary: Optional[Dict[str, Any]] = None
-        if isinstance(summary_payload, dict):
-            parsed_summary = summary_payload
-        elif isinstance(summary_payload, str) and summary_payload.strip():
-            try:
-                parsed_summary = json.loads(summary_payload)
-            except (TypeError, json.JSONDecodeError):
-                parsed_summary = None
-        elif raw_text and raw_text.strip():
-            try:
-                parsed_summary = json.loads(raw_text)
-            except (TypeError, json.JSONDecodeError):
-                parsed_summary = None
-
-        lines: List[str] = []
-        if parsed_summary:
-            phase = parsed_summary.get("wyckoffPhase")
-            confidence = parsed_summary.get("confidence")
-            if phase or confidence is not None:
-                header = f"【阶段判定】{phase or '--'}"
-                if confidence is not None:
-                    try:
-                        confidence_value = float(confidence)
-                        header += f" · 置信度 {confidence_value * 100:.0f}%"
-                    except (TypeError, ValueError):
-                        header += f" · 置信度 {confidence}"
-                lines.append(header)
-                lines.append("")
-
-            summary_text = parsed_summary.get("stageSummary")
-            if summary_text:
-                lines.append("【量价结论】")
-                if isinstance(summary_text, (list, tuple)):
-                    lines.extend(str(item) for item in summary_text if item is not None)
-                else:
-                    lines.extend(str(summary_text).splitlines())
-                lines.append("")
-
-            intent = parsed_summary.get("compositeIntent")
-            if intent:
-                lines.append(f"【主力意图】{intent}")
-                lines.append("")
-
-            def _append_section(label: str, items: Any) -> None:
-                if not items:
-                    return
-                values = items
-                if isinstance(items, (list, tuple)):
-                    formatted = [str(item) if not isinstance(item, dict) else _stringify_value(item) for item in items]
-                else:
-                    formatted = [str(items)]
-                lines.append(f"【{label}】")
-                for idx, item in enumerate(formatted, start=1):
-                    lines.append(f"{idx}. {item}")
-                lines.append("")
-
-            _append_section("量能信号", parsed_summary.get("volumeSignals"))
-            _append_section("价格/结构信号", parsed_summary.get("priceSignals"))
-            _append_section("策略建议", parsed_summary.get("strategy"))
-            _append_section("风险提示", parsed_summary.get("risks"))
-            _append_section("后续观察", parsed_summary.get("checklist"))
-
-        if not lines:
-            fallback = raw_text or (summary_payload if isinstance(summary_payload, str) else "")
-            fallback_text = str(fallback or "").strip()
-            if fallback_text:
-                lines = fallback_text.splitlines()
-            else:
-                lines = ["暂无推理输出。"]
-
-        return lines
-
     def stream_generator():
         result = generate_concept_volume_price_reasoning(
             payload.concept,
             lookback_days=payload.lookback_days,
             run_llm=payload.run_llm,
         )
+
         header_parts = [
             f"概念: {result.get('concept')} ({result.get('conceptCode')})",
             f"样本: 最近{result.get('lookbackDays')}个交易日",
@@ -7961,7 +8190,59 @@ def stream_concept_volume_price_analysis(payload: ConceptVolumePriceRequest = Bo
             header_parts.append(f"时间 {generated_at}")
         yield " · ".join(str(part) for part in header_parts if part) + "\n\n"
 
-        for line in format_summary(result.get("summary"), result.get("rawText")):
+        for line in _format_volume_summary_lines(result.get("summary"), result.get("rawText")):
+            yield line + "\n"
+
+    return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")
+
+@app.get("/industries/volume-price-analysis/latest", response_model=IndustryVolumePriceRecord)
+def get_industry_volume_price_latest(industry: str = Query(..., min_length=1)) -> IndustryVolumePriceRecord:
+    record = get_latest_industry_volume_price_reasoning(industry)
+    if not record:
+        raise HTTPException(status_code=404, detail="Volume/price reasoning not found for industry.")
+    return IndustryVolumePriceRecord(**record)
+
+
+@app.get("/industries/volume-price-analysis/history", response_model=IndustryVolumePriceHistoryResponse)
+def list_industry_volume_price_history_api(
+    industry: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+) -> IndustryVolumePriceHistoryResponse:
+    result = list_industry_volume_price_history(industry, limit=limit, offset=offset)
+    items = [IndustryVolumePriceRecord(**entry) for entry in result.get("items", []) if entry]
+    return IndustryVolumePriceHistoryResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.post("/industries/volume-price-analysis")
+def stream_industry_volume_price_analysis(payload: IndustryVolumePriceRequest = Body(...)) -> StreamingResponse:
+    def stream_generator():
+        result = generate_industry_volume_price_reasoning(
+            payload.industry,
+            lookback_days=payload.lookback_days,
+            run_llm=payload.run_llm,
+        )
+
+        header_parts = [
+            f"行业: {result.get('industry')} ({result.get('industryCode')})",
+            f"样本: 最近{result.get('lookbackDays')}个交易日",
+        ]
+        stats = result.get("statistics") or {}
+        change_percent = stats.get("changePercent")
+        if change_percent is not None:
+            header_parts.append(f"区间涨跌幅 {change_percent}%")
+        avg_volume = stats.get("avgVolume")
+        if avg_volume is not None:
+            header_parts.append(f"平均成交量 {avg_volume}")
+        model_name = result.get("model")
+        if model_name:
+            header_parts.append(f"模型 {model_name}")
+        generated_at = result.get("generatedAt")
+        if generated_at:
+            header_parts.append(f"时间 {generated_at}")
+        yield " · ".join(str(part) for part in header_parts if part) + "\n\n"
+
+        for line in _format_volume_summary_lines(result.get("summary"), result.get("rawText")):
             yield line + "\n"
 
     return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")

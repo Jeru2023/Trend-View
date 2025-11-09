@@ -1,4 +1,4 @@
-console.info("Concept market module v20270444");
+console.info("Concept market module v20270445");
 
 const translations = getTranslations("conceptMarket");
 
@@ -36,6 +36,7 @@ const elements = {
   volumeHistoryClose: document.getElementById("concept-volume-history-close"),
   volumeHistorySection: document.getElementById("concept-volume-history"),
   volumeHistoryList: document.getElementById("concept-volume-history-list"),
+  newsList: document.getElementById("concept-market-news"),
 };
 
 const state = {
@@ -78,6 +79,13 @@ const state = {
     error: null,
     items: [],
   },
+  news: {
+    concept: null,
+    loading: false,
+    error: null,
+    items: [],
+  },
+  newsCache: new Map(),
   activeTab: "chart",
 };
 
@@ -225,6 +233,120 @@ function formatVolumeSummary(summary) {
   return sections.length ? sections.join("\n") : null;
 }
 
+function ensureConceptNewsLoaded({ force = false } = {}) {
+  if (!state.currentConcept) {
+    state.news.items = [];
+    state.news.error = null;
+    state.news.concept = null;
+    renderConceptNews();
+    return;
+  }
+  if (!force) {
+    const cached = state.newsCache.get(state.currentConcept);
+    if (cached) {
+      state.news.items = cached.items;
+      state.news.error = null;
+      state.news.concept = state.currentConcept;
+      renderConceptNews();
+      return;
+    }
+  }
+  fetchConceptNews(state.currentConcept);
+}
+
+async function fetchConceptNews(concept) {
+  state.news.loading = true;
+  state.news.error = null;
+  state.news.concept = concept;
+  renderConceptNews();
+  try {
+    const data = await fetchJSON(
+      `${API_BASE}/concepts/news?concept=${encodeURIComponent(concept)}&lookbackHours=48&limit=40`
+    );
+    const items = Array.isArray(data.items) ? data.items : [];
+    state.news.items = items;
+    state.newsCache.set(concept, { items });
+    state.news.error = null;
+  } catch (error) {
+    console.error("Failed to load concept news", error);
+    state.news.items = [];
+    state.news.error = getDict().newsError || "概念资讯加载失败。";
+  } finally {
+    state.news.loading = false;
+    renderConceptNews();
+  }
+}
+
+function renderConceptNews() {
+  const container = elements.newsList;
+  if (!container) return;
+  const dict = getDict();
+  container.innerHTML = "";
+  if (state.news.loading) {
+    container.dataset.empty = "0";
+    const loading = document.createElement("p");
+    loading.className = "concept-summary__text";
+    loading.textContent = dict.loading || "Loading…";
+    container.appendChild(loading);
+    return;
+  }
+  if (state.news.error) {
+    container.dataset.empty = "0";
+    const error = document.createElement("p");
+    error.className = "concept-summary__text";
+    error.textContent = state.news.error;
+    container.appendChild(error);
+    return;
+  }
+  if (!state.news.items.length) {
+    container.dataset.empty = "1";
+    return;
+  }
+  container.dataset.empty = "0";
+  state.news.items.forEach((article) => {
+    const card = document.createElement("article");
+    card.className = "concept-market__news-card";
+    if (article.title || article.impact_summary || article.url) {
+      const titleNode = document.createElement(article.url ? "a" : "h4");
+      titleNode.textContent = article.title || article.impact_summary || dict.newsTitle || "Article";
+      if (article.url) {
+        titleNode.href = article.url;
+        titleNode.target = "_blank";
+        titleNode.rel = "noopener noreferrer";
+        titleNode.className = "concept-market__news-link";
+      }
+      card.appendChild(titleNode);
+    }
+    if (article.summary || article.impact_summary) {
+      const summary = document.createElement("p");
+      summary.className = "concept-market__news-summary";
+      summary.textContent = article.summary || article.impact_summary;
+      card.appendChild(summary);
+    }
+    const meta = document.createElement("div");
+    meta.className = "concept-market__news-meta";
+    if (article.source) {
+      meta.appendChild(createNewsMetaChip(dict.newsSourceLabel || "Source", article.source));
+    }
+    if (article.published_at) {
+      meta.appendChild(createNewsMetaChip(dict.newsTimeLabel || "Published", formatDateTime(article.published_at)));
+    }
+    if (article.impact_summary && !article.summary) {
+      meta.appendChild(createNewsMetaChip(dict.newsImpactLabel || "Impact", article.impact_summary));
+    }
+    if (meta.children.length) {
+      card.appendChild(meta);
+    }
+    container.appendChild(card);
+  });
+}
+
+function createNewsMetaChip(label, value) {
+  const span = document.createElement("span");
+  span.textContent = `${label}: ${value}`;
+  return span;
+}
+
 function handleLanguageSwitch(event) {
   const lang = event.currentTarget.dataset.lang;
   if (!lang || lang === state.lang || !translations[lang]) return;
@@ -238,6 +360,10 @@ function handleLanguageSwitch(event) {
   renderChart(state.chartRows);
   renderConstituents();
   updateConceptMeta();
+  renderReasoning();
+  renderConceptNews();
+  updateVolumeAnalysisOutput();
+  renderVolumeHistoryList();
   setStatusMessage("", null);
 }
 
@@ -294,6 +420,22 @@ async function updateWatchState(concept, watch, { silent = false } = {}) {
     return response;
   } catch (error) {
     console.error("Failed to update watchlist", error);
+    setStatusMessage(dict.watchError || "Failed to update watchlist.", "error");
+    throw error;
+  }
+}
+
+async function deleteWatchEntry(concept) {
+  if (!concept) return null;
+  const dict = getDict();
+  const endpoint = `${API_BASE}/concepts/watchlist/${encodeURIComponent(concept)}?permanent=true`;
+  try {
+    const response = await fetchJSON(endpoint, { method: "DELETE" });
+    await fetchWatchlist();
+    setStatusMessage(dict.watchRemoved || "Concept removed.", "success");
+    return response;
+  } catch (error) {
+    console.error("Failed to delete concept watch entry", error);
     setStatusMessage(dict.watchError || "Failed to update watchlist.", "error");
     throw error;
   }
@@ -387,6 +529,10 @@ function selectConcept(name, code, source = "search") {
     chartTitle.textContent = name || getDict().chartTitle;
   }
   updateWatchlistHighlight();
+  state.news.items = [];
+  state.news.error = null;
+  state.news.concept = null;
+  renderConceptNews();
   setStatusMessage(getDict().loading || "Loading…", "info");
   loadConceptStatus(name).finally(() => {
     setStatusMessage("", null);
@@ -407,6 +553,9 @@ function selectConcept(name, code, source = "search") {
   toggleVolumeHistory(false);
   renderVolumeHistoryList();
   fetchLatestVolumeAnalysis(name, { force: true });
+  if (state.activeTab === "news") {
+    ensureConceptNewsLoaded({ force: true });
+  }
 }
 
 async function loadConceptStatus(concept) {
@@ -505,6 +654,10 @@ function renderWatchlist() {
     state.constituentMeta = null;
     state.constituentError = null;
     renderConstituents();
+    state.news.items = [];
+    state.news.error = null;
+    state.news.concept = null;
+    renderConceptNews();
     applyVolumeAnalysisCache(null);
     resetVolumeHistoryState();
     return;
@@ -552,6 +705,13 @@ function renderWatchlist() {
           data-action="favorite"
           aria-label=""
           title=""
+        ></button>
+        <button
+          type="button"
+          class="concept-market__watch-action concept-market__watch-action--delete"
+          data-action="delete"
+          aria-label="${dict.watchRemoved || "Remove"}"
+          title="${dict.watchRemoved || "Remove"}"
         ></button>
       </div>
     `;
@@ -603,6 +763,18 @@ function renderWatchlist() {
         }
       });
     }
+    const deleteButton = card.querySelector('[data-action="delete"]');
+    if (deleteButton) {
+      deleteButton.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        deleteButton.disabled = true;
+        try {
+          await deleteWatchEntry(entry.concept);
+        } finally {
+          deleteButton.disabled = false;
+        }
+      });
+    }
     fragment.appendChild(card);
   });
   container.appendChild(fragment);
@@ -646,6 +818,8 @@ function setActiveTab(tab, { force = false } = {}) {
   if (tab === "volume") {
     ensureVolumeAnalysisLoaded();
     updateVolumeAnalysisOutput();
+  } else if (tab === "news") {
+    ensureConceptNewsLoaded();
   }
 }
 
@@ -1424,6 +1598,7 @@ function init() {
   initTabs();
   initVolumeAnalysis();
   renderConstituents();
+  renderConceptNews();
   fetchWatchlist();
 }
 

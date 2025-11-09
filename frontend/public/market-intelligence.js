@@ -21,6 +21,7 @@ const FAVORITES_GROUP_ALL = "all";
 const FAVORITES_GROUP_NONE = "__ungrouped__";
 const DEFAULT_FILTERS = {
   industry: "all",
+  concept: null,
   pctChangeMin: 2,
   pctChangeMax: 5,
   marketCapMin: null,
@@ -35,6 +36,7 @@ const DEFAULT_FILTERS = {
 
 const RESET_FILTERS = {
   industry: "all",
+  concept: null,
   pctChangeMin: null,
   pctChangeMax: null,
   marketCapMin: null,
@@ -55,6 +57,10 @@ const TRADING_STATS_SORT_FIELDS = [
   "pctChange1W",
 ];
 const TRADING_STATS_SORT_SET = new Set(TRADING_STATS_SORT_FIELDS);
+
+function getDict() {
+  return translations[currentLang] || translations.zh || translations.en;
+}
 
 function normalizeFavoriteGroupValue(value) {
   if (value === null || value === undefined) {
@@ -99,6 +105,7 @@ function createDefaultFilterState() {
   const netIncomeYoyPercent = DEFAULT_FILTERS.netIncomeYoyMinPercent;
   return {
     industry: DEFAULT_FILTERS.industry,
+    concept: DEFAULT_FILTERS.concept,
     pctChangeMin: DEFAULT_FILTERS.pctChangeMin,
     pctChangeMax: DEFAULT_FILTERS.pctChangeMax,
     marketCapMin: DEFAULT_FILTERS.marketCapMin,
@@ -117,6 +124,7 @@ function createClearedFilterState() {
   const netIncomeYoyPercent = RESET_FILTERS.netIncomeYoyMinPercent;
   return {
     industry: RESET_FILTERS.industry,
+    concept: RESET_FILTERS.concept,
     pctChangeMin: RESET_FILTERS.pctChangeMin,
     pctChangeMax: RESET_FILTERS.pctChangeMax,
     marketCapMin: RESET_FILTERS.marketCapMin,
@@ -171,6 +179,10 @@ const favoriteGroupsState = {
 };
 
 let industryOptions = [];
+const conceptFilterState = {
+  items: [],
+  loading: null,
+};
 
 const elements = {
   tabs: document.querySelectorAll(".tab"),
@@ -181,6 +193,7 @@ const elements = {
   pageTitle: document.querySelector("[data-page-title]") || document.querySelector("[data-i18n='pageTitle']"),
   pageSubtitle: document.querySelector("[data-page-subtitle]") || document.querySelector("[data-i18n='pageSubtitle']"),
   industrySelect: document.getElementById("industry"),
+  conceptSelect: document.getElementById("concept-filter"),
   pctChangeMinInput: document.getElementById("pct-change-min"),
   pctChangeMaxInput: document.getElementById("pct-change-max"),
   marketCapMinInput: document.getElementById("market-cap-min"),
@@ -288,6 +301,17 @@ function setNumericFilterInputs(filters) {
       elements.netIncomeYoyInput.value = "";
     } else {
       elements.netIncomeYoyInput.value = formatNumberForInput(filters.netIncomeYoyMin * 100, 2);
+    }
+  }
+  if (elements.conceptSelect) {
+    const target = filters.concept || "";
+    if (!target) {
+      elements.conceptSelect.value = "";
+    } else {
+      const hasOption = Array.from(elements.conceptSelect.options || []).some(
+        (option) => option.value === target
+      );
+      elements.conceptSelect.value = hasOption ? target : "";
     }
   }
 }
@@ -624,6 +648,80 @@ function renderIndustryOptions(options = industryOptions) {
   }
 }
 
+async function loadConceptFilterOptions() {
+  if (!elements.conceptSelect) {
+    return;
+  }
+  conceptFilterState.loading = true;
+  try {
+    const response = await fetch(`${API_BASE}/concepts/watchlist`);
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    conceptFilterState.items = items;
+    renderConceptOptions(items);
+  } catch (error) {
+    console.error("Failed to load concept watchlist:", error);
+    conceptFilterState.items = [];
+    renderConceptOptions([]);
+  } finally {
+    conceptFilterState.loading = false;
+  }
+}
+
+function renderConceptOptions(options = conceptFilterState.items) {
+  if (!elements.conceptSelect) {
+    return;
+  }
+  const select = elements.conceptSelect;
+  const dict = getDict();
+  select.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent =
+    dict.filterConceptPlaceholder || dict.filterAll || "All";
+  select.appendChild(placeholder);
+
+  const normalized = Array.isArray(options)
+    ? options
+        .map((item) => {
+          if (item && typeof item.concept === "string") {
+            return item.concept.trim();
+          }
+          if (item && typeof item.conceptName === "string") {
+            return item.conceptName.trim();
+          }
+          return "";
+        })
+        .filter(Boolean)
+    : [];
+  const uniqueConcepts = Array.from(new Set(normalized));
+  const locale = currentLang === "zh" ? "zh-CN" : "en";
+  uniqueConcepts.sort((a, b) => a.localeCompare(b, locale, { sensitivity: "base" }));
+
+  uniqueConcepts.forEach((conceptName) => {
+    const option = document.createElement("option");
+    option.value = conceptName;
+    option.textContent = conceptName;
+    select.appendChild(option);
+  });
+
+  const currentValue = state.trading.filters?.concept || "";
+  if (currentValue && uniqueConcepts.includes(currentValue)) {
+    select.value = currentValue;
+  } else {
+    select.value = "";
+    if (currentValue) {
+      state.trading.filters.concept = null;
+      if (state.metrics?.filters) {
+        state.metrics.filters.concept = null;
+      }
+    }
+  }
+}
+
 function updateSearchAreaVisibility() {
   const shouldHide = state.favoritesOnly;
   if (elements.contentHeader) {
@@ -775,6 +873,7 @@ async function initialize() {
     elements.searchBox.value = state.search.keyword;
   }
   determineInitialFavoritesMode();
+  await loadConceptFilterOptions();
   await updateLanguage(currentLang);
   await setActiveTab(activeTab, { force: true });
   await loadTradingData(1);
@@ -1125,6 +1224,17 @@ async function loadTradingData(page = 1) {
     }
   }
 
+  const conceptSelection = (elements.conceptSelect?.value || "").trim();
+  const normalizedConcept = conceptSelection || null;
+  if (normalizedConcept) {
+    params.set("concept", normalizedConcept);
+    if (state.trading.filters) {
+      state.trading.filters.concept = normalizedConcept;
+    }
+  } else if (state.trading.filters) {
+    state.trading.filters.concept = null;
+  }
+
   try {
     const response = await fetch(`${API_BASE}/stocks?${params.toString()}`);
     if (!response.ok) {
@@ -1253,8 +1363,11 @@ function collectFilters() {
   const netIncomeQoqMin = parseOptionalNumericInput(elements.netIncomeQoqInput);
   const netIncomeYoyPercent = parseOptionalNumericInput(elements.netIncomeYoyInput);
 
+  const conceptSelection = (elements.conceptSelect?.value || "").trim();
+
   return {
     industry,
+    concept: conceptSelection || null,
     pctChangeMin,
     pctChangeMax,
     marketCapMin,
@@ -1333,6 +1446,7 @@ function applyTranslations() {
     elements.favoritesGroupTags.setAttribute("aria-label", label);
   }
 
+  renderConceptOptions();
   renderIndustryOptions();
   renderFavoriteGroupOptions();
   updateFavoritesUI();

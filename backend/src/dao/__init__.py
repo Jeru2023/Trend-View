@@ -53,6 +53,10 @@ from .concept_watchlist_dao import ConceptWatchlistDAO
 from .concept_constituent_dao import ConceptConstituentDAO
 from .concept_directory_dao import ConceptDirectoryDAO
 from .concept_volume_price_reasoning_dao import ConceptVolumePriceReasoningDAO
+from .industry_directory_dao import IndustryDirectoryDAO
+from .industry_watchlist_dao import IndustryWatchlistDAO
+from .industry_index_history_dao import IndustryIndexHistoryDAO
+from .industry_volume_price_reasoning_dao import IndustryVolumePriceReasoningDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -108,4 +112,8 @@ __all__ = [
     "ConceptConstituentDAO",
     "ConceptDirectoryDAO",
     "ConceptVolumePriceReasoningDAO",
+    "IndustryDirectoryDAO",
+    "IndustryWatchlistDAO",
+    "IndustryIndexHistoryDAO",
+    "IndustryVolumePriceReasoningDAO",
 ]

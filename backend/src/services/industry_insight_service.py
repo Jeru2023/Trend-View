@@ -15,6 +15,7 @@ from psycopg2 import sql
 from ..api_clients import generate_finance_analysis
 from ..config.settings import load_settings
 from ..dao import IndustryInsightDAO, NewsArticleDAO, NewsInsightDAO
+from .industry_directory_service import resolve_industry_label
 from .sector_fund_flow_service import build_sector_fund_flow_snapshot
 
 logger = logging.getLogger(__name__)
@@ -160,9 +161,7 @@ def _fetch_industry_news(
                       AND (
                           LOWER(COALESCE(i.impact_industries, '')) LIKE %s
                        OR LOWER(COALESCE(i.impact_sectors, '')) LIKE %s
-                       OR LOWER(COALESCE(i.impact_summary, '')) LIKE %s
-                       OR LOWER(COALESCE(a.title, '')) LIKE %s
-                       OR LOWER(COALESCE(a.summary, '')) LIKE %s
+                       OR LOWER(COALESCE(i.impact_themes, '')) LIKE %s
                       )
                     ORDER BY a.published_at DESC
                     LIMIT %s
@@ -175,8 +174,6 @@ def _fetch_industry_news(
                 ),
                 (
                     window_start,
-                    f"%{key}%",
-                    f"%{key}%",
                     f"%{key}%",
                     f"%{key}%",
                     f"%{key}%",
@@ -451,6 +448,26 @@ def get_latest_industry_insight(*, settings_path: Optional[str] = None) -> Optio
     return record
 
 
+def list_industry_news(
+    industry: str,
+    *,
+    lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
+    limit: int = 50,
+    settings_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    resolved = resolve_industry_label(industry, settings_path=settings_path)
+    settings = load_settings(settings_path)
+    article_dao = NewsArticleDAO(settings.postgres)
+    insight_dao = NewsInsightDAO(settings.postgres)
+    return _fetch_industry_news(
+        article_dao,
+        insight_dao,
+        resolved["name"],
+        lookback_hours=lookback_hours,
+        limit=max(1, min(limit, 200)),
+    )
+
+
 def list_industry_insights(*, limit: int = 10, settings_path: Optional[str] = None) -> List[Dict[str, Any]]:
     settings = load_settings(settings_path)
     industry_dao = IndustryInsightDAO(settings.postgres)
@@ -478,4 +495,5 @@ __all__ = [
     "generate_industry_insight_summary",
     "get_latest_industry_insight",
     "list_industry_insights",
+    "list_industry_news",
 ]

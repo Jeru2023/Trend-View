@@ -1,8 +1,8 @@
-"""DAO for concept index history sourced from Tushare."""
+"""DAO for industry index history sourced from Eastmoney."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 from typing import List, Optional, Sequence, Set, Tuple
 
@@ -15,12 +15,11 @@ from psycopg2.extensions import connection as PGConnection
 from ..config.settings import PostgresSettings
 from .base import PostgresDAOBase
 
+SCHEMA_SQL_PATH = Path(__file__).resolve().parents[2] / "config" / "industry_index_history_schema.sql"
 
-SCHEMA_SQL_PATH = Path(__file__).resolve().parents[2] / "config" / "concept_index_history_schema.sql"
-
-CONCEPT_INDEX_HISTORY_FIELDS: Sequence[str] = (
+INDUSTRY_INDEX_HISTORY_FIELDS: Sequence[str] = (
     "ts_code",
-    "concept_name",
+    "industry_name",
     "trade_date",
     "open",
     "high",
@@ -37,14 +36,14 @@ _TABLE_INIT_LOCK = Lock()
 _INITIALISED_TABLES: Set[Tuple[str, str]] = set()
 
 
-class ConceptIndexHistoryDAO(PostgresDAOBase):
-    """Persistence helper for concept index daily history."""
+class IndustryIndexHistoryDAO(PostgresDAOBase):
+    """Persistence helper for industry index daily history."""
 
     _conflict_keys: Sequence[str] = ("ts_code", "trade_date")
 
     def __init__(self, config: PostgresSettings, table_name: str | None = None) -> None:
         super().__init__(config=config)
-        self._table_name = table_name or getattr(config, "concept_index_history_table", "concept_index_history")
+        self._table_name = table_name or getattr(config, "industry_index_history_table", "industry_index_history")
         self._schema_sql_template = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
 
     def ensure_table(self, conn: PGConnection) -> None:
@@ -76,7 +75,7 @@ class ConceptIndexHistoryDAO(PostgresDAOBase):
                     schema=self.config.schema,
                     table=self._table_name,
                     dataframe=deduped,
-                    columns=CONCEPT_INDEX_HISTORY_FIELDS,
+                    columns=INDUSTRY_INDEX_HISTORY_FIELDS,
                     conflict_keys=self._conflict_keys,
                     date_columns=("trade_date",),
                 )
@@ -87,7 +86,7 @@ class ConceptIndexHistoryDAO(PostgresDAOBase):
             schema=self.config.schema,
             table=self._table_name,
             dataframe=deduped,
-            columns=CONCEPT_INDEX_HISTORY_FIELDS,
+            columns=INDUSTRY_INDEX_HISTORY_FIELDS,
             conflict_keys=self._conflict_keys,
             date_columns=("trade_date",),
         )
@@ -96,7 +95,7 @@ class ConceptIndexHistoryDAO(PostgresDAOBase):
         self,
         *,
         ts_code: Optional[str] = None,
-        concept_name: Optional[str] = None,
+        industry_name: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         limit: int = 200,
@@ -108,9 +107,9 @@ class ConceptIndexHistoryDAO(PostgresDAOBase):
         if ts_code:
             conditions.append(sql.SQL("h.ts_code = %s"))
             params.append(ts_code)
-        if concept_name:
-            conditions.append(sql.SQL("h.concept_name = %s"))
-            params.append(concept_name)
+        if industry_name:
+            conditions.append(sql.SQL("h.industry_name = %s"))
+            params.append(industry_name)
         if start_date:
             conditions.append(sql.SQL("h.trade_date >= %s"))
             params.append(start_date)
@@ -128,7 +127,7 @@ class ConceptIndexHistoryDAO(PostgresDAOBase):
         base_query = sql.SQL(
             """
             SELECT h.ts_code,
-                   h.concept_name,
+                   h.industry_name,
                    h.trade_date,
                    h.open,
                    h.high,
@@ -171,7 +170,7 @@ class ConceptIndexHistoryDAO(PostgresDAOBase):
 
         columns = [
             "ts_code",
-            "concept_name",
+            "industry_name",
             "trade_date",
             "open",
             "high",
@@ -199,40 +198,14 @@ class ConceptIndexHistoryDAO(PostgresDAOBase):
         items: List[dict[str, object]] = []
         for row in rows:
             record = dict(zip(columns, row))
-            for key in ("open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "amount"):
-                record[key] = _to_float(record.get(key))
+            for field in ("open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "amount"):
+                record[field] = _to_float(record.get(field))
             items.append(record)
 
         return {"total": int(total), "items": items}
 
-    def stats(self) -> dict[str, Optional[datetime]]:
-        with self.connect() as conn:
-            self.ensure_table(conn)
-            with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL("SELECT COUNT(*), MAX(updated_at) FROM {schema}.{table}").format(
-                        schema=sql.Identifier(self.config.schema),
-                        table=sql.Identifier(self._table_name),
-                    )
-                )
-                count, last_updated = cur.fetchone()
-        return {"count": count or 0, "updated_at": last_updated}
-
-    def truncate(self) -> None:
-        with self.connect() as conn:
-            self.ensure_table(conn)
-            with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL("TRUNCATE TABLE {schema}.{table}").format(
-                        schema=sql.Identifier(self.config.schema),
-                        table=sql.Identifier(self._table_name),
-                    )
-                )
-            conn.commit()
-
-    def get_latest_trade_date(self, concept_name: str) -> Optional[str]:
-        """Return the most recent trade_date stored for the concept."""
-        if not concept_name:
+    def get_latest_trade_date(self, industry_name: str) -> Optional[str]:
+        if not industry_name:
             return None
         with self.connect() as conn:
             self.ensure_table(conn)
@@ -242,17 +215,19 @@ class ConceptIndexHistoryDAO(PostgresDAOBase):
                         """
                         SELECT MAX(trade_date)
                         FROM {schema}.{table}
-                        WHERE concept_name = %s
+                        WHERE industry_name = %s
                         """
                     ).format(
                         schema=sql.Identifier(self.config.schema),
                         table=sql.Identifier(self._table_name),
                     ),
-                    (concept_name,),
+                    (industry_name,),
                 )
                 row = cur.fetchone()
         latest = row[0] if row else None
-        return latest.strftime("%Y-%m-%d") if latest else None
+        if isinstance(latest, (datetime, date)):
+            return latest.strftime("%Y-%m-%d")
+        return latest
 
 
-__all__ = ["CONCEPT_INDEX_HISTORY_FIELDS", "ConceptIndexHistoryDAO"]
+__all__ = ["IndustryIndexHistoryDAO"]

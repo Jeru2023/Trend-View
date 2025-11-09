@@ -498,6 +498,45 @@
                 </div>
                 <p class="job-message" id="stock-main-composition-message"></p>
               </div>
+              <div class="card" id="concept-directory-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="conceptDirectoryTitle">Concept Directory</h3>
+                    <p class="card__subtitle" data-i18n="conceptDirectorySubtitle">
+                      Refresh cached concept name/code pairs for downstream jobs.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-concept-directory" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="concept-directory-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="concept-directory-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="concept-directory-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="concept-directory-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="concept-directory-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="concept-directory-message"></p>
+              </div>
             </div>
           </div>
 

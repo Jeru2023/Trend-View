@@ -32,6 +32,7 @@ from .concept_insight_service import (
     generate_concept_insight_summary,
     get_latest_concept_insight,
     list_concept_insights,
+    list_concept_news,
 )
 from .concept_constituent_service import list_concept_constituents, sync_concept_directory
 from .concept_market_service import (
@@ -40,6 +41,7 @@ from .concept_market_service import (
     list_concept_watchlist,
     get_concept_status,
     set_concept_watch_state,
+    delete_concept_watch_entry,
     refresh_concept_history,
 )
 from .concept_volume_price_service import (
@@ -48,11 +50,36 @@ from .concept_volume_price_service import (
     get_latest_volume_price_reasoning,
     list_volume_price_history,
 )
+from .industry_volume_price_service import (
+    build_industry_volume_price_dataset,
+    generate_industry_volume_price_reasoning,
+    get_latest_industry_volume_price_reasoning,
+    list_industry_volume_price_history,
+)
+from .industry_directory_service import (
+    list_industry_directory,
+    resolve_industry_label,
+    search_industry_directory,
+)
+from .industry_market_service import (
+    search_industries,
+    list_all_industries,
+    list_industry_watchlist,
+    get_industry_status,
+    set_industry_watch_state,
+    delete_industry_watch_entry,
+    refresh_industry_history,
+)
+from .industry_index_history_service import (
+    sync_industry_index_history,
+    list_industry_index_history,
+)
 from .industry_insight_service import (
     build_industry_snapshot,
     generate_industry_insight_summary,
     get_latest_industry_insight,
     list_industry_insights,
+    list_industry_news,
 )
 from .individual_fund_flow_service import list_individual_fund_flow, sync_individual_fund_flow
 from .big_deal_fund_flow_service import list_big_deal_fund_flow, sync_big_deal_fund_flow
@@ -177,16 +204,23 @@ __all__ = [
     "list_concept_watchlist",
     "get_concept_status",
     "set_concept_watch_state",
+    "delete_concept_watch_entry",
     "refresh_concept_history",
     "build_volume_price_dataset",
     "generate_concept_volume_price_reasoning",
     "get_latest_volume_price_reasoning",
     "list_volume_price_history",
+    "build_industry_volume_price_dataset",
+    "generate_industry_volume_price_reasoning",
+    "get_latest_industry_volume_price_reasoning",
+    "list_industry_volume_price_history",
     "list_concept_insights",
+    "list_concept_news",
     "build_industry_snapshot",
     "generate_industry_insight_summary",
     "get_latest_industry_insight",
     "list_industry_insights",
+    "list_industry_news",
     "list_individual_fund_flow",
     "list_hsgt_fund_flow",
     "sync_finance_breakfast",
@@ -218,4 +252,16 @@ __all__ = [
     "get_favorite_status",
     "get_stock_main_business",
     "get_stock_main_composition",
+    "list_industry_directory",
+    "resolve_industry_label",
+    "search_industry_directory",
+    "search_industries",
+    "list_all_industries",
+    "list_industry_watchlist",
+    "get_industry_status",
+    "set_industry_watch_state",
+    "delete_industry_watch_entry",
+    "refresh_industry_history",
+    "sync_industry_index_history",
+    "list_industry_index_history",
 ]
