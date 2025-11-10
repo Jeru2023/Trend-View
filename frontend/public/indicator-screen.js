@@ -77,7 +77,8 @@ let currentPage = 1;
 let totalItems = 0;
 let selectedIndicators = [CONTINUOUS_VOLUME_CODE];
 let filters = {
-  netIncomeYoy: null,
+  netIncomeYoyRatio: null,
+  netIncomeQoqRatio: null,
   peMin: null,
   peMax: null,
 };
@@ -98,9 +99,11 @@ const elements = {
   pageLabel: document.getElementById("indicator-page-label"),
   tagList: document.getElementById("indicator-tag-list"),
   filterNetIncome: document.getElementById("filter-netincome"),
+  filterNetIncomeQoq: document.getElementById("filter-netincome-qoq"),
   filterPeMin: document.getElementById("filter-pe-min"),
   filterPeMax: document.getElementById("filter-pe-max"),
   filterApply: document.getElementById("indicator-filter-apply"),
+  snapshotButton: document.getElementById("indicator-snapshot-btn"),
 };
 
 function getInitialLanguage() {
@@ -358,8 +361,11 @@ async function fetchIndicatorData(page = currentPage) {
     params.set("limit", limit);
     params.set("offset", offset);
     selectedIndicators.forEach((code) => params.append("indicators", code));
-    if (filters.netIncomeYoy !== null) {
-      params.set("netIncomeYoyMin", String(filters.netIncomeYoy));
+    if (filters.netIncomeYoyRatio !== null) {
+      params.set("netIncomeYoyMin", String(filters.netIncomeYoyRatio));
+    }
+    if (filters.netIncomeQoqRatio !== null) {
+      params.set("netIncomeQoqMin", String(filters.netIncomeQoqRatio));
     }
     if (filters.peMin !== null) {
       params.set("peMin", String(filters.peMin));
@@ -376,6 +382,9 @@ async function fetchIndicatorData(page = currentPage) {
     lastCapturedAt = payload.capturedAt || null;
     totalItems = Number(payload.total) || 0;
     currentPage = page;
+    if (elements.snapshotButton) {
+      elements.snapshotButton.disabled = currentItems.length === 0;
+    }
     renderStatus(dict.statusIdle || "");
     renderSummary();
     renderTable();
@@ -387,6 +396,9 @@ async function fetchIndicatorData(page = currentPage) {
     currentItems = [];
     lastCapturedAt = null;
     totalItems = 0;
+    if (elements.snapshotButton) {
+      elements.snapshotButton.disabled = true;
+    }
     renderSummary();
     renderTable();
     renderUpdated();
@@ -461,6 +473,9 @@ function bindEvents() {
         fetchIndicatorData(currentPage + 1);
       }
     });
+  }
+  if (elements.snapshotButton) {
+    elements.snapshotButton.addEventListener("click", openSnapshotWindow);
   }
   if (elements.tagList) {
     elements.tagList.addEventListener("click", (event) => {
@@ -557,22 +572,59 @@ function toggleIndicator(code) {
   if (!code) {
     return;
   }
-  const isSelected = selectedIndicators.includes(code);
-  if (isSelected) {
-    if (selectedIndicators.length === 1) {
-      return;
-    }
+  let shouldFetch = true;
+  if (selectedIndicators.includes(code)) {
     selectedIndicators = selectedIndicators.filter((item) => item !== code);
+    if (selectedIndicators.length === 0) {
+      shouldFetch = false;
+      currentItems = [];
+      totalItems = 0;
+      lastCapturedAt = null;
+      renderIndicatorTags();
+      renderSummary();
+      renderTable();
+      renderUpdated();
+      updatePaginationControls();
+      const dict = getDict();
+      renderStatus(dict.statusNeedIndicator || "Select at least one indicator.", "info");
+    }
   } else {
     selectedIndicators = [...selectedIndicators, code];
   }
+  if (!shouldFetch) {
+    return;
+  }
+  renderIndicatorTags();
   currentPage = 1;
-  applyTranslations();
   fetchIndicatorData();
 }
 
+function openSnapshotWindow() {
+  if (!currentItems.length) {
+    return;
+  }
+  const snapshotPayload = currentItems.map((item) => ({
+    code: item.stockCodeFull || item.stockCode,
+    name: item.stockName || item.stockCode,
+  }));
+  const storageKey = `indicator_snapshot_${Date.now()}`;
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(snapshotPayload));
+  } catch (error) {
+    console.error("Failed to cache snapshot payload", error);
+    return;
+  }
+  const snapshotUrl = new URL("indicator-snapshot.html", window.location.href);
+  snapshotUrl.searchParams.set("key", storageKey);
+  window.open(snapshotUrl.toString(), "_blank");
+}
+
 function updateFilterState() {
-  filters.netIncomeYoy = elements.filterNetIncome?.value ? Number(elements.filterNetIncome.value) : null;
+  const percentValue = elements.filterNetIncome?.value ? Number(elements.filterNetIncome.value) : null;
+  filters.netIncomeYoyRatio =
+    percentValue !== null && Number.isFinite(percentValue) ? percentValue / 100 : null;
+  const qoqValue = elements.filterNetIncomeQoq?.value ? Number(elements.filterNetIncomeQoq.value) : null;
+  filters.netIncomeQoqRatio = qoqValue !== null && Number.isFinite(qoqValue) ? qoqValue / 100 : null;
   filters.peMin = elements.filterPeMin?.value ? Number(elements.filterPeMin.value) : null;
   filters.peMax = elements.filterPeMax?.value ? Number(elements.filterPeMax.value) : null;
 }

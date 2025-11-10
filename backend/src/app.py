@@ -441,6 +441,7 @@ class StockItem(BaseModel):
     gross_margin: Optional[float] = Field(None, alias="grossMargin")
     roe: Optional[float] = Field(None, alias="roe")
     net_income_yoy_latest: Optional[float] = Field(None, alias="netIncomeYoyLatest")
+    net_income_qoq_latest: Optional[float] = Field(None, alias="netIncomeQoqLatest")
     net_income_yoy_prev1: Optional[float] = Field(None, alias="netIncomeYoyPrev1")
     net_income_yoy_prev2: Optional[float] = Field(None, alias="netIncomeYoyPrev2")
     net_income_qoq_latest: Optional[float] = Field(None, alias="netIncomeQoqLatest")
@@ -8893,6 +8894,7 @@ def get_market_activity_snapshot() -> MarketActivityListResponse:
 def list_indicator_screenings_endpoint(
     indicators: Optional[List[str]] = Query(None, alias="indicators", description="Indicator code filters."),
     net_income_yoy_min: Optional[float] = Query(None, alias="netIncomeYoyMin", description="Minimum net income YoY."),
+    net_income_qoq_min: Optional[float] = Query(None, alias="netIncomeQoqMin", description="Minimum net income QoQ."),
     pe_min: Optional[float] = Query(None, alias="peMin", description="Minimum PE ratio."),
     pe_max: Optional[float] = Query(None, alias="peMax", description="Maximum PE ratio."),
     limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
@@ -8903,6 +8905,7 @@ def list_indicator_screenings_endpoint(
         limit=limit,
         offset=offset,
         net_income_yoy_min=net_income_yoy_min,
+        net_income_qoq_min=net_income_qoq_min,
         pe_min=pe_min,
         pe_max=pe_max,
     )
@@ -8929,6 +8932,7 @@ def list_indicator_screenings_endpoint(
             highPrice=entry.get("highPrice"),
             lowPrice=entry.get("lowPrice"),
             netIncomeYoyLatest=entry.get("netIncomeYoyLatest"),
+            netIncomeQoqLatest=entry.get("netIncomeQoqLatest"),
             peRatio=entry.get("peRatio"),
             turnoverPercent=entry.get("turnoverPercent"),
             industry=entry.get("industry"),

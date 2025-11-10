@@ -2113,6 +2113,37 @@ body {
   color: var(--text);
 }
 
+.indicator-filter__field--suffix {
+  flex-wrap: wrap;
+}
+
+.indicator-filter__input-suffix {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 6px 0 0;
+}
+
+.indicator-filter__input-suffix input {
+  width: 80px;
+  border: none;
+  padding: 6px 8px;
+  background: transparent;
+  font-size: 0.9rem;
+}
+
+.indicator-filter__input-suffix input:focus {
+  outline: none;
+}
+
+.indicator-filter__input-suffix .input-suffix {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-right: 6px;
+}
+
 .indicator-filter__field input {
   width: 90px;
   padding: 6px 8px;

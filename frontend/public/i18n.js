@@ -1432,6 +1432,7 @@
         statusSuccess: "Screening data refreshed.",
         statusSuccessDetailed: "Updated {updated}, skipped {skipped} (already up to date).",
         statusError: "Failed to refresh data.",
+        statusNeedIndicator: "Select at least one indicator to view results.",
         tableIndicator: "Indicator",
         colRank: "Rank",
         colIndicator: "Indicators",
@@ -1453,6 +1454,7 @@
         colLow: "Low",
         filterLabel: "Indicators",
         filterApply: "Apply",
+        viewSnapshots: "View Snapshots",
         empty: "No screening results yet.",
       },
       zh: {
@@ -1472,6 +1474,7 @@
         statusSuccess: "选股数据已更新。",
         statusSuccessDetailed: "成功更新 {updated} 个指标，{skipped} 个已是最新。",
         statusError: "更新选股数据失败。",
+        statusNeedIndicator: "请选择至少一个指标进行筛选。",
         tableIndicator: "指标",
         colRank: "序号",
         colIndicator: "指标标签",
@@ -1493,6 +1496,7 @@
         colLow: "最低价",
         filterLabel: "指标筛选",
         filterApply: "应用",
+        viewSnapshots: "查看快照",
         empty: "暂无指标选股数据。",
       }
     },

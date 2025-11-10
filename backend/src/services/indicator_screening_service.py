@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from typing import Any, Dict, Iterable, List, Sequence
 
 import pandas as pd
@@ -42,6 +42,8 @@ VOLUME_SURGE_BREAKOUT_NAME = "爆量启动"
 DEFAULT_INDICATOR_CODE = CONTINUOUS_VOLUME_CODE
 MAX_INTERSECTION_FETCH = 2000
 MAX_SINGLE_INDICATOR_FETCH = 5000
+
+FINAL_SYNC_CUTOFF = time(16, 0)
 
 VOLUME_SURGE_FETCH_DAYS = 90
 VOLUME_SURGE_CONSOLIDATION_WINDOW = 30
@@ -228,8 +230,15 @@ def _normalize_continuous_rise_frame(dataframe: pd.DataFrame, captured_at: datet
     frame["volume_days"] = pd.to_numeric(frame.get("volume_days"), errors="coerce").astype("Int64")
     frame["stage_change_percent"] = frame.get("stage_change_percent").apply(_safe_float)
     frame["turnover_percent"] = frame.get("turnover_percent").apply(_safe_float)
-    frame["net_income_yoy_latest"] = frame.get("net_income_yoy_latest").apply(_safe_float)
-    frame["pe_ratio"] = frame.get("pe_ratio").apply(_safe_float)
+    if "net_income_yoy_latest" in frame.columns:
+        frame["net_income_yoy_latest"] = frame["net_income_yoy_latest"].apply(_safe_float)
+    else:
+        frame["net_income_yoy_latest"] = pd.Series([None] * len(frame))
+    if "net_income_qoq_latest" in frame.columns:
+        frame["net_income_qoq_latest"] = frame["net_income_qoq_latest"].apply(_safe_float)
+    else:
+        frame["net_income_qoq_latest"] = pd.Series([None] * len(frame))
+    frame["pe_ratio"] = frame.get("pe_ratio").apply(_safe_float) if "pe_ratio" in frame.columns else pd.Series([None] * len(frame))
     frame["volume_text"] = None
     frame["volume_shares"] = None
     frame["baseline_volume_text"] = None
@@ -501,24 +510,8 @@ def sync_all_indicator_screenings(
 ) -> list[dict[str, Any]]:
     settings = load_settings(settings_path)
     dao = IndicatorScreeningDAO(settings.postgres)
-    today = datetime.now(LOCAL_TZ).date()
     results: list[dict[str, Any]] = []
     for code in INDICATOR_DEFINITIONS:
-        latest_info = dao.list_entries(indicator_code=code, limit=1, offset=0)
-        latest_captured = _localize_datetime(latest_info.get("latest_captured_at"))
-        total = int(latest_info.get("total", 0))
-        if not force and total > 0 and latest_captured and latest_captured.date() == today:
-            results.append(
-                {
-                    "indicatorCode": code,
-                    "indicatorName": INDICATOR_DEFINITIONS[code]["name"],
-                    "rows": 0,
-                    "capturedAt": latest_captured,
-                    "skipped": True,
-                    "reason": "up_to_date",
-                }
-            )
-            continue
         sync_result = _perform_indicator_sync(code, settings, dao)
         results.append(sync_result)
     return results
@@ -557,6 +550,7 @@ def list_indicator_screenings(
     limit: int = 200,
     offset: int = 0,
     net_income_yoy_min: float | None = None,
+    net_income_qoq_min: float | None = None,
     pe_min: float | None = None,
     pe_max: float | None = None,
     settings_path: str | None = None,
@@ -564,7 +558,7 @@ def list_indicator_screenings(
     codes = _normalize_indicator_codes(indicator_codes)
     settings = load_settings(settings_path)
     dao = IndicatorScreeningDAO(settings.postgres)
-    require_metrics = any(value is not None for value in (net_income_yoy_min, pe_min, pe_max))
+    require_metrics = any(value is not None for value in (net_income_yoy_min, net_income_qoq_min, pe_min, pe_max))
     fundamental_dao = FundamentalMetricsDAO(settings.postgres) if require_metrics else None
     daily_indicator_dao = DailyIndicatorDAO(settings.postgres) if require_metrics else None
 
@@ -585,7 +579,7 @@ def list_indicator_screenings(
         raw_items = dataset.get("items", [])
         _maybe_attach_metrics(raw_items)
         entries = [_serialize_entry(entry) for entry in raw_items]
-        filtered_entries = _apply_indicator_filters(entries, net_income_yoy_min, pe_min, pe_max)
+        filtered_entries = _apply_indicator_filters(entries, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
         total_filtered = len(filtered_entries)
         sliced = filtered_entries[offset : offset + limit]
         return {
@@ -622,7 +616,7 @@ def list_indicator_screenings(
         serialized["indicatorDetails"] = details
         intersection_items.append(serialized)
 
-    filtered = _apply_indicator_filters(intersection_items, net_income_yoy_min, pe_min, pe_max)
+    filtered = _apply_indicator_filters(intersection_items, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
     total = len(filtered)
     sliced = filtered[offset : offset + limit]
     latest_captured = None
@@ -668,25 +662,31 @@ def _attach_indicator_metrics(
         fundamentals_data = fundamentals.get(code, {})
         indicator_data = indicator_metrics.get(code, {})
         entry["net_income_yoy_latest"] = fundamentals_data.get("net_income_yoy_latest")
+        entry["net_income_qoq_latest"] = fundamentals_data.get("net_income_qoq_latest")
         entry["pe_ratio"] = indicator_data.get("pe")
 
 
 def _apply_indicator_filters(
     items: Sequence[dict[str, Any]],
     net_income_yoy_min: float | None,
+    net_income_qoq_min: float | None,
     pe_min: float | None,
     pe_max: float | None,
 ) -> list[dict[str, Any]]:
-    if net_income_yoy_min is None and pe_min is None and pe_max is None:
+    if net_income_yoy_min is None and net_income_qoq_min is None and pe_min is None and pe_max is None:
         return list(items)
 
     filtered: list[dict[str, Any]] = []
     for entry in items:
         net_income = _safe_float(entry.get("netIncomeYoyLatest"))
+        net_income_qoq = _safe_float(entry.get("netIncomeQoqLatest"))
         pe_value = _safe_float(entry.get("peRatio"))
 
         if net_income_yoy_min is not None:
             if net_income is None or net_income < net_income_yoy_min:
+                continue
+        if net_income_qoq_min is not None:
+            if net_income_qoq is None or net_income_qoq < net_income_qoq_min:
                 continue
         if pe_min is not None:
             if pe_value is None or pe_value < pe_min:
@@ -723,6 +723,7 @@ def _serialize_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "highPrice": _safe_float(entry.get("high_price")),
         "lowPrice": _safe_float(entry.get("low_price")),
         "netIncomeYoyLatest": _safe_float(entry.get("net_income_yoy_latest")),
+        "netIncomeQoqLatest": _safe_float(entry.get("net_income_qoq_latest")),
         "peRatio": _safe_float(entry.get("pe_ratio")),
         "industry": entry.get("industry"),
         "matchedIndicators": [indicator_code] if indicator_code else [],

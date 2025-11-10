@@ -78,9 +78,19 @@
           </div>
 
           <div class="indicator-filter">
-            <div class="indicator-filter__field">
+            <div class="indicator-filter__field indicator-filter__field--suffix">
               <label for="filter-netincome" data-i18n="indicatorScreen.filterNetIncome">净利同比 &gt;</label>
-              <input type="number" id="filter-netincome" placeholder="0" step="0.1" />
+              <div class="indicator-filter__input-suffix">
+                <input type="number" id="filter-netincome" placeholder="0" step="0.1" />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+            <div class="indicator-filter__field indicator-filter__field--suffix">
+              <label for="filter-netincome-qoq" data-i18n="indicatorScreen.filterNetIncomeQoq">净利环比 &gt;</label>
+              <div class="indicator-filter__input-suffix">
+                <input type="number" id="filter-netincome-qoq" placeholder="0" step="0.1" />
+                <span class="input-suffix">%</span>
+              </div>
             </div>
             <div class="indicator-filter__field">
               <label for="filter-pe-min" data-i18n="indicatorScreen.filterPeMin">PE 最小</label>
@@ -106,6 +116,9 @@
                 &rarr;
               </button>
             </div>
+            <button type="button" class="btn btn--ghost indicator-snapshot-btn" id="indicator-snapshot-btn" disabled>
+              <span data-i18n="indicatorScreen.viewSnapshots">查看快照</span>
+            </button>
           </div>
 
           <div class="table-wrapper">

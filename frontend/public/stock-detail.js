@@ -746,19 +746,24 @@ function showToast(message, type = "success", duration = 3200) {
   toast.appendChild(text);
   container.appendChild(toast);
 
+  let removed = false;
+  const finalizeRemoval = () => {
+    if (removed) {
+      return;
+    }
+    removed = true;
+    toast.remove();
+    if (!container.hasChildNodes()) {
+      container.remove();
+      toastState.container = null;
+    }
+  };
+
   const removeToast = () => {
     toast.classList.add("toast--closing");
-    toast.addEventListener(
-      "transitionend",
-      () => {
-        toast.remove();
-        if (!container.hasChildNodes()) {
-          container.remove();
-          toastState.container = null;
-        }
-      },
-      { once: true }
-    );
+    toast.addEventListener("transitionend", finalizeRemoval, { once: true });
+    // Fallback in case the browser does not emit transitionend (e.g. reduced motion)
+    window.setTimeout(finalizeRemoval, 400);
   };
 
   const timeoutId = setTimeout(removeToast, duration);

@@ -13,12 +13,30 @@ import pandas as pd
 import akshare as ak
 
 from ..config.settings import load_settings
-from ..dao import ConceptIndexHistoryDAO
+from ..dao import ConceptDirectoryDAO, ConceptIndexHistoryDAO
 
 logger = logging.getLogger(__name__)
 
 _CONCEPT_NAME_LOOKUP: Dict[str, str] | None = None
 _NORMALIZED_CONCEPT_MAP: Dict[str, str] | None = None
+
+
+def _load_directory_concept_names() -> List[str]:
+    try:
+        settings = load_settings()
+        dao = ConceptDirectoryDAO(settings.postgres)
+        rows = dao.list_entries()
+        if not rows:
+            return []
+        names: List[str] = []
+        for row in rows:
+            name = str(row.get("concept_name") or "").strip()
+            if name:
+                names.append(name)
+        return names
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to load concept directory cache: %s", exc)
+        return []
 
 CONCEPT_SYNONYM_MAP: Dict[str, str] = {
     "ai算力": "东数西算(算力)",
@@ -66,22 +84,21 @@ def _ensure_concept_name_lookup() -> None:
     global _CONCEPT_NAME_LOOKUP, _NORMALIZED_CONCEPT_MAP
     if _CONCEPT_NAME_LOOKUP is not None and _NORMALIZED_CONCEPT_MAP is not None:
         return
-    try:
-        frame = ak.stock_board_concept_name_ths()
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.warning("Failed to load THS concept name list: %s", exc)
+    names = _load_directory_concept_names()
+    if not names:
+        try:
+            frame = ak.stock_board_concept_name_ths()
+        except Exception as exc:  # pragma: no cover - external dependency
+            logger.warning("Failed to load THS concept name list: %s", exc)
+            frame = pd.DataFrame()
+        if isinstance(frame, pd.DataFrame) and "name" in frame.columns:
+            values = frame["name"].dropna().astype(str)
+            names = [value.strip() for value in values if value.strip()]
+
+    if not names:
         _CONCEPT_NAME_LOOKUP = {}
         _NORMALIZED_CONCEPT_MAP = {}
         return
-
-    names: List[str] = []
-    values = frame.get("name") if isinstance(frame, pd.DataFrame) else None
-    if values is not None:
-        for value in values:
-            if isinstance(value, str):
-                text = value.strip()
-                if text:
-                    names.append(text)
 
     lookup = {name: name for name in names}
     normalized: Dict[str, str] = {}
