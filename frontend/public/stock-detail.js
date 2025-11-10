@@ -25,8 +25,59 @@ const detailExtras = {
   bigDeals: [],
 };
 
+const detailState = {
+  activeTab: "overview",
+  news: {
+    code: null,
+    items: [],
+    loading: false,
+    error: null,
+    syncing: false,
+  },
+  volume: {
+    code: null,
+    content: "",
+    meta: null,
+    loading: false,
+    running: false,
+    error: null,
+  },
+  volumeHistory: {
+    code: null,
+    items: [],
+    loading: false,
+    error: null,
+    visible: false,
+  },
+  integrated: {
+    code: null,
+    summary: null,
+    meta: null,
+    loading: false,
+    running: false,
+    error: null,
+  },
+  integratedHistory: {
+    code: null,
+    items: [],
+    loading: false,
+    error: null,
+    visible: false,
+  },
+};
+
+const newsCache = new Map();
+const volumeCache = new Map();
+const volumeHistoryCache = new Map();
+const integratedCache = new Map();
+const integratedHistoryCache = new Map();
+
 const SEARCH_RESULT_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 260;
+const STOCK_VOLUME_HISTORY_LIMIT = 20;
+const STOCK_INTEGRATED_HISTORY_LIMIT = 20;
+const INTEGRATED_NEWS_DAYS_DEFAULT = 10;
+const INTEGRATED_TRADE_DAYS_DEFAULT = 10;
 
 let searchDebounceTimer = null;
 let searchAbortController = null;
@@ -211,6 +262,30 @@ const elements = {
   searchWrapper: document.getElementById("detail-search"),
   searchInput: document.getElementById("detail-search-input"),
   searchResults: document.getElementById("detail-search-results"),
+  tabButtons: document.querySelectorAll(".detail-tabs__btn"),
+  tabPanels: document.querySelectorAll(".detail-tab-panel"),
+  newsList: document.getElementById("stock-news-list"),
+  newsEmpty: document.getElementById("stock-news-empty"),
+  newsRefresh: document.getElementById("stock-news-refresh"),
+  newsSync: document.getElementById("stock-news-sync"),
+  volumeOutput: document.getElementById("stock-volume-output"),
+  volumeEmpty: document.getElementById("stock-volume-empty"),
+  volumeMeta: document.getElementById("stock-volume-meta"),
+  volumeRunButton: document.getElementById("stock-volume-run"),
+  volumeHistoryToggle: document.getElementById("stock-volume-history-toggle"),
+  volumeHistoryPanel: document.getElementById("stock-volume-history"),
+  volumeHistoryList: document.getElementById("stock-volume-history-list"),
+  volumeHistoryClose: document.getElementById("stock-volume-history-close"),
+  integratedCard: document.getElementById("integrated-card"),
+  integratedSummary: document.getElementById("integrated-summary"),
+  integratedMeta: document.getElementById("integrated-meta"),
+  integratedEmpty: document.getElementById("integrated-empty"),
+  integratedError: document.getElementById("integrated-error"),
+  integratedRunButton: document.getElementById("stock-integrated-run"),
+  integratedHistoryToggle: document.getElementById("stock-integrated-history-toggle"),
+  integratedHistoryPanel: document.getElementById("stock-integrated-history"),
+  integratedHistoryList: document.getElementById("stock-integrated-history-list"),
+  integratedHistoryClose: document.getElementById("stock-integrated-history-close"),
 };
 
 const favoriteState = {
@@ -1517,6 +1592,176 @@ function persistLanguage(lang) {
   document.documentElement.setAttribute("data-pref-lang", lang);
 }
 
+function getDict() {
+  return translations[currentLang] || translations.zh || translations.en;
+}
+
+function parseJSON(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return null;
+  }
+}
+
+function formatVolumeSummary(summary) {
+  const payload = parseJSON(summary) || summary || {};
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const dict = getDict();
+  const sections = [];
+  const appendBlock = (...segments) => {
+    const normalized = [];
+    segments.forEach((segment) => {
+      if (Array.isArray(segment)) {
+        segment.forEach((value) => {
+          if (value === null || value === undefined) {
+            return;
+          }
+          const str = String(value);
+          if (str.trim().length) {
+            normalized.push(str);
+          }
+        });
+      } else if (segment !== null && segment !== undefined) {
+        const str = String(segment);
+        if (str.trim().length) {
+          normalized.push(str);
+        }
+      }
+    });
+    if (!normalized.length) {
+      return;
+    }
+    if (sections.length && sections[sections.length - 1] !== "") {
+      sections.push("");
+    }
+    sections.push(...normalized);
+  };
+  const formatListItems = (items) =>
+    items
+      .map((item, index) => {
+        if (item === null || item === undefined) {
+          return null;
+        }
+        if (typeof item === "object") {
+          try {
+            return `${index + 1}. ${JSON.stringify(item)}`;
+          } catch (error) {
+            return `${index + 1}. ${String(item)}`;
+          }
+        }
+        return `${index + 1}. ${String(item)}`;
+      })
+      .filter(Boolean);
+
+  const badges = [];
+  const phase = payload.wyckoffPhase || payload.phase;
+  if (phase) {
+    badges.push(`${dict.volumeLabelPhase || "阶段"}：${phase}`);
+  }
+  if (payload.confidence != null && Number.isFinite(Number(payload.confidence))) {
+    const confidenceLabel = dict.volumeLabelConfidence || "置信度";
+    badges.push(`${confidenceLabel}：${(Number(payload.confidence) * 100).toFixed(0)}%`);
+  }
+  if (badges.length) {
+    appendBlock(badges.join(" · "));
+  }
+  const trendContext = payload.trendContext;
+  if (trendContext) {
+    appendBlock([`【${dict.volumeLabelTrend || "趋势背景"}】`, String(trendContext)]);
+  }
+  const stageSummary = payload.stageSummary || payload.stage_summary;
+  if (stageSummary) {
+    appendBlock([`【${dict.volumeLabelSummary || "量价结论"}】`, String(stageSummary)]);
+  }
+  const marketNarrative = payload.marketNarrative || payload.compositeIntent;
+  if (marketNarrative) {
+    appendBlock([`【${dict.volumeLabelMarketNarrative || "市场解读"}】`, String(marketNarrative)]);
+  }
+  const volumeSignals =
+    (payload.keySignals && Array.isArray(payload.keySignals.volumeSignals) && payload.keySignals.volumeSignals) ||
+    payload.volumeSignals ||
+    [];
+  if (Array.isArray(volumeSignals) && volumeSignals.length) {
+    appendBlock([`【${dict.volumeLabelVolumeSignals || "量能信号"}】`, ...formatListItems(volumeSignals)]);
+  }
+  const priceSignals =
+    (payload.keySignals && Array.isArray(payload.keySignals.priceAction) && payload.keySignals.priceAction) ||
+    payload.priceSignals ||
+    [];
+  if (Array.isArray(priceSignals) && priceSignals.length) {
+    appendBlock([`【${dict.volumeLabelPriceSignals || "价格/结构信号"}】`, ...formatListItems(priceSignals)]);
+  }
+  const strategyItems = payload.strategyOutlook || payload.strategy || [];
+  if (Array.isArray(strategyItems) && strategyItems.length) {
+    appendBlock([
+      `【${dict.volumeLabelStrategyOutlook || dict.volumeLabelStrategy || "策略建议"}】`,
+      ...formatListItems(strategyItems),
+    ]);
+  }
+  const risks = payload.keyRisks || payload.risks || [];
+  if (Array.isArray(risks) && risks.length) {
+    appendBlock([
+      `【${dict.volumeLabelKeyRisks || dict.volumeLabelRisks || "风险提示"}】`,
+      ...formatListItems(risks),
+    ]);
+  }
+  const checklist = payload.nextWatchlist || payload.checklist || [];
+  if (Array.isArray(checklist) && checklist.length) {
+    appendBlock([
+      `【${dict.volumeLabelNextWatch || dict.volumeLabelChecklist || "后续观察"}】`,
+      ...formatListItems(checklist),
+    ]);
+  }
+  return sections.length ? sections.join("\n") : null;
+}
+
+function normalizeStockVolumeRecord(record) {
+  if (!record) {
+    return null;
+  }
+  const parsedSummary = parseJSON(record.summary) || record.summary;
+  return {
+    id: record.id,
+    code: record.code || record.stockCode || "",
+    name: record.name || record.stockName || "",
+    lookbackDays: record.lookbackDays || record.lookback_days || null,
+    summary: (parsedSummary && typeof parsedSummary === "object" && !Array.isArray(parsedSummary)) ? parsedSummary : {},
+    rawText: record.rawText || record.raw_text || "",
+    model: record.model || null,
+    generatedAt: record.generatedAt || record.generated_at || null,
+  };
+}
+
+function normalizeStockIntegratedRecord(record) {
+  if (!record) {
+    return null;
+  }
+  let summary = record.summary;
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    summary = parseJSON(record.rawText || record.raw_text) || {};
+  }
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    summary = {};
+  }
+  return {
+    id: Number(record.id) || 0,
+    code: record.code || record.stockCode || "",
+    name: record.name || record.stockName || "",
+    newsDays: record.newsDays || record.news_days || null,
+    tradeDays: record.tradeDays || record.trade_days || null,
+    summary,
+    rawText: record.rawText || record.raw_text || "",
+    model: record.model || null,
+    generatedAt: record.generatedAt || record.generated_at || null,
+    context: record.context || record.context_json || null,
+  };
+}
+
 function applyTranslations() {
   const dict = translations[currentLang];
   document.title = dict.pageTitle;
@@ -1555,6 +1800,10 @@ function applyTranslations() {
     updateMainCompositionCard(currentDetail.businessComposition);
   }
   renderSearchResults();
+  renderStockVolumePanel();
+  renderStockVolumeHistory();
+  renderStockIntegratedPanel();
+  renderStockIntegratedHistory();
 }
 
 function formatNumber(value, options = {}) {
@@ -1632,6 +1881,91 @@ function escapeHTML(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function formatInlineMarkdown(text) {
+  if (text === null || text === undefined) {
+    return "";
+  }
+  let safe = escapeHTML(text);
+  safe = safe.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  safe = safe.replace(/__(.+?)__/g, "<strong>$1</strong>");
+  safe = safe.replace(/(^|[^*])\*(?!\*)([^*]+?)\*(?!\*)([^*]|$)/g, "$1<em>$2</em>$3");
+  safe = safe.replace(/(^|[^_])_(?!_)([^_]+?)_(?!_)([^_]|$)/g, "$1<em>$2</em>$3");
+  safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
+  safe = safe.replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  safe = safe.replace(/~~(.+?)~~/g, "<del>$1</del>");
+  return safe;
+}
+
+function renderMarkdownInline(text) {
+  const normalized = text === null || text === undefined ? "" : String(text);
+  return formatInlineMarkdown(normalized.trim());
+}
+
+function renderMarkdownToHtml(markdown) {
+  if (markdown === null || markdown === undefined) {
+    return "";
+  }
+  const lines = String(markdown).split(/\r?\n/);
+  const blocks = [];
+  let currentList = null;
+
+  const flushList = () => {
+    if (!currentList) {
+      return;
+    }
+    blocks.push(
+      `<${currentList.type}>${currentList.items.map((item) => `<li>${item}</li>`).join("")}</${currentList.type}>`
+    );
+    currentList = null;
+  };
+
+  const pushListItem = (type, content) => {
+    if (!currentList || currentList.type !== type) {
+      flushList();
+      currentList = { type, items: [] };
+    }
+    currentList.items.push(renderMarkdownInline(content));
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushList();
+      return;
+    }
+    const headingMatch = trimmed.match(/^#{1,6}\s+(.*)$/);
+    if (headingMatch) {
+      flushList();
+      const level = Math.min(6, trimmed.replace(/(\s.*)$/, "").length);
+      blocks.push(`<h${level}>${renderMarkdownInline(headingMatch[1])}</h${level}>`);
+      return;
+    }
+    const bulletMatch = trimmed.match(/^[-*+]\s+(.*)$/);
+    if (bulletMatch) {
+      pushListItem("ul", bulletMatch[1]);
+      return;
+    }
+    const orderedMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+    if (orderedMatch) {
+      pushListItem("ol", orderedMatch[1]);
+      return;
+    }
+    const quoteMatch = trimmed.match(/^>\s?(.*)$/);
+    if (quoteMatch) {
+      flushList();
+      blocks.push(`<blockquote>${renderMarkdownInline(quoteMatch[1])}</blockquote>`);
+      return;
+    }
+    flushList();
+    blocks.push(`<p>${renderMarkdownInline(trimmed)}</p>`);
+  });
+  flushList();
+  if (!blocks.length) {
+    return `<p>${renderMarkdownInline(markdown)}</p>`;
+  }
+  return blocks.join("");
 }
 
 function truncateWithTooltip(text, limit = 120) {
@@ -2309,6 +2643,1051 @@ async function loadPerformanceData(code) {
   renderPerformanceHighlights(performanceData);
 }
 
+function initDetailTabs() {
+  if (!elements.tabButtons || !elements.tabButtons.length) {
+    return;
+  }
+  elements.tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const tab = button.dataset.tab;
+      if (tab) {
+        setActiveTab(tab);
+      }
+    });
+  });
+  setActiveTab(detailState.activeTab, { force: true });
+}
+
+function setActiveTab(tab, { force = false } = {}) {
+  if (!tab || (!force && tab === detailState.activeTab)) {
+    return;
+  }
+  detailState.activeTab = tab;
+  if (elements.tabButtons) {
+    elements.tabButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.tab === tab);
+    });
+  }
+  if (elements.tabPanels) {
+    elements.tabPanels.forEach((panel) => {
+      panel.classList.toggle("is-active", panel.dataset.tabPanel === tab);
+    });
+  }
+  if (tab === "news") {
+    ensureStockNewsLoaded();
+  } else if (tab === "volume") {
+    ensureStockVolumeLoaded();
+  } else if (tab === "analysis") {
+    ensureStockIntegratedLoaded();
+  }
+}
+
+function resetNewsState() {
+  detailState.news.code = null;
+  detailState.news.items = [];
+  detailState.news.loading = false;
+  detailState.news.error = null;
+  detailState.news.syncing = false;
+  if (elements.newsList) {
+    elements.newsList.innerHTML = "";
+  }
+  renderStockNews();
+}
+
+function renderStockNews() {
+  const container = elements.newsList;
+  if (!container) return;
+  const dict = getDict();
+  if (elements.newsRefresh) {
+    elements.newsRefresh.disabled =
+      !currentDetail?.profile?.code || detailState.news.loading || detailState.news.syncing;
+  }
+  if (elements.newsSync) {
+    const syncing = detailState.news.syncing;
+    elements.newsSync.disabled = !currentDetail?.profile?.code || syncing || detailState.news.loading;
+    elements.newsSync.textContent = syncing
+      ? dict.newsSyncing || "同步中…"
+      : dict.newsSyncButton || "同步最新";
+  }
+  container.innerHTML = "";
+  if (detailState.news.loading) {
+    const loading = document.createElement("p");
+    loading.className = "detail-empty";
+    loading.textContent = dict.newsLoading || "加载资讯中…";
+    container.appendChild(loading);
+    if (elements.newsEmpty) {
+      elements.newsEmpty.classList.add("hidden");
+    }
+    return;
+  }
+  if (detailState.news.error) {
+    const errorNode = document.createElement("p");
+    errorNode.className = "detail-empty";
+    errorNode.textContent = detailState.news.error;
+    container.appendChild(errorNode);
+    if (elements.newsEmpty) {
+      elements.newsEmpty.classList.add("hidden");
+    }
+    return;
+  }
+  if (!detailState.news.items.length) {
+    if (elements.newsEmpty) {
+      elements.newsEmpty.classList.remove("hidden");
+      elements.newsEmpty.textContent = dict.newsEmpty || "暂无相关新闻。";
+    }
+    return;
+  }
+  if (elements.newsEmpty) {
+    elements.newsEmpty.classList.add("hidden");
+  }
+  detailState.news.items.forEach((article) => {
+    const card = document.createElement("article");
+    card.className = "detail-news-card";
+    if (article.title || article.impact?.summary || article.url) {
+      const titleNode = document.createElement(article.url ? "a" : "h3");
+      titleNode.className = "detail-news-card__title";
+      titleNode.textContent = article.title || article.impact?.summary || dict.newsFallbackTitle || "Headline";
+      if (article.url) {
+        titleNode.href = article.url;
+        titleNode.target = "_blank";
+        titleNode.rel = "noopener noreferrer";
+      }
+      card.appendChild(titleNode);
+    }
+    const summaryText = article.summary || article.content || article.impact?.analysis;
+    if (summaryText) {
+      const summary = document.createElement("p");
+      summary.className = "detail-news-card__summary";
+      summary.textContent = summaryText;
+      card.appendChild(summary);
+    }
+    const meta = document.createElement("div");
+    meta.className = "detail-news-meta";
+    if (article.source) {
+      const source = document.createElement("span");
+      source.textContent = article.source;
+      meta.appendChild(source);
+    }
+    if (article.publishedAt) {
+      const time = document.createElement("span");
+      time.textContent = formatDateTime(article.publishedAt);
+      meta.appendChild(time);
+    }
+    card.appendChild(meta);
+    container.appendChild(card);
+  });
+}
+
+function applyNewsCache(code, cache) {
+  detailState.news.code = code;
+  detailState.news.items = cache.items || [];
+  detailState.news.loading = false;
+  detailState.news.error = null;
+  renderStockNews();
+}
+
+function ensureStockNewsLoaded({ force = false } = {}) {
+  const code = currentDetail?.profile?.code;
+  if (!code) {
+    resetNewsState();
+    return;
+  }
+  if (!force) {
+    const cached = newsCache.get(code);
+    if (cached) {
+      applyNewsCache(code, cached);
+      return;
+    }
+    if (detailState.news.code === code && detailState.news.items.length) {
+      renderStockNews();
+      return;
+    }
+  }
+  fetchStockNews(code);
+}
+
+async function fetchStockNews(code) {
+  if (!code) {
+    resetNewsState();
+    return;
+  }
+  const dict = getDict();
+  detailState.news.code = code;
+  detailState.news.loading = true;
+  detailState.news.error = null;
+  renderStockNews();
+  try {
+    const response = await fetch(`${API_BASE}/stocks/news?code=${encodeURIComponent(code)}&limit=120`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    const items = Array.isArray(data?.items) ? data.items : [];
+    detailState.news.items = items;
+    detailState.news.error = null;
+    newsCache.set(code, { items });
+  } catch (error) {
+    console.error("Failed to load stock news:", error);
+    detailState.news.items = [];
+    detailState.news.error = dict.newsError || "股票资讯加载失败。";
+  } finally {
+    detailState.news.loading = false;
+    renderStockNews();
+  }
+}
+
+async function syncStockNews() {
+  const code = currentDetail?.profile?.code;
+  if (!code || detailState.news.syncing) {
+    return;
+  }
+  const dict = getDict();
+  detailState.news.syncing = true;
+  renderStockNews();
+  try {
+    const response = await fetch(`${API_BASE}/stocks/news/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    await response.json();
+    newsCache.delete(code);
+    showToast(dict.newsSyncSuccess || "已同步最新个股新闻。", "success");
+    await fetchStockNews(code);
+  } catch (error) {
+    console.error("Failed to sync stock news:", error);
+    showToast(dict.newsSyncError || "个股新闻同步失败。", "error");
+  } finally {
+    detailState.news.syncing = false;
+    renderStockNews();
+  }
+}
+
+function resetVolumeState() {
+  detailState.volume.code = null;
+  detailState.volume.content = "";
+  detailState.volume.meta = null;
+  detailState.volume.loading = false;
+  detailState.volume.running = false;
+  detailState.volume.error = null;
+  renderStockVolumePanel();
+  resetVolumeHistoryState();
+}
+
+function renderStockVolumePanel() {
+  const dict = getDict();
+  if (elements.volumeRunButton) {
+    const disabled = detailState.volume.running || detailState.volume.loading || !currentDetail?.profile?.code;
+    elements.volumeRunButton.disabled = disabled;
+    elements.volumeRunButton.textContent = detailState.volume.running
+      ? dict.volumeRunning || "正在生成量价推理…"
+      : dict.runVolumeButton || "生成推理";
+  }
+  if (elements.volumeHistoryToggle) {
+    elements.volumeHistoryToggle.disabled = !currentDetail?.profile?.code && !detailState.volumeHistory.visible;
+    elements.volumeHistoryToggle.setAttribute("aria-pressed", detailState.volumeHistory.visible ? "true" : "false");
+    elements.volumeHistoryToggle.textContent = dict.volumeHistoryButton || "历史记录";
+  }
+  if (!elements.volumeOutput) {
+    return;
+  }
+  const output = elements.volumeOutput;
+  output.removeAttribute("data-loading");
+  output.removeAttribute("data-error");
+  output.removeAttribute("data-empty");
+  if (detailState.volume.running) {
+    output.textContent = dict.volumeStreaming || dict.volumeRunning || "模型推理中…";
+    output.dataset.loading = "1";
+    if (elements.volumeEmpty) {
+      elements.volumeEmpty.classList.add("hidden");
+    }
+    if (elements.volumeMeta) {
+      elements.volumeMeta.textContent = "";
+    }
+    return;
+  }
+  if (detailState.volume.loading) {
+    output.textContent = dict.volumeLoading || "加载量价推理…";
+    output.dataset.loading = "1";
+    if (elements.volumeEmpty) {
+      elements.volumeEmpty.classList.add("hidden");
+    }
+    if (elements.volumeMeta) {
+      elements.volumeMeta.textContent = "";
+    }
+    return;
+  }
+  if (detailState.volume.error) {
+    output.textContent = detailState.volume.error;
+    output.dataset.error = "1";
+    if (elements.volumeEmpty) {
+      elements.volumeEmpty.classList.add("hidden");
+    }
+    if (elements.volumeMeta) {
+      elements.volumeMeta.textContent = "";
+    }
+    return;
+  }
+  if (!detailState.volume.content) {
+    output.textContent = dict.volumeEmpty || "请选择股票后运行量价分析。";
+    output.dataset.empty = "1";
+    if (elements.volumeEmpty) {
+      elements.volumeEmpty.classList.remove("hidden");
+      elements.volumeEmpty.textContent = dict.volumeEmpty || "请选择股票并点击“生成推理”。";
+    }
+    if (elements.volumeMeta) {
+      elements.volumeMeta.textContent = "";
+    }
+    return;
+  }
+  if (elements.volumeEmpty) {
+    elements.volumeEmpty.classList.add("hidden");
+  }
+  output.textContent = detailState.volume.content;
+  if (elements.volumeMeta && detailState.volume.meta) {
+    const parts = [];
+    if (detailState.volume.meta.generatedAt) {
+      parts.push(`${dict.volumeGeneratedAt || "生成时间"}：${formatDateTime(detailState.volume.meta.generatedAt)}`);
+    }
+    if (detailState.volume.meta.model) {
+      parts.push(`${dict.volumeModel || "模型"}：${detailState.volume.meta.model}`);
+    }
+    if (detailState.volume.meta.lookbackDays) {
+      parts.push(`${dict.volumeLookback || "回溯天数"}：${detailState.volume.meta.lookbackDays}`);
+    }
+    elements.volumeMeta.textContent = parts.join(" · ");
+  } else if (elements.volumeMeta) {
+    elements.volumeMeta.textContent = "";
+  }
+}
+
+function renderStockVolumeHistory() {
+  const container = elements.volumeHistoryList;
+  if (!container) {
+    return;
+  }
+  const dict = getDict();
+  container.innerHTML = "";
+  container.removeAttribute("data-empty");
+  if (detailState.volumeHistory.loading) {
+    container.textContent = dict.volumeHistoryLoading || "历史记录加载中…";
+    container.dataset.empty = "1";
+    return;
+  }
+  if (detailState.volumeHistory.error) {
+    container.textContent = detailState.volumeHistory.error;
+    container.dataset.empty = "1";
+    return;
+  }
+  if (!detailState.volumeHistory.items.length) {
+    container.textContent = dict.volumeHistoryEmpty || "暂无历史记录。";
+    container.dataset.empty = "1";
+    return;
+  }
+  detailState.volumeHistory.items.forEach((entry) => {
+    const normalized =
+      entry && typeof entry.summary === "object" ? entry : normalizeStockVolumeRecord(entry);
+    if (!normalized) {
+      return;
+    }
+    const timestamp = formatDateTime(normalized.generatedAt);
+    const modelLabel = normalized.model || "DeepSeek";
+    const lookbackLabel = normalized.lookbackDays ? `${normalized.lookbackDays}d` : "--";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "detail-volume-history__item";
+    button.innerHTML = `
+      <div class="detail-volume-history__item-meta">
+        <strong>${escapeHTML(timestamp)}</strong>
+        <span>${escapeHTML(modelLabel)}</span>
+      </div>
+      <span class="detail-volume-history__badge">${escapeHTML(lookbackLabel)}</span>
+    `;
+    button.addEventListener("click", () => applyStockVolumeHistoryEntry(normalized));
+    container.appendChild(button);
+  });
+}
+
+function resetVolumeHistoryState() {
+  detailState.volumeHistory.code = null;
+  detailState.volumeHistory.items = [];
+  detailState.volumeHistory.error = null;
+  detailState.volumeHistory.loading = false;
+  detailState.volumeHistory.visible = false;
+  if (elements.volumeHistoryPanel) {
+    elements.volumeHistoryPanel.hidden = true;
+  }
+  if (elements.volumeHistoryToggle) {
+    elements.volumeHistoryToggle.setAttribute("aria-pressed", "false");
+  }
+  renderStockVolumeHistory();
+}
+
+async function fetchStockVolumeHistory(code, { force = false } = {}) {
+  if (!code) {
+    detailState.volumeHistory.code = null;
+    detailState.volumeHistory.items = [];
+    detailState.volumeHistory.error = null;
+    renderStockVolumeHistory();
+    return;
+  }
+  if (!force) {
+    const cached = volumeHistoryCache.get(code);
+    if (cached) {
+      detailState.volumeHistory.code = code;
+      detailState.volumeHistory.items = cached;
+      detailState.volumeHistory.error = null;
+      detailState.volumeHistory.loading = false;
+      renderStockVolumeHistory();
+      return;
+    }
+    if (detailState.volumeHistory.loading && detailState.volumeHistory.code === code) {
+      return;
+    }
+  }
+  detailState.volumeHistory.code = code;
+  detailState.volumeHistory.loading = true;
+  detailState.volumeHistory.error = null;
+  renderStockVolumeHistory();
+  try {
+    const response = await fetch(
+      `${API_BASE}/stocks/volume-price-analysis/history?code=${encodeURIComponent(
+        code
+      )}&limit=${STOCK_VOLUME_HISTORY_LIMIT}`
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    const normalized = items
+      .map((entry) => normalizeStockVolumeRecord(entry))
+      .filter(Boolean);
+    detailState.volumeHistory.items = normalized;
+    volumeHistoryCache.set(code, normalized);
+    detailState.volumeHistory.error = null;
+  } catch (error) {
+    console.error("Failed to load stock volume history:", error);
+    const dict = getDict();
+    detailState.volumeHistory.error = dict.volumeHistoryError || "历史记录加载失败。";
+    detailState.volumeHistory.items = [];
+  } finally {
+    detailState.volumeHistory.loading = false;
+    renderStockVolumeHistory();
+  }
+}
+
+function toggleVolumeHistoryPanel(force) {
+  const nextVisible = typeof force === "boolean" ? force : !detailState.volumeHistory.visible;
+  detailState.volumeHistory.visible = nextVisible;
+  if (elements.volumeHistoryPanel) {
+    elements.volumeHistoryPanel.hidden = !nextVisible;
+  }
+  if (elements.volumeHistoryToggle) {
+    elements.volumeHistoryToggle.setAttribute("aria-pressed", nextVisible ? "true" : "false");
+  }
+  if (nextVisible) {
+    const code = currentDetail?.profile?.code;
+    if (code) {
+      fetchStockVolumeHistory(code);
+    } else {
+      detailState.volumeHistory.items = [];
+      detailState.volumeHistory.error = null;
+      renderStockVolumeHistory();
+    }
+  }
+}
+
+function applyStockVolumeHistoryEntry(entry) {
+  const normalized =
+    entry && typeof entry.summary === "object" ? entry : normalizeStockVolumeRecord(entry);
+  if (!normalized) {
+    return;
+  }
+  const formatted = formatVolumeSummary(normalized.summary) || normalized.rawText || "";
+  detailState.volume.content = formatted;
+  detailState.volume.meta = normalized;
+  detailState.volume.error = null;
+  detailState.volume.code = normalized.code || detailState.volume.code;
+  if (normalized.code) {
+    volumeCache.set(normalized.code, { content: formatted, meta: normalized });
+  }
+  renderStockVolumePanel();
+  toggleVolumeHistoryPanel(false);
+}
+
+function resetIntegratedState() {
+  detailState.integrated.code = null;
+  detailState.integrated.summary = null;
+  detailState.integrated.meta = null;
+  detailState.integrated.loading = false;
+  detailState.integrated.running = false;
+  detailState.integrated.error = null;
+  renderStockIntegratedPanel();
+  resetIntegratedHistoryState();
+}
+
+function renderStockIntegratedPanel() {
+  if (!elements.integratedCard) {
+    return;
+  }
+  const dict = getDict();
+  const { summary, meta, loading, running, error } = detailState.integrated;
+  const hasCode = Boolean(currentDetail?.profile?.code);
+  if (elements.integratedRunButton) {
+    const disabled = running || loading || !hasCode;
+    elements.integratedRunButton.disabled = disabled;
+    elements.integratedRunButton.textContent = running
+      ? dict.integratedRunning || "正在生成综合分析…"
+      : dict.integratedRunButton || "生成综合分析";
+  }
+  if (elements.integratedHistoryToggle) {
+    elements.integratedHistoryToggle.disabled = !hasCode && !detailState.integratedHistory.visible;
+    elements.integratedHistoryToggle.setAttribute(
+      "aria-pressed",
+      detailState.integratedHistory.visible ? "true" : "false"
+    );
+    elements.integratedHistoryToggle.textContent = dict.integratedHistoryButton || "历史记录";
+  }
+  if (elements.integratedMeta) {
+    if (meta) {
+      const parts = [];
+      if (meta.generatedAt) {
+        parts.push(`${dict.integratedMetaGenerated || "生成时间"}：${formatDateTime(meta.generatedAt)}`);
+      }
+      if (meta.model) {
+        parts.push(`${dict.integratedMetaModel || "模型"}：${meta.model}`);
+      }
+      const windowParts = [];
+      if (meta.newsDays) {
+        windowParts.push(
+          (dict.integratedNewsWindowLabel || "{days}日资讯").replace("{days}", meta.newsDays)
+        );
+      }
+      if (meta.tradeDays) {
+        windowParts.push(
+          (dict.integratedTradeWindowLabel || "{days}个交易日").replace("{days}", meta.tradeDays)
+        );
+      }
+      if (windowParts.length) {
+        parts.push(`${dict.integratedMetaWindows || "窗口"}：${windowParts.join(" · ")}`);
+      }
+      elements.integratedMeta.textContent = parts.join(" · ");
+    } else {
+      elements.integratedMeta.textContent = "";
+    }
+  }
+  if (elements.integratedError) {
+    if (error) {
+      elements.integratedError.textContent = error;
+      elements.integratedError.classList.remove("hidden");
+    } else {
+      elements.integratedError.textContent = "";
+      elements.integratedError.classList.add("hidden");
+    }
+  }
+  if (!elements.integratedSummary) {
+    return;
+  }
+  elements.integratedSummary.innerHTML = "";
+  if (loading) {
+    elements.integratedSummary.innerHTML = `<p class="integrated-placeholder">${
+      dict.integratedLoading || "综合分析加载中…"
+    }</p>`;
+    if (elements.integratedEmpty) {
+      elements.integratedEmpty.classList.add("hidden");
+    }
+    return;
+  }
+  if (!summary || typeof summary !== "object" || !Object.keys(summary).length) {
+    if (elements.integratedEmpty) {
+      elements.integratedEmpty.classList.toggle("hidden", Boolean(error));
+      if (!error) {
+        elements.integratedEmpty.textContent = dict.integratedEmpty || "尚未生成综合分析。";
+      }
+    }
+    return;
+  }
+  if (elements.integratedEmpty) {
+    elements.integratedEmpty.classList.add("hidden");
+  }
+  const sections = [];
+  const overview = summary.overview || summary.summary;
+  const overviewHtml = renderMarkdownToHtml(overview);
+  if (overviewHtml) {
+    sections.push(`
+      <section class="integrated-section">
+        <h3>${escapeHTML(dict.integratedOverviewTitle || "核心结论")}</h3>
+        ${overviewHtml}
+      </section>
+    `);
+  }
+  const keyFindings = Array.isArray(summary.keyFindings) ? summary.keyFindings : [];
+  const keyFindingItems = keyFindings.map((item) => renderMarkdownInline(item)).filter(Boolean);
+  if (keyFindingItems.length) {
+    sections.push(`
+      <section class="integrated-section">
+        <h3>${escapeHTML(dict.integratedKeyFindingsTitle || "要点")}</h3>
+        <ul>${keyFindingItems.map((item) => `<li>${item}</li>`).join("")}</ul>
+      </section>
+    `);
+  }
+  const bullFactors = (summary.bullBearFactors && summary.bullBearFactors.bull) || [];
+  const bearFactors = (summary.bullBearFactors && summary.bullBearFactors.bear) || [];
+  const bullItems = Array.isArray(bullFactors)
+    ? bullFactors.map((item) => renderMarkdownInline(item)).filter(Boolean)
+    : [];
+  if (bullItems.length) {
+    sections.push(`
+      <section class="integrated-section">
+        <h3>${escapeHTML(dict.integratedBullFactorsTitle || "多头因素")}</h3>
+        <ul>${bullItems.map((item) => `<li>${item}</li>`).join("")}</ul>
+      </section>
+    `);
+  }
+  const bearItems = Array.isArray(bearFactors)
+    ? bearFactors.map((item) => renderMarkdownInline(item)).filter(Boolean)
+    : [];
+  if (bearItems.length) {
+    sections.push(`
+      <section class="integrated-section">
+        <h3>${escapeHTML(dict.integratedBearFactorsTitle || "空头因素")}</h3>
+        <ul>${bearItems.map((item) => `<li>${item}</li>`).join("")}</ul>
+      </section>
+    `);
+  }
+  const strategy = summary.strategy || {};
+  const strategyActions = Array.isArray(strategy.actions)
+    ? strategy.actions.map((item) => renderMarkdownInline(item)).filter(Boolean)
+    : [];
+  const timeframeText = strategy.timeframe ? renderMarkdownInline(strategy.timeframe) : "";
+  if (timeframeText || strategyActions.length) {
+    sections.push(`
+      <section class="integrated-section">
+        <h3>${escapeHTML(dict.integratedStrategyTitle || "策略建议")}</h3>
+        ${
+          timeframeText
+            ? `<p class="integrated-timeframe">${escapeHTML(
+                dict.integratedStrategyTimeframe || "周期"
+              )}：${timeframeText}</p>`
+            : ""
+        }
+        ${
+          strategyActions.length
+            ? `<ul>${strategyActions.map((item) => `<li>${item}</li>`).join("")}</ul>`
+            : ""
+        }
+      </section>
+    `);
+  }
+  const risks = Array.isArray(summary.risks)
+    ? summary.risks.map((item) => renderMarkdownInline(item)).filter(Boolean)
+    : [];
+  if (risks.length) {
+    sections.push(`
+      <section class="integrated-section">
+        <h3>${escapeHTML(dict.integratedRisksTitle || "风险提示")}</h3>
+        <ul>${risks.map((item) => `<li>${item}</li>`).join("")}</ul>
+      </section>
+    `);
+  }
+  if (summary.confidence != null && Number.isFinite(Number(summary.confidence))) {
+    const confidenceValue = Math.round(Number(summary.confidence) * 100);
+    sections.push(`
+      <section class="integrated-section integrated-section--confidence">
+        <h3>${escapeHTML(dict.integratedConfidenceTitle || "模型置信度")}</h3>
+        <div class="integrated-confidence">${confidenceValue}%</div>
+      </section>
+    `);
+  }
+  elements.integratedSummary.innerHTML = sections.join("");
+}
+
+function renderStockIntegratedHistory() {
+  const container = elements.integratedHistoryList;
+  if (!container) {
+    return;
+  }
+  const dict = getDict();
+  container.innerHTML = "";
+  container.removeAttribute("data-empty");
+  if (detailState.integratedHistory.loading) {
+    container.textContent = dict.integratedHistoryLoading || "历史记录加载中…";
+    container.dataset.empty = "1";
+    return;
+  }
+  if (detailState.integratedHistory.error) {
+    container.textContent = detailState.integratedHistory.error;
+    container.dataset.empty = "1";
+    return;
+  }
+  if (!detailState.integratedHistory.items.length) {
+    container.textContent = dict.integratedHistoryEmpty || "暂无历史记录。";
+    container.dataset.empty = "1";
+    return;
+  }
+  detailState.integratedHistory.items.forEach((entry) => {
+    const normalized = normalizeStockIntegratedRecord(entry);
+    if (!normalized) {
+      return;
+    }
+    const timestamp = formatDateTime(normalized.generatedAt);
+    const modelLabel = normalized.model || "DeepSeek";
+    const windows = [];
+    if (normalized.newsDays) {
+      windows.push(
+        (dict.integratedNewsWindowLabel || "{days}d news").replace("{days}", normalized.newsDays)
+      );
+    }
+    if (normalized.tradeDays) {
+      windows.push(
+        (dict.integratedTradeWindowLabel || "{days} trading days").replace("{days}", normalized.tradeDays)
+      );
+    }
+    const windowLabel = windows.join(" · ");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "detail-volume-history__item";
+    button.innerHTML = `
+      <div class="detail-volume-history__item-meta">
+        <strong>${escapeHTML(timestamp)}</strong>
+        <span>${escapeHTML(modelLabel)}</span>
+      </div>
+      <span class="detail-volume-history__badge">${escapeHTML(windowLabel || "--")}</span>
+    `;
+    button.addEventListener("click", () => applyStockIntegratedHistoryEntry(normalized));
+    container.appendChild(button);
+  });
+}
+
+function resetIntegratedHistoryState() {
+  detailState.integratedHistory.code = null;
+  detailState.integratedHistory.items = [];
+  detailState.integratedHistory.error = null;
+  detailState.integratedHistory.loading = false;
+  detailState.integratedHistory.visible = false;
+  if (elements.integratedHistoryPanel) {
+    elements.integratedHistoryPanel.hidden = true;
+  }
+  if (elements.integratedHistoryToggle) {
+    elements.integratedHistoryToggle.setAttribute("aria-pressed", "false");
+  }
+  renderStockIntegratedHistory();
+}
+
+function toggleIntegratedHistoryPanel(force) {
+  const nextVisible = typeof force === "boolean" ? force : !detailState.integratedHistory.visible;
+  detailState.integratedHistory.visible = nextVisible;
+  if (elements.integratedHistoryPanel) {
+    elements.integratedHistoryPanel.hidden = !nextVisible;
+  }
+  if (elements.integratedHistoryToggle) {
+    elements.integratedHistoryToggle.setAttribute("aria-pressed", nextVisible ? "true" : "false");
+  }
+  if (nextVisible) {
+    const code = currentDetail?.profile?.code;
+    if (code) {
+      fetchStockIntegratedHistory(code);
+    } else {
+      detailState.integratedHistory.items = [];
+      detailState.integratedHistory.error = null;
+      renderStockIntegratedHistory();
+    }
+  }
+}
+
+async function fetchStockIntegratedHistory(code, { force = false } = {}) {
+  if (!code) {
+    detailState.integratedHistory.code = null;
+    detailState.integratedHistory.items = [];
+    detailState.integratedHistory.error = null;
+    renderStockIntegratedHistory();
+    return;
+  }
+  if (!force) {
+    const cached = integratedHistoryCache.get(code);
+    if (cached) {
+      detailState.integratedHistory.code = code;
+      detailState.integratedHistory.items = cached;
+      detailState.integratedHistory.error = null;
+      detailState.integratedHistory.loading = false;
+      renderStockIntegratedHistory();
+      return;
+    }
+    if (detailState.integratedHistory.loading && detailState.integratedHistory.code === code) {
+      return;
+    }
+  }
+  detailState.integratedHistory.code = code;
+  detailState.integratedHistory.loading = true;
+  detailState.integratedHistory.error = null;
+  renderStockIntegratedHistory();
+  try {
+    const response = await fetch(
+      `${API_BASE}/stocks/integrated-analysis/history?code=${encodeURIComponent(
+        code
+      )}&limit=${STOCK_INTEGRATED_HISTORY_LIMIT}`
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    const normalized = items.map((entry) => normalizeStockIntegratedRecord(entry)).filter(Boolean);
+    detailState.integratedHistory.items = normalized;
+    integratedHistoryCache.set(code, normalized);
+    detailState.integratedHistory.error = null;
+  } catch (error) {
+    console.error("Failed to load integrated analysis history:", error);
+    const dict = getDict();
+    detailState.integratedHistory.error = dict.integratedHistoryError || "历史记录加载失败。";
+    detailState.integratedHistory.items = [];
+  } finally {
+    detailState.integratedHistory.loading = false;
+    renderStockIntegratedHistory();
+  }
+}
+
+function applyStockIntegratedHistoryEntry(entry) {
+  const normalized = normalizeStockIntegratedRecord(entry);
+  if (!normalized) {
+    return;
+  }
+  detailState.integrated.summary = normalized.summary;
+  detailState.integrated.meta = normalized;
+  detailState.integrated.error = null;
+  detailState.integrated.code = normalized.code || detailState.integrated.code;
+  if (normalized.code) {
+    integratedCache.set(normalized.code, normalized);
+  }
+  renderStockIntegratedPanel();
+  toggleIntegratedHistoryPanel(false);
+}
+
+function ensureStockIntegratedLoaded({ force = false } = {}) {
+  const code = currentDetail?.profile?.code;
+  if (!code) {
+    resetIntegratedState();
+    return;
+  }
+  if (!force) {
+    const cached = integratedCache.get(code);
+    if (cached) {
+      detailState.integrated.code = code;
+      detailState.integrated.summary = cached.summary;
+      detailState.integrated.meta = cached;
+      detailState.integrated.error = null;
+      detailState.integrated.loading = false;
+      renderStockIntegratedPanel();
+      return;
+    }
+    if (detailState.integrated.code === code && detailState.integrated.summary) {
+      renderStockIntegratedPanel();
+      return;
+    }
+  }
+  fetchStockIntegratedAnalysis(code);
+}
+
+async function fetchStockIntegratedAnalysis(code) {
+  if (!code) {
+    resetIntegratedState();
+    return;
+  }
+  detailState.integrated.code = code;
+  detailState.integrated.loading = true;
+  detailState.integrated.error = null;
+  renderStockIntegratedPanel();
+  try {
+    const response = await fetch(
+      `${API_BASE}/stocks/integrated-analysis/latest?code=${encodeURIComponent(code)}`
+    );
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    }
+    if (!response.ok) {
+      throw new Error((data && data.detail) || `HTTP ${response.status}`);
+    }
+    const normalized = normalizeStockIntegratedRecord(data);
+    detailState.integrated.summary = normalized?.summary || null;
+    detailState.integrated.meta = normalized;
+    detailState.integrated.error = null;
+    integratedCache.set(code, normalized);
+  } catch (error) {
+    console.error("Failed to load integrated analysis:", error);
+    const dict = getDict();
+    detailState.integrated.summary = null;
+    detailState.integrated.meta = null;
+    detailState.integrated.error = dict.integratedError || "综合分析加载失败。";
+  } finally {
+    detailState.integrated.loading = false;
+    renderStockIntegratedPanel();
+  }
+}
+
+async function runStockIntegratedAnalysis() {
+  const code = currentDetail?.profile?.code;
+  if (!code || detailState.integrated.running) {
+    return;
+  }
+  detailState.integrated.code = code;
+  detailState.integrated.running = true;
+  detailState.integrated.error = null;
+  renderStockIntegratedPanel();
+  const payload = {
+    code,
+    newsDays: detailState.integrated.meta?.newsDays || INTEGRATED_NEWS_DAYS_DEFAULT,
+    tradeDays: detailState.integrated.meta?.tradeDays || INTEGRATED_TRADE_DAYS_DEFAULT,
+    runLlm: true,
+    force: false,
+  };
+  try {
+    const response = await fetch(`${API_BASE}/stocks/integrated-analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    }
+    if (!response.ok) {
+      throw new Error((data && data.detail) || `HTTP ${response.status}`);
+    }
+    const normalized = normalizeStockIntegratedRecord(data);
+    detailState.integrated.summary = normalized?.summary || null;
+    detailState.integrated.meta = normalized;
+    detailState.integrated.error = null;
+    integratedCache.set(code, normalized);
+    integratedHistoryCache.delete(code);
+    if (detailState.integratedHistory.visible) {
+      await fetchStockIntegratedHistory(code, { force: true });
+    }
+  } catch (error) {
+    console.error("Failed to run integrated analysis:", error);
+    detailState.integrated.error = error.message || getDict().integratedError || "生成综合分析失败。";
+  } finally {
+    detailState.integrated.running = false;
+    renderStockIntegratedPanel();
+  }
+}
+
+
+function ensureStockVolumeLoaded({ force = false } = {}) {
+  const code = currentDetail?.profile?.code;
+  if (!code) {
+    resetVolumeState();
+    return;
+  }
+  if (!force) {
+    const cached = volumeCache.get(code);
+    if (cached) {
+      detailState.volume.code = code;
+      detailState.volume.content = cached.content || "";
+      detailState.volume.meta = cached.meta || null;
+      detailState.volume.error = null;
+      detailState.volume.loading = false;
+      renderStockVolumePanel();
+      return;
+    }
+    if (detailState.volume.code === code && detailState.volume.content) {
+      renderStockVolumePanel();
+      return;
+    }
+  }
+  fetchStockVolumeAnalysis(code);
+}
+
+async function fetchStockVolumeAnalysis(code) {
+  if (!code) {
+    resetVolumeState();
+    return;
+  }
+  detailState.volume.code = code;
+  detailState.volume.loading = true;
+  detailState.volume.error = null;
+  renderStockVolumePanel();
+  try {
+    const response = await fetch(
+      `${API_BASE}/stocks/volume-price-analysis/latest?code=${encodeURIComponent(code)}`
+    );
+    if (!response.ok) {
+      if (response.status === 404) {
+        detailState.volume.content = "";
+        detailState.volume.meta = null;
+        volumeCache.delete(code);
+        return;
+      }
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    const formatted = formatVolumeSummary(data.summary) || data.rawText || "";
+    detailState.volume.content = formatted;
+    detailState.volume.meta = data;
+    volumeCache.set(code, { content: formatted, meta: data });
+  } catch (error) {
+    console.error("Failed to load stock volume analysis:", error);
+    detailState.volume.content = "";
+    detailState.volume.meta = null;
+    detailState.volume.error = getDict().volumeError || "量价分析加载失败。";
+  } finally {
+    detailState.volume.loading = false;
+    renderStockVolumePanel();
+  }
+}
+
+async function runStockVolumeAnalysis() {
+  const code = currentDetail?.profile?.code;
+  if (!code || detailState.volume.running) {
+    return;
+  }
+  detailState.volume.code = code;
+  detailState.volume.running = true;
+  detailState.volume.error = null;
+  renderStockVolumePanel();
+  try {
+    const response = await fetch(`${API_BASE}/stocks/volume-price-analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code,
+        lookbackDays: 90,
+        runLlm: true,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    const formatted = formatVolumeSummary(data.summary) || data.rawText || "";
+    detailState.volume.content = formatted;
+    detailState.volume.meta = data;
+    volumeCache.set(code, { content: formatted, meta: data });
+    volumeHistoryCache.delete(code);
+    if (detailState.volumeHistory.visible) {
+      await fetchStockVolumeHistory(code, { force: true });
+    }
+  } catch (error) {
+    console.error("Failed to run stock volume analysis:", error);
+    detailState.volume.error = getDict().volumeError || "量价分析生成失败，请稍后重试。";
+  } finally {
+    detailState.volume.running = false;
+    renderStockVolumePanel();
+  }
+}
+
 function parseTradeDate(value) {
   if (!value) {
     return null;
@@ -2635,6 +4014,9 @@ function resizeCandlestickChart() {
 
 function renderDetail(detail) {
   currentDetail = detail;
+  resetNewsState();
+  resetVolumeState();
+  resetIntegratedState();
   const dict = translations[currentLang];
   favoriteState.code = normalizeCode(detail.profile.code);
   favoriteState.group = normalizeFavoriteGroupValue(
@@ -2880,6 +4262,21 @@ function renderDetail(detail) {
   renderCandlestickChart();
 
   renderPerformanceHighlights(performanceData);
+  if (detailState.activeTab === "news") {
+    ensureStockNewsLoaded({ force: true });
+  }
+  if (detailState.activeTab === "volume") {
+    ensureStockVolumeLoaded({ force: true });
+  }
+  if (detailState.volumeHistory.visible && currentDetail?.profile?.code) {
+    fetchStockVolumeHistory(currentDetail.profile.code, { force: true });
+  }
+  if (detailState.activeTab === "analysis") {
+    ensureStockIntegratedLoaded({ force: true });
+  }
+  if (detailState.integratedHistory.visible && currentDetail?.profile?.code) {
+    fetchStockIntegratedHistory(currentDetail.profile.code, { force: true });
+  }
 }
 
 function setStatus(messageKey, isError = false) {
@@ -2889,6 +4286,9 @@ function setStatus(messageKey, isError = false) {
   elements.status.classList.remove("hidden");
   elements.hero.classList.add("hidden");
   elements.grid.classList.add("hidden");
+  resetNewsState();
+  resetVolumeState();
+  resetIntegratedState();
   if (elements.performanceCard) {
     elements.performanceCard.classList.add("hidden");
   }
@@ -2926,6 +4326,7 @@ function showDetail() {
     hideCandlestickChart();
   }
   resizeCandlestickChart();
+  setActiveTab(detailState.activeTab, { force: true });
 }
 
 async function fetchDetail(code) {
@@ -2980,11 +4381,40 @@ function initLanguageButtons() {
   });
 }
 
+function initNewsAndVolumeActions() {
+  if (elements.newsRefresh) {
+    elements.newsRefresh.addEventListener("click", () => ensureStockNewsLoaded({ force: true }));
+  }
+  if (elements.newsSync) {
+    elements.newsSync.addEventListener("click", syncStockNews);
+  }
+  if (elements.volumeRunButton) {
+    elements.volumeRunButton.addEventListener("click", runStockVolumeAnalysis);
+  }
+  if (elements.volumeHistoryToggle) {
+    elements.volumeHistoryToggle.addEventListener("click", () => toggleVolumeHistoryPanel());
+  }
+  if (elements.volumeHistoryClose) {
+    elements.volumeHistoryClose.addEventListener("click", () => toggleVolumeHistoryPanel(false));
+  }
+  if (elements.integratedRunButton) {
+    elements.integratedRunButton.addEventListener("click", runStockIntegratedAnalysis);
+  }
+  if (elements.integratedHistoryToggle) {
+    elements.integratedHistoryToggle.addEventListener("click", () => toggleIntegratedHistoryPanel());
+  }
+  if (elements.integratedHistoryClose) {
+    elements.integratedHistoryClose.addEventListener("click", () => toggleIntegratedHistoryPanel(false));
+  }
+}
+
 function initialize() {
   applyTranslations();
   initLanguageButtons();
   initFavoriteToggle();
   initSearch();
+  initDetailTabs();
+  initNewsAndVolumeActions();
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
   if (!code) {
