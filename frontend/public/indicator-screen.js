@@ -5,12 +5,82 @@ const API_BASE =
   (window.location.hostname === "localhost"
     ? "http://localhost:8000"
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
-const INDICATOR_CODE = "continuous_volume";
+const CONTINUOUS_VOLUME_CODE = "continuous_volume";
+const VOLUME_PRICE_RISE_CODE = "volume_price_rise";
+const UPWARD_BREAKOUT_CODE = "upward_breakout";
+const CONTINUOUS_RISE_CODE = "continuous_rise";
+const VOLUME_SURGE_BREAKOUT_CODE = "volume_surge_breakout";
+const PAGE_SIZE = 50;
+
+const INDICATOR_OPTIONS = [
+  {
+    code: CONTINUOUS_VOLUME_CODE,
+    label: { zh: "持续放量", en: "Continuous Volume" },
+    columns: [
+      { key: "volumeDays", labelKey: "colDays", type: "number" },
+      { key: "stageChangePercent", labelKey: "colStageChange", type: "percent" },
+      { key: "volumeText", labelKey: "colVolume", type: "text" },
+    ],
+    summaryExtraKey: "volumeText",
+  },
+  {
+    code: VOLUME_PRICE_RISE_CODE,
+    label: { zh: "量价齐升", en: "Volume & Price Rise" },
+    columns: [
+      { key: "volumeDays", labelKey: "colDays", type: "number" },
+      { key: "stageChangePercent", labelKey: "colStageChange", type: "percent" },
+      { key: "turnoverPercent", labelKey: "colTurnover", type: "percent" },
+    ],
+    summaryExtraKey: "turnoverPercent",
+  },
+  {
+    code: UPWARD_BREAKOUT_CODE,
+    label: { zh: "向上突破", en: "Upward Breakout" },
+    columns: [
+      { key: "priceChangePercent", labelKey: "colChange", type: "percent" },
+      { key: "turnoverRate", labelKey: "colTurnoverRate", type: "percent" },
+      { key: "volumeText", labelKey: "colVolume", type: "text" },
+      { key: "turnoverAmountText", labelKey: "colAmount", type: "text" },
+    ],
+    summaryExtraKey: "turnoverRate",
+  },
+  {
+    code: CONTINUOUS_RISE_CODE,
+    label: { zh: "连续上涨", en: "Continuous Rise" },
+    columns: [
+      { key: "volumeDays", labelKey: "colDays", type: "number" },
+      { key: "stageChangePercent", labelKey: "colStageChange", type: "percent" },
+      { key: "turnoverPercent", labelKey: "colTurnover", type: "percent" },
+      { key: "highPrice", labelKey: "colHigh", type: "number" },
+      { key: "lowPrice", labelKey: "colLow", type: "number" },
+    ],
+    summaryExtraKey: "turnoverPercent",
+  },
+  {
+    code: VOLUME_SURGE_BREAKOUT_CODE,
+    label: { zh: "爆量启动", en: "Volume Spike Breakout" },
+    columns: [
+      { key: "priceChangePercent", labelKey: "colChange", type: "percent" },
+      { key: "turnoverPercent", labelKey: "colVolumeMultiple", type: "number" },
+      { key: "turnoverRate", labelKey: "colBreakout", type: "percent" },
+      { key: "stageChangePercent", labelKey: "colStageChange", type: "percent" },
+    ],
+    summaryExtraKey: "volumeText",
+  },
+];
 
 let currentLang = getInitialLanguage();
 let currentItems = [];
 let lastCapturedAt = null;
 let isSyncing = false;
+let currentPage = 1;
+let totalItems = 0;
+let selectedIndicators = [CONTINUOUS_VOLUME_CODE];
+let filters = {
+  netIncomeYoy: null,
+  peMin: null,
+  peMax: null,
+};
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
@@ -20,7 +90,17 @@ const elements = {
   indicatorName: document.getElementById("indicator-name"),
   daysRange: document.getElementById("indicator-days-range"),
   volumeHint: document.getElementById("indicator-volume-hint"),
+  tableHead: document.getElementById("indicator-table-head"),
   tableBody: document.getElementById("indicator-table-body"),
+  resultCount: document.getElementById("indicator-result-count"),
+  prevButton: document.getElementById("indicator-prev-btn"),
+  nextButton: document.getElementById("indicator-next-btn"),
+  pageLabel: document.getElementById("indicator-page-label"),
+  tagList: document.getElementById("indicator-tag-list"),
+  filterNetIncome: document.getElementById("filter-netincome"),
+  filterPeMin: document.getElementById("filter-pe-min"),
+  filterPeMax: document.getElementById("filter-pe-max"),
+  filterApply: document.getElementById("indicator-filter-apply"),
 };
 
 function getInitialLanguage() {
@@ -120,10 +200,19 @@ function applyTranslations() {
   elements.langButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.lang === currentLang);
   });
-  renderStatus(dict.statusIdle || "");
+  if (!isSyncing) {
+    if (selectedIndicators.length > 1 && dict.statusIntersection) {
+      const text = dict.statusIntersection.replace("{count}", selectedIndicators.length);
+      renderStatus(text || dict.statusIdle || "");
+    } else {
+      renderStatus(dict.statusIdle || "");
+    }
+  }
+  renderIndicatorTags();
   renderSummary();
   renderTable();
   renderUpdated();
+  updatePaginationControls();
 }
 
 function renderStatus(message, type = "info") {
@@ -145,14 +234,14 @@ function renderSummary() {
   if (!elements.indicatorName || !elements.daysRange || !elements.volumeHint) {
     return;
   }
-  const dict = getDict();
-  elements.indicatorName.textContent =
-    dict.indicatorName || currentItems[0]?.indicatorName || "--";
+  const label = selectedIndicators.map((code) => getIndicatorLabel(code)).join(" / ");
+  elements.indicatorName.textContent = label || "--";
   if (!currentItems.length) {
     elements.daysRange.textContent = "--";
     elements.volumeHint.textContent = "--";
     return;
   }
+  const option = getIndicatorOption(primaryIndicator()) || {};
   const validDays = currentItems
     .map((item) => Number(item.volumeDays))
     .filter((value) => Number.isFinite(value));
@@ -163,16 +252,38 @@ function renderSummary() {
   } else {
     elements.daysRange.textContent = "--";
   }
-  elements.volumeHint.textContent =
-    currentItems[0]?.volumeText || currentItems[0]?.volumeShares
-      ? formatNumber(currentItems[0].volumeShares, { notation: "compact" })
-      : "--";
+  const primaryDetails = getIndicatorData(currentItems[0], primaryIndicator());
+  const extraKey = option.summaryExtraKey || "volumeText";
+  if (extraKey === "turnoverPercent" || extraKey === "turnoverRate") {
+    const values = currentItems
+      .map((item) => Number(getIndicatorData(item, primaryIndicator())[extraKey]))
+      .filter((value) => Number.isFinite(value));
+    if (values.length) {
+      const min = Math.min(...values).toFixed(2);
+      const max = Math.max(...values).toFixed(2);
+      elements.volumeHint.textContent = min === max ? `${min}%` : `${min}% ~ ${max}%`;
+    } else {
+      elements.volumeHint.textContent = "--";
+    }
+  } else if (extraKey === "volumeText") {
+    elements.volumeHint.textContent =
+      primaryDetails.volumeText ||
+      (primaryDetails.volumeShares
+        ? formatNumber(primaryDetails.volumeShares, { notation: "compact" })
+        : "--");
+  } else {
+    const value = primaryDetails[extraKey];
+    elements.volumeHint.textContent = value != null ? String(value) : "--";
+  }
 }
 
 function renderTable() {
   if (!elements.tableBody) {
     return;
   }
+  const columns = getColumnsForSelection();
+  renderTableHead(columns);
+
   const tbody = elements.tableBody;
   tbody.innerHTML = "";
   if (!currentItems.length) {
@@ -190,22 +301,25 @@ function renderTable() {
 
   const fragment = document.createDocumentFragment();
   currentItems.forEach((item) => {
+    const indicatorData = getIndicatorData(item, primaryIndicator());
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${item.rank ?? "--"}</td>
-      <td>${renderStockLink(item)}</td>
-      <td>${renderStockLink(item, { useName: true })}</td>
-      <td>${formatNumber(item.lastPrice, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-      <td class="${getTrendClass(item.priceChangePercent)}">${formatPercent(item.priceChangePercent)}</td>
-      <td class="${getTrendClass(item.stageChangePercent)}">${formatPercent(item.stageChangePercent)}</td>
-      <td>${item.volumeText || formatNumber(item.volumeShares, { notation: "compact" })}</td>
-      <td>${item.baselineVolumeText || formatNumber(item.baselineVolumeShares, { notation: "compact" })}</td>
-      <td>${item.volumeDays ?? "--"}</td>
-      <td>${item.industry || "--"}</td>
-    `;
+    const cells = columns.map((column) => {
+      return `<td>${column.renderer(item, indicatorData)}</td>`;
+    });
+    row.innerHTML = cells.join("");
     fragment.appendChild(row);
   });
   tbody.appendChild(fragment);
+}
+
+function renderTableHead(columns) {
+  if (!elements.tableHead) {
+    return;
+  }
+  const dict = getDict();
+  elements.tableHead.innerHTML = columns
+    .map((column) => `<th>${dict[column.labelKey] || ""}</th>`)
+    .join("");
 }
 
 function renderStockLink(item, options = {}) {
@@ -218,6 +332,15 @@ function renderStockLink(item, options = {}) {
   return `<a href="${url}" target="_blank" rel="noopener">${escapeHTML(text)}</a>`;
 }
 
+function renderIndicatorBadges(record) {
+  if (!Array.isArray(record.matchedIndicators) || !record.matchedIndicators.length) {
+    return "--";
+  }
+  return `<span class="indicator-badges">${record.matchedIndicators
+    .map((code) => `<span class="indicator-badge">${escapeHTML(getIndicatorLabel(code))}</span>`)
+    .join("")}</span>`;
+}
+
 function getTrendClass(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric === 0) {
@@ -226,30 +349,48 @@ function getTrendClass(value) {
   return numeric > 0 ? "text-up" : "text-down";
 }
 
-async function fetchIndicatorData() {
+async function fetchIndicatorData(page = currentPage) {
   const dict = getDict();
   try {
-    const response = await fetch(
-      `${API_BASE}/indicator-screenings/continuous-volume?limit=500`
-    );
+    const limit = PAGE_SIZE;
+    const offset = (page - 1) * PAGE_SIZE;
+    const params = new URLSearchParams();
+    params.set("limit", limit);
+    params.set("offset", offset);
+    selectedIndicators.forEach((code) => params.append("indicators", code));
+    if (filters.netIncomeYoy !== null) {
+      params.set("netIncomeYoyMin", String(filters.netIncomeYoy));
+    }
+    if (filters.peMin !== null) {
+      params.set("peMin", String(filters.peMin));
+    }
+    if (filters.peMax !== null) {
+      params.set("peMax", String(filters.peMax));
+    }
+    const response = await fetch(`${API_BASE}/indicator-screenings?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`Request failed with status ${response.status}`);
     }
     const payload = await response.json();
     currentItems = Array.isArray(payload.items) ? payload.items : [];
     lastCapturedAt = payload.capturedAt || null;
+    totalItems = Number(payload.total) || 0;
+    currentPage = page;
     renderStatus(dict.statusIdle || "");
     renderSummary();
     renderTable();
     renderUpdated();
+    updatePaginationControls();
   } catch (error) {
     console.error("Failed to load indicator screenings", error);
     renderStatus(dict.statusError || "Failed to load data.", "error");
     currentItems = [];
     lastCapturedAt = null;
+    totalItems = 0;
     renderSummary();
     renderTable();
     renderUpdated();
+    updatePaginationControls();
   }
 }
 
@@ -264,15 +405,24 @@ async function handleRefresh() {
   }
   renderStatus(dict.statusSyncing || "Updating…", "info");
   try {
-    const response = await fetch(`${API_BASE}/indicator-screenings/continuous-volume/sync`, {
+    const response = await fetch(`${API_BASE}/indicator-screenings/sync`, {
       method: "POST",
     });
     if (!response.ok) {
       throw new Error(`Sync failed with status ${response.status}`);
     }
-    await response.json();
-    renderStatus(dict.statusSuccess || "Updated.", "success");
-    await fetchIndicatorData();
+    const payload = await response.json();
+    const results = Array.isArray(payload.results) ? payload.results : [];
+    const updatedCount = results.filter((item) => !item.skipped).length;
+    const skippedCount = results.filter((item) => item.skipped).length;
+    const successTemplate =
+      dict.statusSuccessDetailed || dict.statusSuccess || "Updated.";
+    const message = successTemplate
+      .replace("{updated}", updatedCount)
+      .replace("{skipped}", skippedCount);
+    renderStatus(message, "success");
+    currentPage = 1;
+    await fetchIndicatorData(1);
   } catch (error) {
     console.error("Failed to sync indicator screenings", error);
     renderStatus(dict.statusError || "Failed to refresh data.", "error");
@@ -297,12 +447,212 @@ function bindEvents() {
   if (elements.refreshButton) {
     elements.refreshButton.addEventListener("click", handleRefresh);
   }
+  if (elements.prevButton) {
+    elements.prevButton.addEventListener("click", () => {
+      if (currentPage > 1) {
+        fetchIndicatorData(currentPage - 1);
+      }
+    });
+  }
+  if (elements.nextButton) {
+    elements.nextButton.addEventListener("click", () => {
+      const maxPage = Math.ceil(totalItems / PAGE_SIZE) || 1;
+      if (currentPage < maxPage) {
+        fetchIndicatorData(currentPage + 1);
+      }
+    });
+  }
+  if (elements.tagList) {
+    elements.tagList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-indicator-code]");
+      if (!button) {
+        return;
+      }
+      toggleIndicator(button.dataset.indicatorCode);
+    });
+  }
+  if (elements.filterNetIncome) {
+    elements.filterNetIncome.addEventListener("change", updateFilterState);
+  }
+  if (elements.filterPeMin) {
+    elements.filterPeMin.addEventListener("change", updateFilterState);
+  }
+  if (elements.filterPeMax) {
+    elements.filterPeMax.addEventListener("change", updateFilterState);
+  }
+  if (elements.filterApply) {
+    elements.filterApply.addEventListener("click", handleFilterApply);
+  }
 }
 
 function initialize() {
   bindEvents();
   applyTranslations();
-  fetchIndicatorData();
+    fetchIndicatorData();
 }
 
 initialize();
+
+function updatePaginationControls() {
+  if (!elements.resultCount || !elements.pageLabel) {
+    return;
+  }
+  const dict = getDict();
+  const total = Number(totalItems) || 0;
+  const offset = (currentPage - 1) * PAGE_SIZE;
+  const start = total === 0 ? 0 : Math.min(total, offset + 1);
+  const end = total === 0 ? 0 : Math.min(total, offset + currentItems.length);
+  const resultTemplate = dict.resultCount || "Showing {start}-{end} of {total} results";
+  elements.resultCount.textContent = resultTemplate
+    .replace("{start}", start)
+    .replace("{end}", end)
+    .replace("{total}", total);
+  const pageTemplate = dict.pageLabel || "Page {page}";
+  elements.pageLabel.textContent = pageTemplate.replace("{page}", currentPage);
+  const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (elements.prevButton) {
+    elements.prevButton.disabled = currentPage <= 1 || total === 0;
+    elements.prevButton.textContent = dict.paginationPrev || "Prev";
+  }
+  if (elements.nextButton) {
+    elements.nextButton.disabled = currentPage >= maxPage || total === 0;
+    elements.nextButton.textContent = dict.paginationNext || "Next";
+  }
+}
+
+function getIndicatorLabel(code) {
+  const option = INDICATOR_OPTIONS.find((item) => item.code === code);
+  if (!option) {
+    return code;
+  }
+  return option.label[currentLang] || option.label.zh || code;
+}
+
+function renderIndicatorTags() {
+  if (!elements.tagList) {
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  INDICATOR_OPTIONS.forEach((option) => {
+    const label = document.createElement("label");
+    label.className = `indicator-tag${
+      selectedIndicators.includes(option.code) ? " indicator-tag--active" : ""
+    }`;
+    label.dataset.indicatorCode = option.code;
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selectedIndicators.includes(option.code);
+    checkbox.setAttribute("aria-label", getIndicatorLabel(option.code));
+    label.appendChild(checkbox);
+    const span = document.createElement("span");
+    span.textContent = getIndicatorLabel(option.code);
+    label.appendChild(span);
+    fragment.appendChild(label);
+  });
+  elements.tagList.innerHTML = "";
+  elements.tagList.appendChild(fragment);
+}
+
+function toggleIndicator(code) {
+  if (!code) {
+    return;
+  }
+  const isSelected = selectedIndicators.includes(code);
+  if (isSelected) {
+    if (selectedIndicators.length === 1) {
+      return;
+    }
+    selectedIndicators = selectedIndicators.filter((item) => item !== code);
+  } else {
+    selectedIndicators = [...selectedIndicators, code];
+  }
+  currentPage = 1;
+  applyTranslations();
+  fetchIndicatorData();
+}
+
+function updateFilterState() {
+  filters.netIncomeYoy = elements.filterNetIncome?.value ? Number(elements.filterNetIncome.value) : null;
+  filters.peMin = elements.filterPeMin?.value ? Number(elements.filterPeMin.value) : null;
+  filters.peMax = elements.filterPeMax?.value ? Number(elements.filterPeMax.value) : null;
+}
+
+function handleFilterApply() {
+  updateFilterState();
+  currentPage = 1;
+  fetchIndicatorData(1);
+}
+
+function primaryIndicator() {
+  return selectedIndicators[0] || CONTINUOUS_VOLUME_CODE;
+}
+
+function getIndicatorOption(code) {
+  return INDICATOR_OPTIONS.find((option) => option.code === code);
+}
+
+function getColumnsForSelection() {
+  const baseColumns = [
+    {
+      id: "rank",
+      labelKey: "colRank",
+      renderer: (record) => record.rank ?? "--",
+    },
+    {
+      id: "indicators",
+      labelKey: "colIndicator",
+      renderer: (record) => renderIndicatorBadges(record),
+    },
+    {
+      id: "code",
+      labelKey: "colCode",
+      renderer: (record) => renderStockLink(record),
+    },
+    {
+      id: "name",
+      labelKey: "colName",
+      renderer: (record) => renderStockLink(record, { useName: true }),
+    },
+    {
+      id: "price",
+      labelKey: "colPrice",
+      renderer: (record) =>
+        formatNumber(record.lastPrice, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    },
+  ];
+  const option = getIndicatorOption(primaryIndicator());
+  const indicatorColumns = (option?.columns || []).map((column, index) => ({
+    id: `${option?.code || "indicator"}-${column.key}-${index}`,
+    labelKey: column.labelKey,
+    renderer: (record, detail) => formatColumnValue(detail?.[column.key], column.type),
+  }));
+  const tailColumns = [
+    {
+      id: "industry",
+      labelKey: "colIndustry",
+      renderer: (record) => record.industry || "--",
+    },
+  ];
+  return [...baseColumns, ...indicatorColumns, ...tailColumns];
+}
+
+function formatColumnValue(value, type) {
+  if (type === "percent") {
+    return formatPercent(value);
+  }
+  if (type === "number") {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : "--";
+  }
+  if (type === "text") {
+    return value ? escapeHTML(String(value)) : "--";
+  }
+  return value ?? "--";
+}
+
+function getIndicatorData(record, indicatorCode) {
+  if (record.indicatorDetails && record.indicatorDetails[indicatorCode]) {
+    return record.indicatorDetails[indicatorCode];
+  }
+  return record;
+}
