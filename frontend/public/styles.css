@@ -2071,6 +2071,121 @@ body {
   color: var(--text);
 }
 
+.indicator-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.indicator-table-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+
+.indicator-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.indicator-page-btn {
+  padding: 6px 12px;
+}
+
+.indicator-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.indicator-filter__field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.indicator-filter__field input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.indicator-filter__apply {
+  margin-left: auto;
+  padding: 8px 16px;
+}
+
+.indicator-filter__label {
+  font-size: 0.95rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.indicator-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.indicator-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.indicator-tag input {
+  width: 16px;
+  height: 16px;
+}
+
+.indicator-tag:hover,
+.indicator-tag:focus-within {
+  border-color: var(--primary);
+  color: var(--primary);
+  outline: none;
+}
+
+.indicator-tag--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+.indicator-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--primary);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

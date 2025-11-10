@@ -20,7 +20,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from zoneinfo import ZoneInfo
 
-from .config.runtime_config import RuntimeConfig, load_runtime_config, save_runtime_config, normalize_concept_alias_map
+from .config.runtime_config import (
+    RuntimeConfig,
+    VolumeSurgeConfig,
+    load_runtime_config,
+    save_runtime_config,
+    normalize_concept_alias_map,
+)
 from .config.settings import load_settings
 from .dao import (
     DailyIndicatorDAO,
@@ -187,6 +193,8 @@ from .services import (
     get_latest_stock_integrated_analysis,
     list_stock_integrated_analysis_history,
     sync_indicator_continuous_volume,
+    sync_indicator_screening,
+    sync_all_indicator_screenings,
     list_indicator_screenings,
     list_industry_index_history,
     list_concept_constituents,
@@ -3070,6 +3078,16 @@ class IndicatorScreeningRecord(BaseModel):
     baseline_volume_text: Optional[str] = Field(None, alias="baselineVolumeText")
     volume_days: Optional[int] = Field(None, alias="volumeDays")
     industry: Optional[str]
+    turnover_percent: Optional[float] = Field(None, alias="turnoverPercent")
+    turnover_rate: Optional[float] = Field(None, alias="turnoverRate")
+    turnover_amount: Optional[float] = Field(None, alias="turnoverAmount")
+    turnover_amount_text: Optional[str] = Field(None, alias="turnoverAmountText")
+    high_price: Optional[float] = Field(None, alias="highPrice")
+    low_price: Optional[float] = Field(None, alias="lowPrice")
+    net_income_yoy_latest: Optional[float] = Field(None, alias="netIncomeYoyLatest")
+    pe_ratio: Optional[float] = Field(None, alias="peRatio")
+    matched_indicators: List[str] = Field(default_factory=list, alias="matchedIndicators")
+    indicator_details: Dict[str, Dict[str, Any]] = Field(default_factory=dict, alias="indicatorDetails")
 
     class Config:
         allow_population_by_field_name = True
@@ -3077,6 +3095,7 @@ class IndicatorScreeningRecord(BaseModel):
 
 class IndicatorScreeningListResponse(BaseModel):
     indicator_code: str = Field(..., alias="indicatorCode")
+    indicator_codes: List[str] = Field(default_factory=list, alias="indicatorCodes")
     indicator_name: Optional[str] = Field(None, alias="indicatorName")
     captured_at: Optional[datetime] = Field(None, alias="capturedAt")
     total: int
@@ -3091,9 +3110,15 @@ class IndicatorSyncResponse(BaseModel):
     indicator_name: Optional[str] = Field(None, alias="indicatorName")
     rows: int
     captured_at: Optional[datetime] = Field(None, alias="capturedAt")
+    skipped: bool = False
+    reason: Optional[str] = None
 
     class Config:
         allow_population_by_field_name = True
+
+
+class IndicatorSyncBatchResponse(BaseModel):
+    results: List[IndicatorSyncResponse]
 
 
 class MarketFundFlowRecord(BaseModel):
@@ -3133,6 +3158,16 @@ class SyncFinanceBreakfastResponse(BaseModel):
     rows: int
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
+class VolumeSurgeConfigPayload(BaseModel):
+    min_volume_ratio: float = Field(3.0, alias="minVolumeRatio", ge=0.5, le=1000)
+    breakout_threshold_percent: float = Field(3.0, alias="breakoutPercent", ge=0.0, le=100.0)
+    daily_change_threshold_percent: float = Field(7.0, alias="dailyChangePercent", ge=0.0, le=200.0)
+    max_range_percent: float = Field(25.0, alias="maxRangePercent", ge=1.0, le=200.0)
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class RuntimeConfigPayload(BaseModel):
     include_st: bool = Field(..., alias="includeST")
     include_delisted: bool = Field(..., alias="includeDelisted")
@@ -3153,6 +3188,11 @@ class RuntimeConfigPayload(BaseModel):
         default_factory=dict,
         alias="conceptAliasMap",
         description="Mapping between concept name and whitespace-separated alias keywords.",
+    )
+    volume_surge_config: VolumeSurgeConfigPayload = Field(
+        default_factory=VolumeSurgeConfigPayload,
+        alias="volumeSurgeConfig",
+        description="Threshold controls for the volume surge breakout indicator.",
     )
 
     class Config:
@@ -3205,6 +3245,12 @@ def _runtime_config_to_payload(config: RuntimeConfig) -> RuntimeConfigPayload:
         peripheral_aggregate_time=config.peripheral_aggregate_time,
         global_flash_frequency_minutes=config.global_flash_frequency_minutes,
         concept_alias_map=config.concept_alias_map,
+        volume_surge_config=VolumeSurgeConfigPayload(
+            min_volume_ratio=config.volume_surge_config.min_volume_ratio,
+            breakout_threshold_percent=config.volume_surge_config.breakout_threshold_percent,
+            daily_change_threshold_percent=config.volume_surge_config.daily_change_threshold_percent,
+            max_range_percent=config.volume_surge_config.max_range_percent,
+        ),
     )
 
 
@@ -8843,15 +8889,22 @@ def get_market_activity_snapshot() -> MarketActivityListResponse:
     return MarketActivityListResponse(items=items, datasetTimestamp=dataset_timestamp)
 
 
-@app.get("/indicator-screenings/continuous-volume", response_model=IndicatorScreeningListResponse)
-def list_indicator_continuous_volume(
+@app.get("/indicator-screenings", response_model=IndicatorScreeningListResponse)
+def list_indicator_screenings_endpoint(
+    indicators: Optional[List[str]] = Query(None, alias="indicators", description="Indicator code filters."),
+    net_income_yoy_min: Optional[float] = Query(None, alias="netIncomeYoyMin", description="Minimum net income YoY."),
+    pe_min: Optional[float] = Query(None, alias="peMin", description="Minimum PE ratio."),
+    pe_max: Optional[float] = Query(None, alias="peMax", description="Maximum PE ratio."),
     limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
     offset: int = Query(0, ge=0, description="Offset for pagination."),
 ) -> IndicatorScreeningListResponse:
     result = list_indicator_screenings(
-        indicator_code="continuous_volume",
+        indicator_codes=indicators,
         limit=limit,
         offset=offset,
+        net_income_yoy_min=net_income_yoy_min,
+        pe_min=pe_min,
+        pe_max=pe_max,
     )
     items = [
         IndicatorScreeningRecord(
@@ -8870,12 +8923,23 @@ def list_indicator_continuous_volume(
             baselineVolumeShares=entry.get("baselineVolumeShares"),
             baselineVolumeText=entry.get("baselineVolumeText"),
             volumeDays=entry.get("volumeDays"),
+            turnoverRate=entry.get("turnoverRate"),
+            turnoverAmount=entry.get("turnoverAmount"),
+            turnoverAmountText=entry.get("turnoverAmountText"),
+            highPrice=entry.get("highPrice"),
+            lowPrice=entry.get("lowPrice"),
+            netIncomeYoyLatest=entry.get("netIncomeYoyLatest"),
+            peRatio=entry.get("peRatio"),
+            turnoverPercent=entry.get("turnoverPercent"),
             industry=entry.get("industry"),
+            matchedIndicators=entry.get("matchedIndicators") or [],
+            indicatorDetails=entry.get("indicatorDetails") or {},
         )
         for entry in result.get("items", [])
     ]
     return IndicatorScreeningListResponse(
         indicatorCode=result.get("indicatorCode", "continuous_volume"),
+        indicatorCodes=result.get("indicatorCodes") or [result.get("indicatorCode", "continuous_volume")],
         indicatorName=result.get("indicatorName"),
         capturedAt=result.get("capturedAt"),
         total=int(result.get("total", 0)),
@@ -8883,15 +8947,31 @@ def list_indicator_continuous_volume(
     )
 
 
+@app.get("/indicator-screenings/continuous-volume", response_model=IndicatorScreeningListResponse)
+def list_indicator_continuous_volume(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> IndicatorScreeningListResponse:
+    return list_indicator_screenings_endpoint(indicators=[CONTINUOUS_VOLUME_CODE], limit=limit, offset=offset)
+
+
 @app.post("/indicator-screenings/continuous-volume/sync", response_model=IndicatorSyncResponse)
 def sync_indicator_continuous_volume_endpoint() -> IndicatorSyncResponse:
     result = sync_indicator_continuous_volume()
-    return IndicatorSyncResponse(
-        indicatorCode=result.get("indicatorCode", "continuous_volume"),
-        indicatorName=result.get("indicatorName"),
-        rows=int(result.get("rows", 0) or 0),
-        capturedAt=result.get("capturedAt"),
-    )
+    return IndicatorSyncResponse(**result)
+
+
+@app.post("/indicator-screenings/sync", response_model=IndicatorSyncBatchResponse)
+def sync_indicator_screening_endpoint(
+    indicator: Optional[str] = Query(None, description="Indicator code to refresh (default: all)."),
+) -> IndicatorSyncBatchResponse:
+    if indicator:
+        result = sync_indicator_screening(indicator_code=indicator)
+        payload = [IndicatorSyncResponse(**result)]
+    else:
+        batch = sync_all_indicator_screenings()
+        payload = [IndicatorSyncResponse(**item) for item in batch]
+    return IndicatorSyncBatchResponse(results=payload)
 
 
 @app.get("/fund-flow/market", response_model=MarketFundFlowListResponse)
@@ -9441,6 +9521,17 @@ def update_runtime_config(payload: RuntimeConfigPayload) -> RuntimeConfigPayload
         alias_map = normalize_concept_alias_map(payload.concept_alias_map or {})
     else:
         alias_map = existing.concept_alias_map
+    volume_field_provided = "volume_surge_config" in payload.__fields_set__
+    if volume_field_provided and payload.volume_surge_config is not None:
+        surge_payload = payload.volume_surge_config
+        volume_surge = VolumeSurgeConfig(
+            min_volume_ratio=surge_payload.min_volume_ratio,
+            breakout_threshold_percent=surge_payload.breakout_threshold_percent,
+            daily_change_threshold_percent=surge_payload.daily_change_threshold_percent,
+            max_range_percent=surge_payload.max_range_percent,
+        )
+    else:
+        volume_surge = existing.volume_surge_config
     config = RuntimeConfig(
         include_st=payload.include_st,
         include_delisted=payload.include_delisted,
@@ -9448,6 +9539,7 @@ def update_runtime_config(payload: RuntimeConfigPayload) -> RuntimeConfigPayload
         peripheral_aggregate_time=peripheral_time,
         global_flash_frequency_minutes=frequency_value,
         concept_alias_map=alias_map,
+        volume_surge_config=volume_surge,
     )
     save_runtime_config(config)
     if scheduler.running:

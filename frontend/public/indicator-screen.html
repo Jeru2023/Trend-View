@@ -39,9 +39,6 @@
             </p>
           </div>
           <div class="header-actions">
-            <button id="indicator-refresh-btn" class="btn btn--primary" type="button" data-i18n="indicatorScreen.refreshButton">
-              更新数据
-            </button>
             <div class="language-switcher">
               <button class="lang-btn" data-lang="en">EN</button>
               <button class="lang-btn" data-lang="zh">中文</button>
@@ -50,7 +47,10 @@
         </header>
 
         <section class="page indicator-screen">
-          <div class="info-bar">
+          <div class="info-bar indicator-info-bar">
+            <button id="indicator-refresh-btn" class="btn btn--primary" type="button" data-i18n="indicatorScreen.refreshButton">
+              更新数据
+            </button>
             <span data-i18n="indicatorScreen.lastUpdated">更新时间：</span>
             <strong id="indicator-last-updated">--</strong>
           </div>
@@ -72,21 +72,46 @@
             </div>
           </div>
 
+          <div class="indicator-filter">
+            <div class="indicator-filter__label" data-i18n="indicatorScreen.filterLabel">指标筛选</div>
+            <div id="indicator-tag-list" class="indicator-tag-list"></div>
+          </div>
+
+          <div class="indicator-filter">
+            <div class="indicator-filter__field">
+              <label for="filter-netincome" data-i18n="indicatorScreen.filterNetIncome">净利同比 &gt;</label>
+              <input type="number" id="filter-netincome" placeholder="0" step="0.1" />
+            </div>
+            <div class="indicator-filter__field">
+              <label for="filter-pe-min" data-i18n="indicatorScreen.filterPeMin">PE 最小</label>
+              <input type="number" id="filter-pe-min" placeholder="-" step="0.1" />
+            </div>
+            <div class="indicator-filter__field">
+              <label for="filter-pe-max" data-i18n="indicatorScreen.filterPeMax">PE 最大</label>
+              <input type="number" id="filter-pe-max" placeholder="-" step="0.1" />
+            </div>
+            <button type="button" class="btn btn--ghost indicator-filter__apply" id="indicator-filter-apply" data-i18n="indicatorScreen.filterApply">
+              应用
+            </button>
+          </div>
+
+          <div class="indicator-table-controls">
+            <div id="indicator-result-count">--</div>
+            <div class="pagination indicator-pagination">
+              <button type="button" id="indicator-prev-btn" class="btn btn--ghost indicator-page-btn" disabled>
+                &larr;
+              </button>
+              <span id="indicator-page-label">Page 1</span>
+              <button type="button" id="indicator-next-btn" class="btn btn--ghost indicator-page-btn" disabled>
+                &rarr;
+              </button>
+            </div>
+          </div>
+
           <div class="table-wrapper">
             <table class="data-table indicator-screen__table">
               <thead>
-                <tr>
-                  <th data-i18n="indicatorScreen.colRank">序号</th>
-                  <th data-i18n="indicatorScreen.colCode">代码</th>
-                  <th data-i18n="indicatorScreen.colName">名称</th>
-                  <th data-i18n="indicatorScreen.colPrice">最新价</th>
-                  <th data-i18n="indicatorScreen.colChange">涨跌幅</th>
-                  <th data-i18n="indicatorScreen.colStageChange">阶段涨跌幅</th>
-                  <th data-i18n="indicatorScreen.colVolume">成交量</th>
-                  <th data-i18n="indicatorScreen.colBaselineVolume">基准量</th>
-                  <th data-i18n="indicatorScreen.colDays">放量天数</th>
-                  <th data-i18n="indicatorScreen.colIndustry">所属行业</th>
-                </tr>
+                <tr id="indicator-table-head"></tr>
               </thead>
               <tbody
                 id="indicator-table-body"
@@ -99,8 +124,8 @@
       </main>
     </div>
 
-    <script src="i18n.js?v=20270416"></script>
-    <script src="sidebar.js?v=20270438"></script>
-    <script type="module" src="indicator-screen.js?v=20270450"></script>
+    <script src="i18n.js?v=20270417"></script>
+    <script src="sidebar.js?v=20270439"></script>
+    <script type="module" src="indicator-screen.js?v=20270451"></script>
   </body>
 </html>

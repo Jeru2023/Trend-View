@@ -127,6 +127,8 @@ class DailyIndicatorDAO(PostgresDAOBase):
             market_cap_value = float(total_mv) if total_mv is not None else None
             if market_cap_value is not None and not math.isfinite(market_cap_value):
                 market_cap_value = None
+            if market_cap_value is not None:
+                market_cap_value *= 10000  # Tushare reports total_mv in 10k CNY units.
 
             turnover_value = float(turnover_rate) if turnover_rate is not None else None
             if turnover_value is not None and not math.isfinite(turnover_value):
@@ -144,4 +146,3 @@ __all__ = [
     "DAILY_INDICATOR_FIELDS",
     "DailyIndicatorDAO",
 ]
-

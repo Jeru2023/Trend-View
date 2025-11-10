@@ -1065,6 +1065,7 @@ function createTabContext(tab) {
     formatOptionalDate,
     formatPercent,
     formatFinancialPercent,
+    formatMarketCap,
     getTrendClass,
     renderEmptyRow,
     getMarketLabel,
@@ -1464,6 +1465,22 @@ function formatOptionalNumber(value, options = {}) {
   }
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return new Intl.NumberFormat(locale, options).format(value);
+}
+
+function formatMarketCap(value) {
+  if (value === null || value === undefined) {
+    return EMPTY_VALUE;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY_VALUE;
+  }
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  const billions = numeric / MARKET_CAP_UNIT;
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(billions);
 }
 
 function formatOptionalDate(value) {

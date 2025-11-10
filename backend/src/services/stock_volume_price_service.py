@@ -1,9 +1,10 @@
-"""Run Wyckoff-style volume/price reasoning for concepts."""
+"""Run Wyckoff-style volume/price reasoning for individual stocks."""
 
 from __future__ import annotations
 
 import json
 from datetime import datetime
+import math
 from statistics import mean, pstdev
 from typing import Any, Dict, List, Optional
 
@@ -11,34 +12,34 @@ from zoneinfo import ZoneInfo
 
 from ..api_clients import generate_finance_analysis
 from ..config.settings import load_settings
-from ..dao import ConceptIndexHistoryDAO, ConceptVolumePriceReasoningDAO
-from .concept_constituent_service import resolve_concept_label
+from ..dao import DailyTradeDAO, StockVolumePriceReasoningDAO
+from .stock_basic_service import get_stock_overview
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 VOLUME_PRICE_PROMPT = """
-你是一名精通威科夫量价分析法的资深A股策略顾问。以下是概念 {concept_name} ({concept_code}) 最近 {lookback_days} 个交易日的指数行情 JSON 数据（包含 statistics.changePercent、window5/20/60、avgVolume、volumeStd 等字段）。请输出一段 JSON 推理，必须严格遵循下述结构：
+你是一名精通威科夫量价分析法的资深A股策略顾问。以下是个股 {stock_name} ({stock_code}) 最近 {lookback_days} 个交易日的行情 JSON 数据。请输出结构化 JSON，格式如下：
 {{
   "wyckoffPhase": "吸筹/上涨/再吸筹/派发/下跌/再派发/震荡/不确定",
   "stageSummary": "不少于80字，结合威科夫原理与数据的综合分析。",
-  "trendContext": "描述整体趋势、价格区间与关键位置，例如“位于XX-XX区间，上攻前高遇阻”。",
+  "trendContext": "描述整体趋势、价格区间与关键阻力/支撑。",
   "keySignals": {{
     "volumeSignals": ["引用具体量能数据，如“近3日成交量为20日均量的1.4倍”"],
-    "priceAction": ["引用具体价格行为或威科夫术语，如“UTAD后放量回落”"]
+    "priceAction": ["引用具体价格行为或威科夫术语，如“Spring 后放量上攻”"]
   }},
   "marketNarrative": "基于量价对“聪明钱”意图的解读。",
-  "strategyOutlook": ["基于当前阶段给出的策略展望，例如“观望等待回踩确认”"],
+  "strategyOutlook": ["基于当前阶段的操作展望，例如“突破回踩可小仓试多”"],
   "keyRisks": ["至少一条潜在风险或失败信号"],
-  "nextWatchlist": ["后续需要确认的信号列表"],
+  "nextWatchlist": ["为确认当前判断，需要跟踪的信号清单"],
   "confidence": 0.0-1.0
 }}
 
-额外要求：
-1. 先判断趋势与价格相对位置，再给出阶段，仅在出现高位滞涨、放量破位、区间涨幅转负等明确信号时才判定“派发/下跌”；否则可使用吸筹/上涨/再吸筹/震荡/不确定。
-2. 所有推理必须引用 JSON 中的具体数值或统计（如 statistics.window20.changePercent、history 的最高/最低价、volume 与 avgVolume 的对比）。
+要求：
+1. 先判断趋势与价格相对位置，再给出阶段。只有在出现高位滞涨、放量破位、区间涨幅转负等明确信号时才判定为“派发/下跌”；否则可使用吸筹/上涨/再吸筹/震荡/不确定。
+2. 所有观点必须引用 JSON 数据中的具体数值或统计（例如最高/最低价、statistics.window20.changePercent、volume 相对 avgVolume 等）。
 3. 若数据不足以确认阶段，需将 “wyckoffPhase” 设为“震荡”或“不确定”，并在 stageSummary 中说明原因与待确认事项。
 
-以下是输入数据：
+以下为输入数据：
 {payload}
 """
 
@@ -48,13 +49,7 @@ def _format_trade_date(value: Any) -> str:
         return ""
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d")
-    try:
-        return value.isoformat()  # type: ignore[attr-defined]
-    except Exception:
-        text = str(value)
-        if len(text) == 8 and text.isdigit():
-            return f"{text[:4]}-{text[4:6]}-{text[6:]}"
-        return text
+    return str(value)
 
 
 def _percent_change(start: Optional[float], end: Optional[float]) -> Optional[float]:
@@ -71,44 +66,60 @@ def _std(values: List[float]) -> Optional[float]:
     return round(pstdev(values), 2) if len(values) > 1 else None
 
 
-def build_volume_price_dataset(
-    concept: str,
+def _safe_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return numeric
+
+
+def _resolve_stock_profile(code: str, *, settings_path: Optional[str] = None) -> dict[str, Any]:
+    overview = get_stock_overview(
+        codes=[code],
+        limit=None,
+        offset=0,
+        settings_path=settings_path,
+    )
+    if not overview["items"]:
+        raise ValueError(f"Stock '{code}' not found.")
+    return overview["items"][0]
+
+
+def build_stock_volume_price_dataset(
+    code: str,
     *,
     lookback_days: int = 90,
     settings_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    resolved = resolve_concept_label(concept, settings_path=settings_path)
+    profile = _resolve_stock_profile(code, settings_path=settings_path)
     settings = load_settings(settings_path)
-    dao = ConceptIndexHistoryDAO(settings.postgres)
-    query = dao.list_entries(
-        concept_name=resolved["name"],
-        limit=min(max(lookback_days + 20, 90), 200),
-    )
-    items = query.get("items") or []
-    if not items:
+    daily_trade_dao = DailyTradeDAO(settings.postgres)
+    history_rows = daily_trade_dao.fetch_price_history(profile["code"], limit=min(max(lookback_days + 30, 120), 400))
+    if not history_rows:
         return {
-            "concept": resolved["name"],
-            "conceptCode": resolved["code"],
+            "code": profile["code"],
+            "name": profile.get("name"),
             "lookbackDays": lookback_days,
             "history": [],
             "statistics": {},
         }
 
-    history_sorted = sorted(items, key=lambda row: row.get("trade_date") or "")
-    trimmed = history_sorted[-lookback_days:]
+    trimmed = history_rows[-lookback_days:]
     normalised: List[Dict[str, Any]] = []
     for row in trimmed:
         normalised.append(
             {
                 "date": _format_trade_date(row.get("trade_date")),
-                "open": row.get("open"),
-                "high": row.get("high"),
-                "low": row.get("low"),
-                "close": row.get("close"),
-                "preClose": row.get("pre_close"),
-                "pctChange": row.get("pct_chg"),
-                "volume": row.get("vol"),
-                "amount": row.get("amount"),
+                "open": _safe_float(row.get("open")),
+                "high": _safe_float(row.get("high")),
+                "low": _safe_float(row.get("low")),
+                "close": _safe_float(row.get("close")),
+                "volume": _safe_float(row.get("volume")),
             }
         )
 
@@ -119,6 +130,7 @@ def build_volume_price_dataset(
 
     first_close = closes[0] if closes else None
     last_close = closes[-1] if closes else None
+
     stats = {
         "firstDate": normalised[0]["date"] if normalised else None,
         "lastDate": normalised[-1]["date"] if normalised else None,
@@ -149,26 +161,26 @@ def build_volume_price_dataset(
     stats["window60"] = _window_metrics(60)
 
     return {
-        "concept": resolved["name"],
-        "conceptCode": resolved["code"],
+        "code": profile["code"],
+        "name": profile.get("name"),
         "lookbackDays": lookback_days,
         "history": normalised,
         "statistics": stats,
     }
 
 
-def generate_concept_volume_price_reasoning(
-    concept: str,
+def generate_stock_volume_price_reasoning(
+    code: str,
     *,
     lookback_days: int = 90,
     run_llm: bool = True,
     settings_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    dataset = build_volume_price_dataset(concept, lookback_days=lookback_days, settings_path=settings_path)
+    dataset = build_stock_volume_price_dataset(code, lookback_days=lookback_days, settings_path=settings_path)
     settings = load_settings(settings_path)
     generated_at = datetime.now(LOCAL_TZ)
     generated_at_db = generated_at.replace(tzinfo=None)
-    reasoning_dao = ConceptVolumePriceReasoningDAO(settings.postgres)
+    reasoning_dao = StockVolumePriceReasoningDAO(settings.postgres)
 
     summary_text: Optional[str] = None
     model_name: Optional[str] = None
@@ -178,8 +190,8 @@ def generate_concept_volume_price_reasoning(
         else:
             prompt_payload = json.dumps(dataset, ensure_ascii=False, separators=(",", ":"))
             prompt = VOLUME_PRICE_PROMPT.format(
-                concept_name=dataset["concept"],
-                concept_code=dataset["conceptCode"],
+                stock_name=dataset.get("name") or dataset["code"],
+                stock_code=dataset["code"],
                 lookback_days=dataset["lookbackDays"],
                 payload=prompt_payload,
             )
@@ -225,12 +237,12 @@ def generate_concept_volume_price_reasoning(
     else:
         summary_dict = default_summary
         if not dataset.get("history"):
-            summary_dict["stageSummary"] = "暂无该概念的历史指数记录，无法进行量价推理。"
+            summary_dict["stageSummary"] = "暂无该股票的历史行情记录，无法进行量价推理。"
         raw_payload = json.dumps(summary_dict, ensure_ascii=False)
 
     record = {
-        "concept": dataset["concept"],
-        "conceptCode": dataset["conceptCode"],
+        "code": dataset["code"],
+        "name": dataset.get("name"),
         "lookbackDays": dataset["lookbackDays"],
         "historySize": len(dataset.get("history") or []),
         "statistics": dataset.get("statistics") or {},
@@ -240,65 +252,61 @@ def generate_concept_volume_price_reasoning(
         "generatedAt": generated_at.isoformat(),
     }
 
-    reasoning_dao.insert_snapshot(
-        concept_name=record["concept"],
-        concept_code=record["conceptCode"],
-        lookback_days=record["lookbackDays"],
+    record_id = reasoning_dao.insert_snapshot(
+        stock_code=dataset["code"],
+        stock_name=dataset.get("name"),
+        lookback_days=dataset["lookbackDays"],
         summary_json=summary_dict,
         raw_text=raw_payload,
         model=model_name,
         generated_at=generated_at_db,
     )
-
+    record["id"] = record_id
     return record
 
 
-def _normalize_record(record: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    if not record:
-        return None
-    normalized = dict(record)
-    generated_at = normalized.get("generatedAt")
-    if isinstance(generated_at, datetime):
-        normalized["generatedAt"] = generated_at.replace(tzinfo=LOCAL_TZ).isoformat()
-    return normalized
-
-
-def get_latest_volume_price_reasoning(
-    concept: str,
+def get_latest_stock_volume_price_reasoning(
+    code: str,
     *,
     settings_path: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    if not concept:
+    if not code:
         return None
-    resolved = resolve_concept_label(concept, settings_path=settings_path)
     settings = load_settings(settings_path)
-    dao = ConceptVolumePriceReasoningDAO(settings.postgres)
-    record = dao.fetch_latest(resolved["name"])
-    return _normalize_record(record)
+    reasoning_dao = StockVolumePriceReasoningDAO(settings.postgres)
+    record = reasoning_dao.fetch_latest(code)
+    if not record:
+        return None
+    record["generatedAt"] = (
+        record["generatedAt"].replace(tzinfo=LOCAL_TZ) if isinstance(record["generatedAt"], datetime) else record["generatedAt"]
+    )
+    return record
 
 
-def list_volume_price_history(
-    concept: str,
+def list_stock_volume_price_history(
+    code: str,
     *,
     limit: int = 10,
     offset: int = 0,
     settings_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    resolved = resolve_concept_label(concept, settings_path=settings_path)
+    if not code:
+        return {"total": 0, "items": []}
     settings = load_settings(settings_path)
-    dao = ConceptVolumePriceReasoningDAO(settings.postgres)
-    result = dao.list_history(resolved["name"], limit=limit, offset=offset)
-    items = [
-        normalized
-        for normalized in (_normalize_record(item) for item in result.get("items", []))
-        if normalized
-    ]
-    return {"total": int(result.get("total", 0)), "items": items}
+    reasoning_dao = StockVolumePriceReasoningDAO(settings.postgres)
+    history = reasoning_dao.list_history(code, limit=limit, offset=offset)
+    items: List[Dict[str, Any]] = []
+    for entry in history.get("items", []):
+        generated_at = entry.get("generatedAt")
+        if isinstance(generated_at, datetime) and generated_at.tzinfo is None:
+            entry["generatedAt"] = generated_at.replace(tzinfo=LOCAL_TZ)
+        items.append(entry)
+    return {"total": history.get("total", 0), "items": items}
 
 
 __all__ = [
-    "build_volume_price_dataset",
-    "generate_concept_volume_price_reasoning",
-    "get_latest_volume_price_reasoning",
-    "list_volume_price_history",
+    "build_stock_volume_price_dataset",
+    "generate_stock_volume_price_reasoning",
+    "get_latest_stock_volume_price_reasoning",
+    "list_stock_volume_price_history",
 ]

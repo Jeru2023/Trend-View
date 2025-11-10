@@ -14,6 +14,7 @@ from psycopg2 import sql
 
 from ..api_clients import generate_finance_analysis
 from ..config.settings import load_settings
+from ..config.runtime_config import load_runtime_config
 from ..dao import (
     ConceptIndexHistoryDAO,
     ConceptInsightDAO,
@@ -153,10 +154,20 @@ def _fetch_concept_news(
     *,
     lookback_hours: int,
     limit: int,
+    alias_terms: Optional[Sequence[str]] = None,
 ) -> List[Dict[str, Any]]:
-    concept_key = concept_name.strip().lower()
-    if not concept_key:
+    search_terms: List[str] = []
+    for term in [concept_name, *(alias_terms or [])]:
+        if not term:
+            continue
+        normalized = str(term).strip().lower()
+        if not normalized:
+            continue
+        if normalized not in search_terms:
+            search_terms.append(normalized)
+    if not search_terms:
         return []
+    like_patterns = [f"%{term}%" for term in search_terms]
 
     window_start = _local_now() - timedelta(hours=max(1, lookback_hours))
 
@@ -164,6 +175,17 @@ def _fetch_concept_news(
         article_dao.ensure_table(conn)
         insight_dao.ensure_table(conn)
         with conn.cursor() as cur:
+            term_clauses: List[sql.SQL] = []
+            params: List[Any] = [window_start]
+            columns = ("impact_themes", "impact_industries", "impact_sectors")
+            for column in columns:
+                for _pattern in like_patterns:
+                    term_clauses.append(
+                        sql.SQL("LOWER(COALESCE(i.{column}, '')) LIKE %s").format(column=sql.Identifier(column))
+                    )
+                    params.append(_pattern)
+            where_clause = sql.SQL(" OR ").join(term_clauses) if term_clauses else sql.SQL("FALSE")
+            params.append(limit)
             cur.execute(
                 sql.SQL(
                     """
@@ -176,11 +198,7 @@ def _fetch_concept_news(
                     JOIN {schema_insights}.{insights} AS i ON i.article_id = a.article_id
                     WHERE a.processing_status = 'completed'
                       AND a.published_at >= %s
-                      AND (
-                          LOWER(COALESCE(i.impact_themes, '')) LIKE %s
-                       OR LOWER(COALESCE(i.impact_industries, '')) LIKE %s
-                       OR LOWER(COALESCE(i.impact_sectors, '')) LIKE %s
-                      )
+                      AND ({where_clause})
                     ORDER BY a.published_at DESC
                     LIMIT %s
                     """
@@ -189,14 +207,9 @@ def _fetch_concept_news(
                     articles=sql.Identifier(article_dao._table_name),
                     schema_insights=sql.Identifier(insight_dao.config.schema),
                     insights=sql.Identifier(insight_dao._table_name),
+                    where_clause=where_clause,
                 ),
-                (
-                    window_start,
-                    f"%{concept_key}%",
-                    f"%{concept_key}%",
-                    f"%{concept_key}%",
-                    limit,
-                ),
+                params,
             )
             rows = cur.fetchall()
 
@@ -241,6 +254,7 @@ def _build_concept_entries(
     index_history_dao: ConceptIndexHistoryDAO,
     news_article_dao: NewsArticleDAO,
     news_insight_dao: NewsInsightDAO,
+    concept_alias_map: Optional[Dict[str, Sequence[str]]] = None,
 ) -> List[Dict[str, Any]]:
     entries: List[Dict[str, Any]] = []
     for concept in hot_concepts:
@@ -270,7 +284,19 @@ def _build_concept_entries(
         else:
             concept_entry["indexMetrics"] = _compute_index_metrics([])
 
-        news = _fetch_concept_news(news_article_dao, news_insight_dao, concept_name, lookback_hours=lookback_hours, limit=MAX_NEWS_PER_CONCEPT)
+        alias_terms = (
+            list(concept_alias_map.get(concept_name, []))
+            if concept_alias_map and concept_alias_map.get(concept_name)
+            else None
+        )
+        news = _fetch_concept_news(
+            news_article_dao,
+            news_insight_dao,
+            concept_name,
+            lookback_hours=lookback_hours,
+            limit=MAX_NEWS_PER_CONCEPT,
+            alias_terms=alias_terms,
+        )
         concept_entry["news"] = news
 
         entries.append(concept_entry)
@@ -287,6 +313,7 @@ def build_concept_snapshot(
 ) -> Dict[str, Any]:
     snapshot_time = _local_now()
     settings = load_settings(settings_path)
+    runtime_config = load_runtime_config()
 
     hotlist = build_sector_fund_flow_snapshot()
     concepts_raw = (hotlist.get("concepts") or [])[: concept_limit]
@@ -314,6 +341,7 @@ def build_concept_snapshot(
         index_history_dao=index_history_dao,
         news_article_dao=news_article_dao,
         news_insight_dao=news_insight_dao,
+        concept_alias_map=runtime_config.concept_alias_map,
     )
 
     return {
@@ -496,6 +524,8 @@ def list_concept_news(
 ) -> List[Dict[str, Any]]:
     resolved = resolve_concept_label(concept, settings_path=settings_path)
     settings = load_settings(settings_path)
+    runtime_config = load_runtime_config()
+    alias_terms = runtime_config.concept_alias_map.get(resolved["name"], [])
     article_dao = NewsArticleDAO(settings.postgres)
     insight_dao = NewsInsightDAO(settings.postgres)
     return _fetch_concept_news(
@@ -504,6 +534,7 @@ def list_concept_news(
         resolved["name"],
         lookback_hours=lookback_hours,
         limit=max(1, min(limit, 200)),
+        alias_terms=alias_terms,
     )
 
 

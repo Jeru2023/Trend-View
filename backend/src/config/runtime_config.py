@@ -6,12 +6,38 @@ from __future__ import annotations
 
 import json
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 CONFIG_FILE = Path(__file__).resolve().parents[2] / "config" / "control_config.json"
 _LOCK = threading.Lock()
+
+
+@dataclass
+class VolumeSurgeConfig:
+    min_volume_ratio: float = 3.0
+    breakout_threshold_percent: float = 3.0
+    daily_change_threshold_percent: float = 7.0
+    max_range_percent: float = 25.0
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any] | None) -> "VolumeSurgeConfig":
+        data = data or {}
+        return cls(
+            min_volume_ratio=_sanitize_float(data.get("min_volume_ratio"), default=3.0, minimum=0.5),
+            breakout_threshold_percent=_sanitize_float(data.get("breakout_threshold_percent"), default=3.0, minimum=0.0),
+            daily_change_threshold_percent=_sanitize_float(data.get("daily_change_threshold_percent"), default=7.0, minimum=0.0),
+            max_range_percent=_sanitize_float(data.get("max_range_percent"), default=25.0, minimum=1.0),
+        )
+
+    def to_dict(self) -> Dict[str, float]:
+        return {
+            "min_volume_ratio": float(self.min_volume_ratio),
+            "breakout_threshold_percent": float(self.breakout_threshold_percent),
+            "daily_change_threshold_percent": float(self.daily_change_threshold_percent),
+            "max_range_percent": float(self.max_range_percent),
+        }
 
 
 @dataclass
@@ -21,6 +47,8 @@ class RuntimeConfig:
     daily_trade_window_days: int = 420
     peripheral_aggregate_time: str = "06:00"
     global_flash_frequency_minutes: int = 180
+    concept_alias_map: Dict[str, List[str]] = field(default_factory=dict)
+    volume_surge_config: VolumeSurgeConfig = field(default_factory=VolumeSurgeConfig)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RuntimeConfig":
@@ -37,6 +65,10 @@ class RuntimeConfig:
             daily_trade_window_days=int(data.get("daily_trade_window_days", 420)),
             peripheral_aggregate_time=time_value,
             global_flash_frequency_minutes=frequency_value,
+            concept_alias_map=normalize_concept_alias_map(data.get("concept_alias_map")),
+            volume_surge_config=VolumeSurgeConfig.from_dict(
+                data.get("volume_surge_config") or data.get("volume_surge")
+            ),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -46,6 +78,8 @@ class RuntimeConfig:
             "daily_trade_window_days": self.daily_trade_window_days,
             "peripheral_aggregate_time": self.peripheral_aggregate_time,
             "global_flash_frequency_minutes": self.global_flash_frequency_minutes,
+            "concept_alias_map": self.concept_alias_map,
+            "volume_surge_config": self.volume_surge_config.to_dict(),
         }
 
 
@@ -82,4 +116,51 @@ def save_runtime_config(config: RuntimeConfig) -> None:
             json.dump(config.to_dict(), f, ensure_ascii=False, indent=2)
 
 
-__all__ = ["RuntimeConfig", "load_runtime_config", "save_runtime_config"]
+def normalize_concept_alias_map(raw_value: Any) -> Dict[str, List[str]]:
+    """Convert arbitrary payload into a normalized concept alias mapping."""
+    if not isinstance(raw_value, dict):
+        return {}
+    result: Dict[str, List[str]] = {}
+    for key, value in raw_value.items():
+        concept = str(key).strip()
+        if not concept:
+            continue
+        if isinstance(value, str):
+            candidates = value.split()
+        elif isinstance(value, (list, tuple, set)):
+            candidates = [str(item) for item in value]
+        else:
+            continue
+        cleaned: List[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            alias = str(candidate).strip()
+            if not alias:
+                continue
+            lower = alias.lower()
+            if lower in seen:
+                continue
+            seen.add(lower)
+            cleaned.append(alias)
+        if cleaned:
+            result[concept] = cleaned
+    return result
+
+
+def _sanitize_float(value: Any, *, default: float, minimum: float) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        numeric = default
+    if numeric < minimum:
+        numeric = minimum
+    return numeric
+
+
+__all__ = [
+    "RuntimeConfig",
+    "VolumeSurgeConfig",
+    "load_runtime_config",
+    "save_runtime_config",
+    "normalize_concept_alias_map",
+]

@@ -17,25 +17,26 @@ from .industry_directory_service import resolve_industry_label
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 VOLUME_PRICE_PROMPT = """
-你是一名熟悉威科夫量价分析法的A股策略顾问。我们提供了行业 {industry_name} ({industry_code}) 最近 {lookback_days} 个交易日的指数行情数据（单位：价格为元，vol为万手，amount为百万元）。
-
-请基于 JSON 数据输出一段 JSON 推理，结构如下：
+你是一名精通威科夫量价分析法的资深A股策略顾问。以下是行业 {industry_name} ({industry_code}) 最近 {lookback_days} 个交易日的指数行情 JSON 数据（包含 statistics.changePercent、window5/20/60、avgVolume、volumeStd 等字段）。请输出一段 JSON 推理，必须严格遵循下述结构：
 {{
-  "wyckoffPhase": "吸筹/上涨/派发/下跌/震荡",
-  "stageSummary": "不少于80字，说明当前阶段判断与理由",
-  "volumeSignals": ["至少3条量能观察，需引用具体日期或倍数"],
-  "priceSignals": ["至少3条价格或结构信号，说明支撑/阻力/影线等"],
-  "compositeIntent": "主力意图，例如吸筹/派发/测试/不明",
-  "strategy": ["至少2条操作建议，包含触发条件或仓位思路"],
-  "risks": ["至少2条风险提示"],
-  "checklist": ["至少3条后续需要跟踪的量价或事件条件"],
-  "confidence": 0-1之间的小数"
+  "wyckoffPhase": "吸筹/上涨/再吸筹/派发/下跌/再派发/震荡/不确定",
+  "stageSummary": "不少于80字，结合威科夫原理与数据的综合分析。",
+  "trendContext": "描述整体趋势、价格区间与关键位置，例如“位于XX-XX区间，上攻前高遇阻”。",
+  "keySignals": {{
+    "volumeSignals": ["引用具体量能数据，如“近3日成交量为20日均量的1.4倍”"],
+    "priceAction": ["引用具体价格行为或威科夫术语，如“UTAD后放量回落”"]
+  }},
+  "marketNarrative": "基于量价对“聪明钱”意图的解读。",
+  "strategyOutlook": ["基于当前阶段给出的策略展望，例如“观望等待回踩确认”"],
+  "keyRisks": ["至少一条潜在风险或失败信号"],
+  "nextWatchlist": ["后续需要确认的信号列表"],
+  "confidence": 0.0-1.0
 }}
 
-要求：
-1. 务必引用数据中的具体涨跌幅、价格区间或“最近X日平均成交量”这类指标。
-2. 以汉语输出，尽量结合威科夫阶段术语（PS、SC、ST、SOS、LPSY等）解释。
-3. 若数据不足以推理，也要说明原因并列出需要补充的观察点。
+额外要求：
+1. 先判断趋势与价格相对位置，再给出阶段，仅在出现高位滞涨、放量破位、区间涨幅转负等明确信号时才判定“派发/下跌”；否则可使用吸筹/上涨/再吸筹/震荡/不确定。
+2. 所有推理必须引用 JSON 中的具体数值或统计（如 statistics.window20.changePercent、history 的最高/最低价、volume 与 avgVolume 的对比）。
+3. 若数据不足以确认阶段，需将 “wyckoffPhase” 设为“震荡”或“不确定”，并在 stageSummary 中说明原因与待确认事项。
 
 以下是输入数据：
 {payload}

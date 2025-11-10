@@ -15,6 +15,7 @@ from ..api_clients import (
     fetch_stock_rank_xstp_ths,
     fetch_stock_rank_lxsz_ths,
 )
+from ..config.runtime_config import VolumeSurgeConfig, load_runtime_config
 from ..config.settings import load_settings
 from ..dao import (
     DailyIndicatorDAO,
@@ -338,6 +339,10 @@ INDICATOR_DEFINITIONS: Dict[str, Dict[str, Any]] = {
 
 
 def _fetch_volume_surge_breakout_candidates(settings) -> pd.DataFrame:
+    runtime_config = load_runtime_config()
+    surge_config = getattr(runtime_config, "volume_surge_config", None)
+    if surge_config is None:
+        surge_config = VolumeSurgeConfig()
     stock_basic_dao = StockBasicDAO(settings.postgres)
     fundamentals = stock_basic_dao.query_fundamentals(
         include_delisted=False,
@@ -370,7 +375,7 @@ def _fetch_volume_surge_breakout_candidates(settings) -> pd.DataFrame:
         meta = metadata.get(ts_code)
         if not meta:
             continue
-        candidate = _analyze_volume_surge_group(ts_code, group, meta)
+        candidate = _analyze_volume_surge_group(ts_code, group, meta, surge_config)
         if candidate:
             records.append(candidate)
 
@@ -383,7 +388,12 @@ def _fetch_volume_surge_breakout_candidates(settings) -> pd.DataFrame:
     return frame
 
 
-def _analyze_volume_surge_group(ts_code: str, group: pd.DataFrame, meta: dict[str, Any]) -> dict[str, Any] | None:
+def _analyze_volume_surge_group(
+    ts_code: str,
+    group: pd.DataFrame,
+    meta: dict[str, Any],
+    surge_config: VolumeSurgeConfig,
+) -> dict[str, Any] | None:
     ordered = group.sort_values("trade_date").copy()
     ordered = ordered.dropna(subset=["close", "volume"])
     if len(ordered) < VOLUME_SURGE_MIN_HISTORY:
@@ -402,7 +412,8 @@ def _analyze_volume_surge_group(ts_code: str, group: pd.DataFrame, meta: dict[st
         return None
 
     volume_ratio = last_volume / avg_volume if avg_volume else None
-    if volume_ratio is None or not math.isfinite(volume_ratio) or volume_ratio < VOLUME_SURGE_MIN_VOLUME_RATIO:
+    min_volume_ratio = surge_config.min_volume_ratio or VOLUME_SURGE_MIN_VOLUME_RATIO
+    if volume_ratio is None or not math.isfinite(volume_ratio) or volume_ratio < min_volume_ratio:
         return None
 
     consolidation = ordered.tail(VOLUME_SURGE_CONSOLIDATION_WINDOW + 1)
@@ -418,7 +429,8 @@ def _analyze_volume_surge_group(ts_code: str, group: pd.DataFrame, meta: dict[st
         return None
 
     range_ratio = (max_prior_close - min_prior_close) / min_prior_close
-    if range_ratio > VOLUME_SURGE_RANGE_LIMIT:
+    max_range_ratio = (surge_config.max_range_percent or (VOLUME_SURGE_RANGE_LIMIT * 100)) / 100
+    if range_ratio > max_range_ratio:
         return None
 
     breakout_percent = None
@@ -430,8 +442,11 @@ def _analyze_volume_surge_group(ts_code: str, group: pd.DataFrame, meta: dict[st
     if prev_close and prev_close > 0:
         price_change = ((last_close - prev_close) / prev_close) * 100
 
-    passes_breakout = breakout_percent is not None and breakout_percent >= VOLUME_SURGE_BREAKOUT_THRESHOLD
-    passes_strong_move = price_change is not None and price_change >= VOLUME_SURGE_DAILY_CHANGE_THRESHOLD
+    breakout_threshold = (surge_config.breakout_threshold_percent or (VOLUME_SURGE_BREAKOUT_THRESHOLD * 100)) / 100
+    daily_change_threshold = surge_config.daily_change_threshold_percent or VOLUME_SURGE_DAILY_CHANGE_THRESHOLD
+
+    passes_breakout = breakout_percent is not None and breakout_percent >= breakout_threshold
+    passes_strong_move = price_change is not None and price_change >= daily_change_threshold
     if not (passes_breakout or passes_strong_move):
         return None
 

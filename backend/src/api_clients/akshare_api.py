@@ -8,14 +8,20 @@ import logging
 import multiprocessing as mp
 import re
 import ssl
+import time
 from contextlib import suppress
+from functools import lru_cache
+from io import StringIO
 from queue import Empty
 from typing import Final, Optional, Tuple
 
 import pandas as pd
 
 import akshare as ak
+import py_mini_racer
 import requests
+from akshare.datasets import get_ths_js
+from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
@@ -119,6 +125,17 @@ CONTINUOUS_VOLUME_COLUMN_MAP: Final[dict[str, str]] = {
     "所属行业": "industry",
 }
 
+VOLUME_PRICE_RISE_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "rank",
+    "股票代码": "stock_code",
+    "股票简称": "stock_name",
+    "最新价": "last_price",
+    "量价齐升天数": "volume_days",
+    "阶段涨幅": "stage_change_percent",
+    "累计换手率": "turnover_percent",
+    "所属行业": "industry",
+}
+
 BIG_DEAL_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
     "成交时间": "trade_time",
     "股票代码": "stock_code",
@@ -129,6 +146,30 @@ BIG_DEAL_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
     "大单性质": "trade_side",
     "涨跌幅": "price_change_percent",
     "涨跌额": "price_change",
+}
+
+UPWARD_BREAKOUT_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "rank",
+    "股票代码": "stock_code",
+    "股票简称": "stock_name",
+    "最新价": "last_price",
+    "成交额": "turnover_amount_text",
+    "成交量": "volume_text",
+    "涨跌幅": "price_change_percent",
+    "换手率": "turnover_rate",
+}
+
+CONTINUOUS_RISE_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "rank",
+    "股票代码": "stock_code",
+    "股票简称": "stock_name",
+    "收盘价": "last_price",
+    "最高价": "high_price",
+    "最低价": "low_price",
+    "连涨天数": "volume_days",
+    "连续涨跌幅": "stage_change_percent",
+    "累计换手率": "turnover_percent",
+    "所属行业": "industry",
 }
 
 HSGT_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
@@ -1199,7 +1240,7 @@ def fetch_individual_fund_flow(symbol: str) -> pd.DataFrame:
         raise ValueError("symbol is required for individual fund flow fetch.")
 
     try:
-        dataframe = ak.stock_fund_flow_individual(symbol=str(symbol))
+        dataframe = _fetch_ths_individual_fund_flow(symbol=str(symbol).strip())
     except Exception as exc:  # pragma: no cover - external dependency
         logger.error("Failed to fetch individual fund flow data via AkShare: %s", exc)
         return _empty_individual_fund_flow_frame()
@@ -1214,6 +1255,152 @@ def fetch_individual_fund_flow(symbol: str) -> pd.DataFrame:
             renamed[column] = None
 
     return renamed.loc[:, list(INDIVIDUAL_FUND_FLOW_COLUMN_MAP.values())]
+
+
+THS_INDIVIDUAL_URLS: Final[dict[str, str]] = {
+    "即时": "http://data.10jqka.com.cn/funds/ggzjl/field/zdf/order/desc/page/{page}/ajax/1/free/1/",
+    "3日排行": "http://data.10jqka.com.cn/funds/ggzjl/board/3/field/zdf/order/desc/page/{page}/ajax/1/free/1/",
+    "5日排行": "http://data.10jqka.com.cn/funds/ggzjl/board/5/field/zdf/order/desc/page/{page}/ajax/1/free/1/",
+    "10日排行": "http://data.10jqka.com.cn/funds/ggzjl/board/10/field/zdf/order/desc/page/{page}/ajax/1/free/1/",
+    "20日排行": "http://data.10jqka.com.cn/funds/ggzjl/board/20/field/zdf/order/desc/page/{page}/ajax/1/free/1/",
+}
+THS_REFERER = "http://data.10jqka.com.cn/funds/ggzjl/"
+THS_MAX_PAGES = 150
+THS_REQUEST_TIMEOUT = 12
+THS_MAX_RETRIES = 3
+
+
+def _fetch_ths_individual_fund_flow(symbol: str) -> pd.DataFrame:
+    url_template = THS_INDIVIDUAL_URLS.get(symbol, THS_INDIVIDUAL_URLS["即时"])
+    session = requests.Session()
+    frames: list[pd.DataFrame] = []
+
+    first_html = _request_ths_page(session, url_template, 1)
+    if not first_html:
+        return _empty_individual_fund_flow_frame()
+    first_df = _parse_ths_individual_table(symbol, first_html)
+    if first_df is None or first_df.empty:
+        return _empty_individual_fund_flow_frame()
+    frames.append(first_df)
+
+    page_count = _extract_ths_page_count(first_html)
+    max_pages = page_count or THS_MAX_PAGES
+    for page in range(2, max_pages + 1):
+        html = _request_ths_page(session, url_template, page)
+        if not html:
+            break
+        df = _parse_ths_individual_table(symbol, html)
+        if df is None or df.empty:
+            break
+        frames.append(df)
+        if page_count is None and page >= THS_MAX_PAGES:
+            break
+        time.sleep(0.15)
+
+    if not frames:
+        return _empty_individual_fund_flow_frame()
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined = combined.drop_duplicates(subset=["股票代码"], keep="first")
+    combined.insert(0, "序号", range(1, len(combined) + 1))
+    return combined
+
+
+def _extract_ths_page_count(html: str) -> Optional[int]:
+    soup = BeautifulSoup(html, "lxml")
+    span = soup.find("span", class_="page_info")
+    if span and span.text and "/" in span.text:
+        try:
+            return int(span.text.split("/")[-1])
+        except ValueError:
+            pass
+    match = re.search(r"page_info\">\\s*\\d+/(\\d+)", html)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def _request_ths_page(session: requests.Session, url_template: str, page: int) -> Optional[str]:
+    last_error: Exception | None = None
+    for attempt in range(THS_MAX_RETRIES):
+        headers = _build_ths_headers()
+        try:
+            response = session.get(
+                url_template.format(page=page),
+                headers=headers,
+                timeout=THS_REQUEST_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            last_error = exc
+            time.sleep(0.3 * (attempt + 1))
+            continue
+        if response.status_code == 200 and "Nginx forbidden" not in response.text:
+            return response.text
+        last_error = RuntimeError(f"HTTP {response.status_code}")
+        time.sleep(0.3 * (attempt + 1))
+    if last_error:
+        logger.warning("THS individual fund flow request failed for page %s: %s", page, last_error)
+    return None
+
+
+def _build_ths_headers() -> dict[str, str]:
+    return {
+        "Accept": "text/html, */*; q=0.01",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "hexin-v": _generate_ths_hexin(),
+        "Host": "data.10jqka.com.cn",
+        "Pragma": "no-cache",
+        "Referer": THS_REFERER,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+
+@lru_cache(maxsize=1)
+def _ths_js_content() -> str:
+    with open(get_ths_js("ths.js"), encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _generate_ths_hexin() -> str:
+    js_code = py_mini_racer.MiniRacer()
+    js_code.eval(_ths_js_content())
+    return js_code.call("v")
+
+
+def _parse_ths_individual_table(symbol: str, html: str) -> Optional[pd.DataFrame]:
+    try:
+        frames = pd.read_html(StringIO(html))
+    except ValueError:
+        return None
+    if not frames:
+        return None
+    frame = frames[0]
+    if frame.empty:
+        return frame
+    expected_columns = [
+        "序号",
+        "股票代码",
+        "股票简称",
+        "最新价",
+    ]
+    if symbol == "即时":
+        expected_columns += ["涨跌幅", "换手率", "流入资金", "流出资金", "净额", "成交额"]
+    else:
+        expected_columns += ["阶段涨跌幅", "连续换手率", "资金流入净额"]
+    missing = [col for col in expected_columns if col not in frame.columns]
+    for col in missing:
+        frame[col] = None
+    frame = frame[expected_columns]
+    frame = frame[expected_columns]
+    frame["序号"] = pd.to_numeric(frame["序号"], errors="coerce").astype("Int64")
+    return frame
 
 
 def _empty_continuous_volume_frame() -> pd.DataFrame:
@@ -1239,6 +1426,81 @@ def fetch_stock_rank_cxfl_ths() -> pd.DataFrame:
 
     renamed["stock_code"] = renamed["stock_code"].astype(str).str.zfill(6)
     return renamed.loc[:, list(CONTINUOUS_VOLUME_COLUMN_MAP.values())]
+
+
+def _empty_volume_price_rise_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(VOLUME_PRICE_RISE_COLUMN_MAP.values()))
+
+
+def fetch_stock_rank_ljqs_ths() -> pd.DataFrame:
+    """Fetch Tonghuashun volume-price rise ranking snapshot."""
+    try:
+        dataframe = ak.stock_rank_ljqs_ths()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch volume-price rise ranking via AkShare: %s", exc)
+        return _empty_volume_price_rise_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no volume-price rise ranking data.")
+        return _empty_volume_price_rise_frame()
+
+    renamed = dataframe.rename(columns=VOLUME_PRICE_RISE_COLUMN_MAP)
+    for column in VOLUME_PRICE_RISE_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    renamed["stock_code"] = renamed["stock_code"].astype(str).str.zfill(6)
+    return renamed.loc[:, list(VOLUME_PRICE_RISE_COLUMN_MAP.values())]
+
+
+def _empty_upward_breakout_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(UPWARD_BREAKOUT_COLUMN_MAP.values()))
+
+
+def fetch_stock_rank_xstp_ths(symbol: str = "500日均线") -> pd.DataFrame:
+    """Fetch Tonghuashun upward breakout ranking snapshot for the specified moving average window."""
+    try:
+        dataframe = ak.stock_rank_xstp_ths(symbol=symbol)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch upward breakout ranking via AkShare: %s", exc)
+        return _empty_upward_breakout_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no upward breakout ranking data for symbol %s.", symbol)
+        return _empty_upward_breakout_frame()
+
+    renamed = dataframe.rename(columns=UPWARD_BREAKOUT_COLUMN_MAP)
+    for column in UPWARD_BREAKOUT_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    renamed["stock_code"] = renamed["stock_code"].astype(str).str.zfill(6)
+    return renamed.loc[:, list(UPWARD_BREAKOUT_COLUMN_MAP.values())]
+
+
+def _empty_continuous_rise_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(CONTINUOUS_RISE_COLUMN_MAP.values()))
+
+
+def fetch_stock_rank_lxsz_ths() -> pd.DataFrame:
+    """Fetch Tonghuashun continuous rise ranking snapshot."""
+    try:
+        dataframe = ak.stock_rank_lxsz_ths()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch continuous rise ranking via AkShare: %s", exc)
+        return _empty_continuous_rise_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no continuous rise ranking data.")
+        return _empty_continuous_rise_frame()
+
+    renamed = dataframe.rename(columns=CONTINUOUS_RISE_COLUMN_MAP)
+    for column in CONTINUOUS_RISE_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    renamed["stock_code"] = renamed["stock_code"].astype(str).str.zfill(6)
+    return renamed.loc[:, list(CONTINUOUS_RISE_COLUMN_MAP.values())]
 
 
 def _empty_big_deal_fund_flow_frame() -> pd.DataFrame:
@@ -1456,6 +1718,7 @@ __all__ = [
     "CONCEPT_FUND_FLOW_COLUMN_MAP",
     "INDIVIDUAL_FUND_FLOW_COLUMN_MAP",
     "CONTINUOUS_VOLUME_COLUMN_MAP",
+    "VOLUME_PRICE_RISE_COLUMN_MAP",
     "BIG_DEAL_FUND_FLOW_COLUMN_MAP",
     "HSGT_FUND_FLOW_COLUMN_MAP",
     "MARGIN_ACCOUNT_COLUMN_MAP",
@@ -1476,6 +1739,9 @@ __all__ = [
     "fetch_concept_fund_flow",
     "fetch_individual_fund_flow",
     "fetch_stock_rank_cxfl_ths",
+    "fetch_stock_rank_xstp_ths",
+    "fetch_stock_rank_lxsz_ths",
+    "fetch_stock_rank_ljqs_ths",
     "fetch_big_deal_fund_flow",
     "fetch_hsgt_fund_flow_history",
     "fetch_hsgt_fund_flow_summary",

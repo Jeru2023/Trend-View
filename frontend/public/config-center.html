@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="configTitle">Trend View - Configuration Center</title>
-    <link rel="stylesheet" href="styles.css?v=20251226" />
+    <link rel="stylesheet" href="styles.css?v=20261105" />
     <script>
       (function () {
         var key = "trend-view-lang";
@@ -102,6 +102,49 @@
             </div>
           </div>
 
+          <header class="config-subheader">
+            <h3 data-i18n="volumeSurgeSectionTitle">Volume surge indicator</h3>
+            <p data-i18n="volumeSurgeSectionSubtitle">Tune thresholds used by the “爆量启动” screening tag.</p>
+          </header>
+
+          <div class="config-grid">
+            <div class="config-field">
+              <label for="config-volume-surge-ratio" data-i18n="volumeSurgeRatioLabel">Minimum volume multiple</label>
+              <input type="number" id="config-volume-surge-ratio" min="0.5" step="0.1" />
+              <small data-i18n="volumeSurgeRatioHint">Latest volume ÷ 20-day average must exceed this multiple.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-volume-surge-breakout" data-i18n="volumeSurgeBreakoutLabel">Breakout requirement (%)</label>
+              <input type="number" id="config-volume-surge-breakout" min="0" max="100" step="0.1" />
+              <small data-i18n="volumeSurgeBreakoutHint">Close vs. prior range high; set 0 to disable.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-volume-surge-daily-change" data-i18n="volumeSurgeDailyChangeLabel">Daily change fallback (%)</label>
+              <input type="number" id="config-volume-surge-daily-change" min="0" max="200" step="0.1" />
+              <small data-i18n="volumeSurgeDailyChangeHint">If breakout fails, require this percent gain; set 0 to disable.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-volume-surge-range" data-i18n="volumeSurgeRangeLabel">Max consolidation range (%)</label>
+              <input type="number" id="config-volume-surge-range" min="1" max="200" step="0.1" />
+              <small data-i18n="volumeSurgeRangeHint">Largest swing allowed within the base window.</small>
+            </div>
+          </div>
+
+          <header class="config-subheader">
+            <h3 data-i18n="conceptAliasSectionTitle">Concept alias mapping</h3>
+            <p data-i18n="conceptAliasSectionSubtitle">
+              Select a concept on the left and enter space-separated aliases used in news tagging.
+            </p>
+          </header>
+
+          <div class="concept-alias-card">
+            <div class="concept-alias-rows" id="concept-alias-rows"></div>
+            <button class="secondary-btn" type="button" id="concept-alias-add-row" data-i18n="conceptAliasAddRow">
+              Add mapping
+            </button>
+            <datalist id="concept-alias-directory"></datalist>
+          </div>
+
           <div class="config-actions">
             <button class="primary-btn" id="save-config" data-i18n="saveSettings">
               Save Settings
@@ -117,8 +160,8 @@
       </div>
     </div>
 
-    <script src="i18n.js?v=20270415"></script>
+    <script src="i18n.js?v=20270420"></script>
     <script src="sidebar.js?v=20270438"></script>
-    <script src="config-center.js?v=20260306"></script>
+    <script src="config-center.js?v=20261105"></script>
   </body>
 </html>

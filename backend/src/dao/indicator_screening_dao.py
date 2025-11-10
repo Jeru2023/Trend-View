@@ -30,7 +30,13 @@ INDICATOR_SCREENING_COLUMNS: Sequence[str] = (
     "baseline_volume_shares",
     "baseline_volume_text",
     "volume_days",
+    "turnover_percent",
+    "turnover_rate",
+    "turnover_amount",
+    "turnover_amount_text",
     "industry",
+    "high_price",
+    "low_price",
 )
 
 
@@ -51,6 +57,7 @@ class IndicatorScreeningDAO(PostgresDAOBase):
             self._schema_sql_template,
             schema=self.config.schema,
             table=self._table_name,
+            indicator_rank_idx=f"{self._table_name}_indicator_rank_idx",
         )
 
     def upsert(self, dataframe: pd.DataFrame, *, conn: Optional[PGConnection] = None) -> int:
@@ -132,4 +139,3 @@ class IndicatorScreeningDAO(PostgresDAOBase):
             "latest_captured_at": latest_captured,
             "indicator_code": indicator_code,
         }
-

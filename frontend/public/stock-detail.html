@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="pageTitle">Trend View - Stock Detail</title>
-    <link rel="stylesheet" href="styles.css?v=20261106" />
+    <link rel="stylesheet" href="styles.css?v=20261112" />
     <script>
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
@@ -146,6 +146,9 @@
           <button class="detail-tabs__btn" type="button" data-tab="volume">
             <span data-i18n="tabVolume">Volume Analysis</span>
           </button>
+          <button class="detail-tabs__btn" type="button" data-tab="analysis">
+            <span data-i18n="tabIntegrated">Integrated</span>
+          </button>
         </div>
 
         <div class="detail-tab-panels">
@@ -253,9 +256,14 @@
                     Tagged headlines and flash updates related to this stock.
                   </p>
                 </div>
-                <button class="secondary-btn" id="stock-news-refresh" type="button" data-i18n="refreshButton">
-                  Refresh
-                </button>
+                <div class="detail-card__actions">
+                  <button class="secondary-btn" type="button" id="stock-news-sync" data-i18n="newsSyncButton">
+                    Sync Latest
+                  </button>
+                  <button class="secondary-btn" id="stock-news-refresh" type="button" data-i18n="refreshButton">
+                    Refresh
+                  </button>
+                </div>
               </header>
               <div class="detail-news" id="stock-news-list"></div>
               <p class="detail-empty hidden" id="stock-news-empty" data-i18n="newsEmpty">
@@ -305,12 +313,60 @@
               </div>
             </article>
           </section>
+
+          <section class="detail-tab-panel" data-tab-panel="analysis">
+            <article class="detail-card detail-card--wide" id="integrated-card">
+              <header class="detail-card__header detail-card__header--row">
+                <div>
+                  <h2 data-i18n="integratedTabTitle">Integrated Analysis</h2>
+                  <p class="detail-card__subtitle" data-i18n="integratedTabSubtitle">
+                    DeepSeek reasoning blended with overview metrics, fund flow, news, and volume signals.
+                  </p>
+                  <p class="detail-integrated-meta" id="integrated-meta"></p>
+                </div>
+                <div class="detail-card__actions">
+                  <button
+                    class="secondary-btn"
+                    type="button"
+                    id="stock-integrated-history-toggle"
+                    data-i18n="integratedHistoryButton"
+                  >
+                    History
+                  </button>
+                  <button class="primary-btn" type="button" id="stock-integrated-run" data-i18n="integratedRunButton">
+                    Run Integrated Analysis
+                  </button>
+                </div>
+              </header>
+              <div class="integrated-summary" id="integrated-summary"></div>
+              <p class="detail-empty hidden" id="integrated-empty" data-i18n="integratedEmpty">
+                Generate the integrated analysis to review DeepSeek recommendations.
+              </p>
+              <p class="detail-error hidden" id="integrated-error"></p>
+              <div class="detail-volume-history" id="stock-integrated-history" hidden>
+                <div class="detail-volume-history__header">
+                  <div>
+                    <h3 data-i18n="integratedHistoryTitle">Integrated Analysis History</h3>
+                  </div>
+                  <button
+                    class="link-btn"
+                    type="button"
+                    id="stock-integrated-history-close"
+                    data-i18n="integratedHistoryClose"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div class="detail-volume-history__list" id="stock-integrated-history-list" data-empty="1"></div>
+              </div>
+            </article>
+          </section>
         </div>
       </main>
     </div>
 
-    <script src="i18n.js?v=20270420"></script>
+    <script src="i18n.js?v=20270421"></script>
     <script src="sidebar.js?v=20270438"></script>
-    <script type="module" src="stock-detail.js?v=20261106"></script>
+    <script type="module" src="stock-detail.js?v=20261112"></script>
   </body>
 </html>

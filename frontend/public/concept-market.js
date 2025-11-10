@@ -188,48 +188,80 @@ function parseJSON(value) {
 }
 
 function formatVolumeSummary(summary) {
-  const payload = parseJSON(summary) || {};
+  const payload = parseJSON(summary) || summary || {};
   if (!payload || typeof payload !== "object") {
     return null;
   }
   const dict = getDict();
   const sections = [];
-  const parts = [];
-  if (payload.wyckoffPhase) {
-    const label = dict.volumeLabelPhase || "阶段";
-    parts.push(`${label}：${payload.wyckoffPhase}`);
-  }
-  if (payload.compositeIntent) {
-    const label = dict.volumeLabelIntent || "主力意图";
-    parts.push(`${label}：${payload.compositeIntent}`);
+  const badges = [];
+  const phase = payload.wyckoffPhase || payload.phase;
+  if (phase) {
+    badges.push(`${dict.volumeLabelPhase || "阶段"}：${phase}`);
   }
   if (payload.confidence != null && Number.isFinite(Number(payload.confidence))) {
     const confidenceLabel = dict.volumeLabelConfidence || "置信度";
-    parts.push(`${confidenceLabel}：${(Number(payload.confidence) * 100).toFixed(0)}%`);
+    badges.push(`${confidenceLabel}：${(Number(payload.confidence) * 100).toFixed(0)}%`);
   }
-  if (parts.length) {
-    sections.push(parts.join(" · "));
+  if (badges.length) {
+    sections.push(badges.join(" · "));
   }
-  if (payload.stageSummary) {
+  const trendContext = payload.trendContext;
+  if (trendContext) {
+    sections.push(`【${dict.volumeLabelTrend || "趋势背景"}】`);
+    sections.push(String(trendContext));
+  }
+  const stageSummary = payload.stageSummary || payload.stage_summary;
+  if (stageSummary) {
     sections.push(`【${dict.volumeLabelSummary || "量价结论"}】`);
-    sections.push(String(payload.stageSummary));
+    sections.push(String(stageSummary));
   }
-  const listSections = [
-    { key: "volumeSignals", label: dict.volumeLabelVolumeSignals || "量能信号" },
-    { key: "priceSignals", label: dict.volumeLabelPriceSignals || "价格/结构信号" },
-    { key: "strategy", label: dict.volumeLabelStrategy || "策略建议" },
-    { key: "risks", label: dict.volumeLabelRisks || "风险提示" },
-    { key: "checklist", label: dict.volumeLabelChecklist || "后续观察" },
-  ];
-  listSections.forEach(({ key, label }) => {
-    const items = payload[key];
-    if (Array.isArray(items) && items.length) {
-      sections.push(`【${label}】`);
-      items.forEach((item, index) => {
-        sections.push(`${index + 1}. ${typeof item === "object" ? JSON.stringify(item) : String(item)}`);
-      });
-    }
-  });
+  const marketNarrative = payload.marketNarrative || payload.compositeIntent;
+  if (marketNarrative) {
+    sections.push(`【${dict.volumeLabelMarketNarrative || "市场解读"}】`);
+    sections.push(String(marketNarrative));
+  }
+  const volumeSignals =
+    (payload.keySignals && Array.isArray(payload.keySignals.volumeSignals) && payload.keySignals.volumeSignals) ||
+    payload.volumeSignals ||
+    [];
+  if (Array.isArray(volumeSignals) && volumeSignals.length) {
+    sections.push(`【${dict.volumeLabelVolumeSignals || "量能信号"}】`);
+    volumeSignals.forEach((item, index) => {
+      sections.push(`${index + 1}. ${typeof item === "object" ? JSON.stringify(item) : String(item)}`);
+    });
+  }
+  const priceSignals =
+    (payload.keySignals && Array.isArray(payload.keySignals.priceAction) && payload.keySignals.priceAction) ||
+    payload.priceSignals ||
+    [];
+  if (Array.isArray(priceSignals) && priceSignals.length) {
+    sections.push(`【${dict.volumeLabelPriceSignals || "价格/结构信号"}】`);
+    priceSignals.forEach((item, index) => {
+      sections.push(`${index + 1}. ${typeof item === "object" ? JSON.stringify(item) : String(item)}`);
+    });
+  }
+  const strategyItems = payload.strategyOutlook || payload.strategy || [];
+  if (Array.isArray(strategyItems) && strategyItems.length) {
+    sections.push(`【${dict.volumeLabelStrategyOutlook || dict.volumeLabelStrategy || "策略建议"}】`);
+    strategyItems.forEach((item, index) => {
+      sections.push(`${index + 1}. ${typeof item === "object" ? JSON.stringify(item) : String(item)}`);
+    });
+  }
+  const risks = payload.keyRisks || payload.risks || [];
+  if (Array.isArray(risks) && risks.length) {
+    sections.push(`【${dict.volumeLabelKeyRisks || dict.volumeLabelRisks || "风险提示"}】`);
+    risks.forEach((item, index) => {
+      sections.push(`${index + 1}. ${typeof item === "object" ? JSON.stringify(item) : String(item)}`);
+    });
+  }
+  const checklist = payload.nextWatchlist || payload.checklist || [];
+  if (Array.isArray(checklist) && checklist.length) {
+    sections.push(`【${dict.volumeLabelNextWatch || dict.volumeLabelChecklist || "后续观察"}】`);
+    checklist.forEach((item, index) => {
+      sections.push(`${index + 1}. ${typeof item === "object" ? JSON.stringify(item) : String(item)}`);
+    });
+  }
   return sections.length ? sections.join("\n") : null;
 }
 

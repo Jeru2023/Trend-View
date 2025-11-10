@@ -45,7 +45,7 @@ export const tradingDataTab = {
         })}</td>
         <td class="${changeClass}">${ctx.formatPercent(item.pct_change)}</td>
         <td>${ctx.formatOptionalNumber(item.volume, { maximumFractionDigits: 0 })}</td>
-        <td>${ctx.formatOptionalNumber(item.market_cap, { maximumFractionDigits: 0 })}</td>
+        <td>${ctx.formatMarketCap(item.market_cap)}</td>
         <td>${ctx.formatOptionalNumber(item.pe_ratio, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,

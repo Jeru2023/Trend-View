@@ -4083,9 +4083,17 @@ function renderDetail(detail) {
   elements.heroUpdated.textContent = updatedLabel;
   elements.heroUpdated.classList.toggle("hidden", !updatedLabel);
 
-  elements.heroMarketCap.textContent = formatCompactNumber(
-    detail.tradingData.marketCap ?? detail.profile.marketCap
-  );
+  const rawMarketCap = detail.tradingData.marketCap ?? detail.profile.marketCap;
+  const numericMarketCap =
+    rawMarketCap === null || rawMarketCap === undefined ? null : Number(rawMarketCap);
+  const marketCapInBillions =
+    numericMarketCap === null || Number.isNaN(numericMarketCap)
+      ? null
+      : numericMarketCap / 100000000;
+  elements.heroMarketCap.textContent = formatNumber(marketCapInBillions, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   elements.heroVolume.textContent = formatCompactNumber(
     detail.tradingData.volume ?? detail.profile.volume
   );
