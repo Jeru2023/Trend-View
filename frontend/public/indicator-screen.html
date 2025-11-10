@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh" data-pref-lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="indicatorScreen.title">趋势视图 - 指标选股</title>
+    <link rel="stylesheet" href="styles.css?v=20270444" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          } else {
+            document.documentElement.lang = "zh";
+            document.documentElement.setAttribute("data-pref-lang", "zh");
+          }
+        } catch (error) {
+          document.documentElement.lang = "zh";
+          document.documentElement.setAttribute("data-pref-lang", "zh");
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="indicator-screen">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="indicatorScreen.pageTitle">指标选股</h1>
+            <p class="page-subtitle" data-i18n="indicatorScreen.pageSubtitle">
+              跟踪同花顺持续放量指标入选个股，并跳转查看个股综合分析。
+            </p>
+          </div>
+          <div class="header-actions">
+            <button id="indicator-refresh-btn" class="btn btn--primary" type="button" data-i18n="indicatorScreen.refreshButton">
+              更新数据
+            </button>
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="en">EN</button>
+              <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page indicator-screen">
+          <div class="info-bar">
+            <span data-i18n="indicatorScreen.lastUpdated">更新时间：</span>
+            <strong id="indicator-last-updated">--</strong>
+          </div>
+
+          <p id="indicator-screen-status" class="page-status" aria-live="polite"></p>
+
+          <div class="card indicator-summary">
+            <div>
+              <div class="indicator-summary__label" data-i18n="indicatorScreen.tableIndicator">指标</div>
+              <div class="indicator-summary__value" id="indicator-name">--</div>
+            </div>
+            <div>
+              <div class="indicator-summary__label" data-i18n="indicatorScreen.colDays">放量天数</div>
+              <div class="indicator-summary__value" id="indicator-days-range">--</div>
+            </div>
+            <div>
+              <div class="indicator-summary__label" data-i18n="indicatorScreen.colVolume">成交量</div>
+              <div class="indicator-summary__value" id="indicator-volume-hint">--</div>
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="data-table indicator-screen__table">
+              <thead>
+                <tr>
+                  <th data-i18n="indicatorScreen.colRank">序号</th>
+                  <th data-i18n="indicatorScreen.colCode">代码</th>
+                  <th data-i18n="indicatorScreen.colName">名称</th>
+                  <th data-i18n="indicatorScreen.colPrice">最新价</th>
+                  <th data-i18n="indicatorScreen.colChange">涨跌幅</th>
+                  <th data-i18n="indicatorScreen.colStageChange">阶段涨跌幅</th>
+                  <th data-i18n="indicatorScreen.colVolume">成交量</th>
+                  <th data-i18n="indicatorScreen.colBaselineVolume">基准量</th>
+                  <th data-i18n="indicatorScreen.colDays">放量天数</th>
+                  <th data-i18n="indicatorScreen.colIndustry">所属行业</th>
+                </tr>
+              </thead>
+              <tbody
+                id="indicator-table-body"
+                data-empty-en="No screening data yet."
+                data-empty-zh="暂无指标选股数据。"
+              ></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20270416"></script>
+    <script src="sidebar.js?v=20270438"></script>
+    <script type="module" src="indicator-screen.js?v=20270450"></script>
+  </body>
+</html>

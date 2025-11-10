@@ -57,6 +57,10 @@ from .industry_directory_dao import IndustryDirectoryDAO
 from .industry_watchlist_dao import IndustryWatchlistDAO
 from .industry_index_history_dao import IndustryIndexHistoryDAO
 from .industry_volume_price_reasoning_dao import IndustryVolumePriceReasoningDAO
+from .stock_volume_price_reasoning_dao import StockVolumePriceReasoningDAO
+from .stock_news_dao import StockNewsDAO
+from .stock_integrated_analysis_dao import StockIntegratedAnalysisDAO
+from .indicator_screening_dao import IndicatorScreeningDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -116,4 +120,8 @@ __all__ = [
     "IndustryWatchlistDAO",
     "IndustryIndexHistoryDAO",
     "IndustryVolumePriceReasoningDAO",
+    "StockVolumePriceReasoningDAO",
+    "StockNewsDAO",
+    "StockIntegratedAnalysisDAO",
+    "IndicatorScreeningDAO",
 ]

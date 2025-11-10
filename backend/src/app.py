@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from zoneinfo import ZoneInfo
 
-from .config.runtime_config import RuntimeConfig, load_runtime_config, save_runtime_config
+from .config.runtime_config import RuntimeConfig, load_runtime_config, save_runtime_config, normalize_concept_alias_map
 from .config.settings import load_settings
 from .dao import (
     DailyIndicatorDAO,
@@ -115,6 +115,7 @@ from .services import (
     list_individual_fund_flow,
     list_big_deal_fund_flow,
     list_hsgt_fund_flow,
+    list_stock_news,
     list_margin_account_info,
     list_market_activity,
     list_market_fund_flow,
@@ -179,6 +180,14 @@ from .services import (
     generate_industry_volume_price_reasoning,
     get_latest_industry_volume_price_reasoning,
     list_industry_volume_price_history,
+    generate_stock_volume_price_reasoning,
+    get_latest_stock_volume_price_reasoning,
+    list_stock_volume_price_history,
+    generate_stock_integrated_analysis,
+    get_latest_stock_integrated_analysis,
+    list_stock_integrated_analysis_history,
+    sync_indicator_continuous_volume,
+    list_indicator_screenings,
     list_industry_index_history,
     list_concept_constituents,
     sync_concept_directory,
@@ -195,6 +204,7 @@ from .services import (
     sync_stock_basic,
     sync_stock_main_business,
     sync_stock_main_composition,
+    sync_stock_news,
     get_stock_main_composition,
     is_trading_day,
     INDEX_CONFIG,
@@ -202,6 +212,8 @@ from .services import (
 from .state import monitor
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+INTEGRATED_NEWS_DAYS_DEFAULT = 10
+INTEGRATED_TRADE_DAYS_DEFAULT = 10
 
 scheduler = AsyncIOScheduler(timezone=LOCAL_TZ)
 scheduler_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -2744,6 +2756,96 @@ class IndustryVolumePriceHistoryResponse(BaseModel):
     items: List[IndustryVolumePriceRecord]
 
 
+class StockVolumePriceRequest(BaseModel):
+    code: str
+    lookback_days: int = Field(90, alias="lookbackDays", ge=30, le=240)
+    run_llm: bool = Field(True, alias="runLlm")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockVolumePriceRecord(BaseModel):
+    id: int
+    code: str
+    name: Optional[str]
+    lookback_days: int = Field(..., alias="lookbackDays")
+    summary: Dict[str, Any]
+    raw_text: str = Field(..., alias="rawText")
+    model: Optional[str]
+    generated_at: datetime = Field(..., alias="generatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockVolumePriceHistoryResponse(BaseModel):
+    total: int
+    items: List[StockVolumePriceRecord]
+
+
+class StockIntegratedAnalysisRequest(BaseModel):
+    code: str
+    news_days: int = Field(INTEGRATED_NEWS_DAYS_DEFAULT, alias="newsDays", ge=1, le=30)
+    trade_days: int = Field(INTEGRATED_TRADE_DAYS_DEFAULT, alias="tradeDays", ge=5, le=30)
+    run_llm: bool = Field(True, alias="runLlm")
+    force: bool = False
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockIntegratedAnalysisRecord(BaseModel):
+    id: int
+    code: str
+    name: Optional[str]
+    news_days: int = Field(..., alias="newsDays")
+    trade_days: int = Field(..., alias="tradeDays")
+    summary: Dict[str, Any]
+    raw_text: str = Field(..., alias="rawText")
+    model: Optional[str]
+    generated_at: datetime = Field(..., alias="generatedAt")
+    context: Optional[Dict[str, Any]] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockIntegratedAnalysisHistoryResponse(BaseModel):
+    total: int
+    items: List[StockIntegratedAnalysisRecord]
+
+
+class StockNewsSyncRequest(BaseModel):
+    code: str
+
+
+class StockNewsSyncResponse(BaseModel):
+    fetched: int
+    inserted: int
+
+
+class StockNewsItem(BaseModel):
+    id: int
+    stock_code: str = Field(..., alias="stockCode")
+    keyword: Optional[str] = None
+    title: str
+    content: Optional[str] = None
+    source: Optional[str] = None
+    url: Optional[str] = None
+    published_at: Optional[datetime] = Field(None, alias="publishedAt")
+    created_at: Optional[datetime] = Field(None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockNewsListResponse(BaseModel):
+    total: int
+    items: List[StockNewsItem]
+
+
 class ConceptIndexBar(BaseModel):
     trade_date: date = Field(..., alias="tradeDate")
     open: Optional[float] = None
@@ -2951,6 +3053,49 @@ class MarketActivityListResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class IndicatorScreeningRecord(BaseModel):
+    indicator_code: str = Field(..., alias="indicatorCode")
+    indicator_name: Optional[str] = Field(None, alias="indicatorName")
+    captured_at: Optional[datetime] = Field(None, alias="capturedAt")
+    rank: Optional[int]
+    stock_code: Optional[str] = Field(None, alias="stockCode")
+    stock_code_full: Optional[str] = Field(None, alias="stockCodeFull")
+    stock_name: Optional[str] = Field(None, alias="stockName")
+    price_change_percent: Optional[float] = Field(None, alias="priceChangePercent")
+    stage_change_percent: Optional[float] = Field(None, alias="stageChangePercent")
+    last_price: Optional[float] = Field(None, alias="lastPrice")
+    volume_shares: Optional[float] = Field(None, alias="volumeShares")
+    volume_text: Optional[str] = Field(None, alias="volumeText")
+    baseline_volume_shares: Optional[float] = Field(None, alias="baselineVolumeShares")
+    baseline_volume_text: Optional[str] = Field(None, alias="baselineVolumeText")
+    volume_days: Optional[int] = Field(None, alias="volumeDays")
+    industry: Optional[str]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndicatorScreeningListResponse(BaseModel):
+    indicator_code: str = Field(..., alias="indicatorCode")
+    indicator_name: Optional[str] = Field(None, alias="indicatorName")
+    captured_at: Optional[datetime] = Field(None, alias="capturedAt")
+    total: int
+    items: List[IndicatorScreeningRecord]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class IndicatorSyncResponse(BaseModel):
+    indicator_code: str = Field(..., alias="indicatorCode")
+    indicator_name: Optional[str] = Field(None, alias="indicatorName")
+    rows: int
+    captured_at: Optional[datetime] = Field(None, alias="capturedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class MarketFundFlowRecord(BaseModel):
     trade_date: date = Field(..., alias="tradeDate")
     shanghai_close: Optional[float] = Field(None, alias="shanghaiClose")
@@ -3004,6 +3149,11 @@ class RuntimeConfigPayload(BaseModel):
         le=1440,
         description="Interval in minutes between global flash data refresh runs.",
     )
+    concept_alias_map: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        alias="conceptAliasMap",
+        description="Mapping between concept name and whitespace-separated alias keywords.",
+    )
 
     class Config:
         allow_population_by_field_name = True
@@ -3054,6 +3204,7 @@ def _runtime_config_to_payload(config: RuntimeConfig) -> RuntimeConfigPayload:
         daily_trade_window_days=config.daily_trade_window_days,
         peripheral_aggregate_time=config.peripheral_aggregate_time,
         global_flash_frequency_minutes=config.global_flash_frequency_minutes,
+        concept_alias_map=config.concept_alias_map,
     )
 
 
@@ -6946,6 +7097,22 @@ def search_stocks_api(
     return StockListResponse(total=result["total"], items=items, industries=industries)
 
 
+@app.get("/stocks/news", response_model=StockNewsListResponse)
+def list_stock_news_api(
+    code: str = Query(..., min_length=1),
+    limit: int = Query(100, ge=1, le=200),
+) -> StockNewsListResponse:
+    records = list_stock_news(code, limit=limit)
+    items = [StockNewsItem(**entry) for entry in records]
+    return StockNewsListResponse(total=len(items), items=items)
+
+
+@app.post("/stocks/news/sync", response_model=StockNewsSyncResponse)
+def sync_stock_news_api(payload: StockNewsSyncRequest = Body(...)) -> StockNewsSyncResponse:
+    result = sync_stock_news(payload.code)
+    return StockNewsSyncResponse(**result)
+
+
 @app.get("/stocks/{code}", response_model=StockDetailResponse)
 def get_stock_detail_api(
     code: str,
@@ -8195,6 +8362,112 @@ def stream_concept_volume_price_analysis(payload: ConceptVolumePriceRequest = Bo
 
     return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")
 
+
+@app.get("/stocks/volume-price-analysis/latest", response_model=StockVolumePriceRecord)
+def get_stock_volume_price_latest(code: str = Query(..., min_length=1)) -> StockVolumePriceRecord:
+    record = get_latest_stock_volume_price_reasoning(code)
+    if not record:
+        fallback_summary = {
+            "wyckoffPhase": "未生成",
+            "stageSummary": "暂未生成量价推理，可点击“生成推理”获取最新分析。",
+            "volumeSignals": [],
+            "priceSignals": [],
+            "compositeIntent": "未知",
+            "strategy": [],
+            "risks": [],
+            "checklist": [],
+            "confidence": 0,
+        }
+        now = datetime.now(LOCAL_TZ)
+        return StockVolumePriceRecord(
+            id=0,
+            code=code,
+            name=None,
+            lookback_days=90,
+            summary=fallback_summary,
+            raw_text=json.dumps(fallback_summary, ensure_ascii=False),
+            model=None,
+            generated_at=now,
+        )
+    return StockVolumePriceRecord(**record)
+
+
+@app.get("/stocks/volume-price-analysis/history", response_model=StockVolumePriceHistoryResponse)
+def list_stock_volume_price_history_api(
+    code: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+) -> StockVolumePriceHistoryResponse:
+    result = list_stock_volume_price_history(code, limit=limit, offset=offset)
+    items = [StockVolumePriceRecord(**entry) for entry in result.get("items", []) if entry]
+    return StockVolumePriceHistoryResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.post("/stocks/volume-price-analysis", response_model=StockVolumePriceRecord)
+def run_stock_volume_price_analysis(payload: StockVolumePriceRequest = Body(...)) -> StockVolumePriceRecord:
+    record = generate_stock_volume_price_reasoning(
+        payload.code,
+        lookback_days=payload.lookback_days,
+        run_llm=payload.run_llm,
+    )
+    return StockVolumePriceRecord(**record)
+
+
+@app.get("/stocks/integrated-analysis/latest", response_model=StockIntegratedAnalysisRecord)
+def get_stock_integrated_analysis_latest(code: str = Query(..., min_length=1)) -> StockIntegratedAnalysisRecord:
+    record = get_latest_stock_integrated_analysis(code)
+    if not record:
+        fallback_summary = {
+            "overview": "尚未生成综合分析，可点击“生成分析”获取最新结论。",
+            "keyFindings": [],
+            "bullBearFactors": {"bull": [], "bear": []},
+            "strategy": {"timeframe": "", "actions": []},
+            "risks": [],
+            "confidence": 0,
+        }
+        now = datetime.now(LOCAL_TZ)
+        return StockIntegratedAnalysisRecord(
+            id=0,
+            code=code,
+            name=None,
+            news_days=INTEGRATED_NEWS_DAYS_DEFAULT,
+            trade_days=INTEGRATED_TRADE_DAYS_DEFAULT,
+            summary=fallback_summary,
+            raw_text=json.dumps(fallback_summary, ensure_ascii=False),
+            model=None,
+            generated_at=now,
+            context=None,
+        )
+    return StockIntegratedAnalysisRecord(**record)
+
+
+@app.get("/stocks/integrated-analysis/history", response_model=StockIntegratedAnalysisHistoryResponse)
+def list_stock_integrated_analysis_history_api(
+    code: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+) -> StockIntegratedAnalysisHistoryResponse:
+    result = list_stock_integrated_analysis_history(code, limit=limit, offset=offset)
+    items = [StockIntegratedAnalysisRecord(**entry) for entry in result.get("items", []) if entry]
+    return StockIntegratedAnalysisHistoryResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.post("/stocks/integrated-analysis", response_model=StockIntegratedAnalysisRecord)
+def run_stock_integrated_analysis(payload: StockIntegratedAnalysisRequest = Body(...)) -> StockIntegratedAnalysisRecord:
+    try:
+        record = generate_stock_integrated_analysis(
+            payload.code,
+            news_days=payload.news_days,
+            trade_days=payload.trade_days,
+            run_llm=payload.run_llm,
+            force=payload.force,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    return StockIntegratedAnalysisRecord(**record)
+
 @app.get("/industries/volume-price-analysis/latest", response_model=IndustryVolumePriceRecord)
 def get_industry_volume_price_latest(industry: str = Query(..., min_length=1)) -> IndustryVolumePriceRecord:
     record = get_latest_industry_volume_price_reasoning(industry)
@@ -8570,6 +8843,57 @@ def get_market_activity_snapshot() -> MarketActivityListResponse:
     return MarketActivityListResponse(items=items, datasetTimestamp=dataset_timestamp)
 
 
+@app.get("/indicator-screenings/continuous-volume", response_model=IndicatorScreeningListResponse)
+def list_indicator_continuous_volume(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> IndicatorScreeningListResponse:
+    result = list_indicator_screenings(
+        indicator_code="continuous_volume",
+        limit=limit,
+        offset=offset,
+    )
+    items = [
+        IndicatorScreeningRecord(
+            indicatorCode=entry.get("indicatorCode", "continuous_volume"),
+            indicatorName=entry.get("indicatorName"),
+            capturedAt=entry.get("capturedAt"),
+            rank=entry.get("rank"),
+            stockCode=entry.get("stockCode"),
+            stockCodeFull=entry.get("stockCodeFull"),
+            stockName=entry.get("stockName"),
+            priceChangePercent=entry.get("priceChangePercent"),
+            stageChangePercent=entry.get("stageChangePercent"),
+            lastPrice=entry.get("lastPrice"),
+            volumeShares=entry.get("volumeShares"),
+            volumeText=entry.get("volumeText"),
+            baselineVolumeShares=entry.get("baselineVolumeShares"),
+            baselineVolumeText=entry.get("baselineVolumeText"),
+            volumeDays=entry.get("volumeDays"),
+            industry=entry.get("industry"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return IndicatorScreeningListResponse(
+        indicatorCode=result.get("indicatorCode", "continuous_volume"),
+        indicatorName=result.get("indicatorName"),
+        capturedAt=result.get("capturedAt"),
+        total=int(result.get("total", 0)),
+        items=items,
+    )
+
+
+@app.post("/indicator-screenings/continuous-volume/sync", response_model=IndicatorSyncResponse)
+def sync_indicator_continuous_volume_endpoint() -> IndicatorSyncResponse:
+    result = sync_indicator_continuous_volume()
+    return IndicatorSyncResponse(
+        indicatorCode=result.get("indicatorCode", "continuous_volume"),
+        indicatorName=result.get("indicatorName"),
+        rows=int(result.get("rows", 0) or 0),
+        capturedAt=result.get("capturedAt"),
+    )
+
+
 @app.get("/fund-flow/market", response_model=MarketFundFlowListResponse)
 def list_market_fund_flow_entries(
     start_date: Optional[str] = Query(None, alias="startDate", description="Filter start date (YYYY-MM-DD)."),
@@ -8645,8 +8969,25 @@ def list_news_articles_endpoint(
         alias="onlyRelevant",
         description="Return only articles marked as relevant by the classifier.",
     ),
+    stock: Optional[str] = Query(
+        None,
+        description="Comma-separated stock identifiers used to match tagged articles (code or name).",
+    ),
+    lookback_hours: Optional[int] = Query(
+        None,
+        alias="lookbackHours",
+        ge=1,
+        le=240,
+        description="Limit the publishing window to the most recent N hours.",
+    ),
 ) -> List[NewsArticleItem]:
-    entries = list_news_articles(source=source, limit=limit, only_relevant=only_relevant)
+    entries = list_news_articles(
+        source=source,
+        limit=limit,
+        only_relevant=only_relevant,
+        stock=stock,
+        lookback_hours=lookback_hours,
+    )
     return [NewsArticleItem(**entry) for entry in entries]
 
 
@@ -9095,12 +9436,18 @@ def update_runtime_config(payload: RuntimeConfigPayload) -> RuntimeConfigPayload
     if frequency_value <= 0:
         frequency_value = existing.global_flash_frequency_minutes or 180
     frequency_value = max(10, min(frequency_value, 1440))
+    alias_field_provided = "concept_alias_map" in payload.__fields_set__
+    if alias_field_provided:
+        alias_map = normalize_concept_alias_map(payload.concept_alias_map or {})
+    else:
+        alias_map = existing.concept_alias_map
     config = RuntimeConfig(
         include_st=payload.include_st,
         include_delisted=payload.include_delisted,
         daily_trade_window_days=payload.daily_trade_window_days,
         peripheral_aggregate_time=peripheral_time,
         global_flash_frequency_minutes=frequency_value,
+        concept_alias_map=alias_map,
     )
     save_runtime_config(config)
     if scheduler.running:

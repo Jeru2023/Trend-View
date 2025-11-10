@@ -9,6 +9,13 @@
         "request_timeout_seconds": 90,
         "max_retries": 2
     },
+    "coze": {
+        "token": "REPLACE_WITH_YOUR_COZE_TOKEN",
+        "bot_id": "REPLACE_WITH_YOUR_BOT_ID",
+        "user_id": "trend-view",
+        "base_url": "https://api.coze.com",
+        "request_timeout_seconds": 90
+    },
     "postgres": {
         "host": "localhost",
         "port": 5432,
@@ -48,6 +55,8 @@
         "concept_insight_table": "concept_insights",
         "individual_fund_flow_table": "individual_fund_flow",
         "big_deal_fund_flow_table": "big_deal_fund_flow",
+        "stock_integrated_analysis_table": "stock_integrated_analysis",
+        "indicator_screening_table": "indicator_screening",
         "hsgt_fund_flow_table": "hsgt_fund_flow",
         "peripheral_insight_table": "peripheral_insights",
         "dollar_index_table": "dollar_index_history",

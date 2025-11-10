@@ -34,6 +34,16 @@ class DeepseekSettings:
 
 
 @dataclass(frozen=True)
+class CozeSettings:
+    token: str
+    bot_id: str
+    user_id: str = "trend-view"
+    base_url: str = "https://api.coze.com"
+    conversation_id: Optional[str] = None
+    request_timeout_seconds: float = 90.0
+
+
+@dataclass(frozen=True)
 class PostgresSettings:
     host: str
     port: int
@@ -71,6 +81,8 @@ class PostgresSettings:
     industry_insight_table: str
     individual_fund_flow_table: str
     big_deal_fund_flow_table: str
+    stock_integrated_analysis_table: str
+    indicator_screening_table: str
     hsgt_fund_flow_table: str
     peripheral_insight_table: str
     leverage_ratio_table: str
@@ -90,6 +102,7 @@ class PostgresSettings:
 class AppSettings:
     tushare: TushareSettings
     deepseek: Optional[DeepseekSettings]
+    coze: Optional[CozeSettings]
     postgres: PostgresSettings
 
 
@@ -168,6 +181,21 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             )
         except KeyError as exc:
             raise KeyError("Missing 'deepseek.token' in configuration file") from exc
+
+    coze_config: Optional[dict[str, Any]] = raw_config.get("coze")
+    coze_settings: Optional[CozeSettings] = None
+    if coze_config:
+        try:
+            coze_settings = CozeSettings(
+                token=str(coze_config["token"]),
+                bot_id=str(coze_config["bot_id"]),
+                user_id=str(coze_config.get("user_id", "trend-view")),
+                base_url=str(coze_config.get("base_url", "https://api.coze.com")),
+                conversation_id=coze_config.get("conversation_id"),
+                request_timeout_seconds=float(coze_config.get("request_timeout_seconds", 90.0)),
+            )
+        except KeyError as exc:
+            raise KeyError("Missing 'coze.token' or 'coze.bot_id' in configuration file") from exc
 
     try:
         application_name = postgres_config.get("application_name")
@@ -272,6 +300,12 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             big_deal_fund_flow_table=str(
                 postgres_config.get("big_deal_fund_flow_table", "big_deal_fund_flow")
             ),
+            stock_integrated_analysis_table=str(
+                postgres_config.get("stock_integrated_analysis_table", "stock_integrated_analysis")
+            ),
+            indicator_screening_table=str(
+                postgres_config.get("indicator_screening_table", "indicator_screening")
+            ),
             hsgt_fund_flow_table=str(
                 postgres_config.get("hsgt_fund_flow_table", "hsgt_fund_flow")
             ),
@@ -310,6 +344,7 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
     return AppSettings(
         tushare=tushare_settings,
         deepseek=deepseek_settings,
+        coze=coze_settings,
         postgres=postgres_settings,
     )
 
@@ -319,5 +354,6 @@ __all__ = [
     "PostgresSettings",
     "TushareSettings",
     "DeepseekSettings",
+    "CozeSettings",
     "load_settings",
 ]

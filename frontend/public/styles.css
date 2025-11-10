@@ -1476,6 +1476,86 @@ body {
     font-size: 0.85rem;
 }
 
+.detail-integrated-meta {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: #64748b;
+}
+
+.integrated-summary {
+    display: grid;
+    gap: 16px;
+    margin-top: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.integrated-summary .integrated-section:first-child {
+    grid-column: 1 / -1;
+}
+
+.integrated-section {
+    padding: 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.integrated-section h3 {
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.integrated-section p {
+    margin: 0;
+    color: #0f172a;
+    line-height: 1.6;
+}
+
+.integrated-section ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: #0f172a;
+    line-height: 1.6;
+}
+
+.integrated-section--confidence {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.integrated-confidence {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.integrated-timeframe {
+    margin: 0 0 8px;
+    color: #475569;
+    font-weight: 500;
+}
+
+.integrated-placeholder {
+    margin: 0;
+    padding: 16px;
+    color: #475569;
+    background: #f1f5f9;
+    border-radius: 12px;
+}
+
+.detail-error {
+    margin: 12px 0;
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+.detail-error.hidden {
+    display: none;
+}
+
 .financial-summary-row > .detail-card {
     flex: 1 1 calc(50% - 12px);
     min-width: 320px;
@@ -1951,6 +2031,44 @@ body {
   color: var(--text-muted);
   border: 1px dashed var(--border);
   border-radius: var(--radius);
+}
+
+.page-status {
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.page-status--success {
+  color: #16a34a;
+}
+
+.page-status--error {
+  color: #dc2626;
+}
+
+.page-status--info {
+  color: var(--text-muted);
+}
+
+.indicator-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.indicator-summary__label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.indicator-summary__value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .sr-only {

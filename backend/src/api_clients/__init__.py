@@ -42,6 +42,7 @@ from .akshare_api import (
     MACRO_PBC_RATE_COLUMN_MAP,
     GLOBAL_FLASH_COLUMN_MAP,
     PROFIT_FORECAST_BASE_COLUMN_MAP,
+    STOCK_NEWS_COLUMN_MAP,
     fetch_market_activity_legu,
     fetch_finance_breakfast,
     fetch_performance_express_em,
@@ -58,6 +59,7 @@ from .akshare_api import (
     fetch_market_fund_flow,
     fetch_stock_main_business,
     fetch_stock_main_composition,
+    fetch_stock_rank_cxfl_ths,
     fetch_dollar_index_history,
     fetch_rmb_midpoint_rates,
     fetch_futures_realtime,
@@ -70,9 +72,11 @@ from .akshare_api import (
     fetch_macro_ppi_monthly,
     fetch_macro_pbc_interest_rates,
     fetch_global_flash_news,
+    fetch_stock_news,
 )
 from .eastmoney_news import EastmoneyNewsDetail, fetch_eastmoney_detail
 from .deepseek_api import generate_finance_analysis
+from .coze_api import run_coze_agent
 from .fed_board import fetch_fed_press_releases
 
 __all__ = [
@@ -113,6 +117,7 @@ __all__ = [
     "MACRO_PPI_COLUMN_MAP",
     "MACRO_PBC_RATE_COLUMN_MAP",
     "GLOBAL_FLASH_COLUMN_MAP",
+    "STOCK_NEWS_COLUMN_MAP",
     "PROFIT_FORECAST_BASE_COLUMN_MAP",
     "FINANCE_BREAKFAST_COLUMNS",
     "fetch_finance_breakfast",
@@ -130,6 +135,7 @@ __all__ = [
     "fetch_market_fund_flow",
     "fetch_stock_main_business",
     "fetch_stock_main_composition",
+    "fetch_stock_rank_cxfl_ths",
     "fetch_dollar_index_history",
     "fetch_rmb_midpoint_rates",
     "fetch_futures_realtime",
@@ -142,9 +148,11 @@ __all__ = [
     "fetch_macro_ppi_monthly",
     "fetch_macro_pbc_interest_rates",
     "fetch_global_flash_news",
+    "fetch_stock_news",
     "fetch_market_activity_legu",
     "EastmoneyNewsDetail",
     "fetch_eastmoney_detail",
     "generate_finance_analysis",
+    "run_coze_agent",
     "fetch_fed_press_releases",
 ]

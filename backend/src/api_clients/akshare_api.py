@@ -106,6 +106,19 @@ INDIVIDUAL_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
     "成交额": "turnover_amount",
 }
 
+CONTINUOUS_VOLUME_COLUMN_MAP: Final[dict[str, str]] = {
+    "序号": "rank",
+    "股票代码": "stock_code",
+    "股票简称": "stock_name",
+    "涨跌幅": "price_change_percent",
+    "最新价": "last_price",
+    "成交量": "volume_text",
+    "基准日成交量": "baseline_volume_text",
+    "放量天数": "volume_days",
+    "阶段涨跌幅": "stage_change_percent",
+    "所属行业": "industry",
+}
+
 BIG_DEAL_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
     "成交时间": "trade_time",
     "股票代码": "stock_code",
@@ -206,6 +219,72 @@ def fetch_market_fund_flow() -> pd.DataFrame:
 
     return renamed.loc[:, list(MARKET_FUND_FLOW_COLUMN_MAP.values())]
 
+
+def fetch_stock_news(symbol: str) -> pd.DataFrame:
+    """Fetch Eastmoney stock news via AkShare."""
+    columns = list(STOCK_NEWS_COLUMN_MAP.values())
+    try:
+        dataframe = ak.stock_news_em(symbol=symbol)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch stock news via AkShare: %s", exc)
+        return pd.DataFrame(columns=columns)
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no stock news for %s.", symbol)
+        return pd.DataFrame(columns=columns)
+
+    frame = dataframe.copy()
+    canonical_map: dict[str, str] = {}
+    for source, target in STOCK_NEWS_COLUMN_MAP.items():
+        key = "".join(ch for ch in str(source).lower() if ch.isalnum())
+        if key and key not in canonical_map:
+            canonical_map[key] = target
+    rename_map: dict[str, str] = {}
+    for column in frame.columns:
+        canonical = "".join(ch for ch in str(column).lower() if ch.isalnum())
+        target = canonical_map.get(canonical)
+        if target and target != column:
+            rename_map[column] = target
+    if rename_map:
+        frame = frame.rename(columns=rename_map)
+
+    for column in columns:
+        if column not in frame.columns:
+            frame[column] = None
+
+    def _clean_text_local(value: object) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        lowered = text.lower()
+        if lowered in {"nan", "none", "null"}:
+            return None
+        return text
+
+    def _clean_optional_local(value: object) -> Optional[str]:
+        text = _clean_text_local(value)
+        if text is None:
+            return None
+        return text
+
+    with pd.option_context("mode.chained_assignment", None):
+        frame["title"] = frame["title"].apply(_clean_text_local)
+        frame["content"] = frame["content"].apply(_clean_optional_local)
+        frame["url"] = frame["url"].apply(_clean_text_local)
+        frame["source"] = frame["source"].apply(_clean_optional_local)
+        frame["keyword"] = frame["keyword"].apply(_clean_optional_local)
+        frame["published_at"] = pd.to_datetime(frame["published_at"], errors="coerce")
+
+    prepared = (
+        frame.loc[:, columns]
+        .dropna(subset=["title"])
+        .drop_duplicates(subset=["url", "title"], keep="last")
+        .reset_index(drop=True)
+    )
+    return prepared
+
 STOCK_MAIN_BUSINESS_COLUMN_MAP: Final[dict[str, str]] = {
     "股票代码": "symbol",
     "主营业务": "main_business",
@@ -270,6 +349,22 @@ GLOBAL_INDEX_COLUMN_MAP: Final[dict[str, str]] = {
     "昨收价": "prev_close",
     "振幅": "amplitude",
     "最新行情时间": "last_quote_time",
+}
+
+STOCK_NEWS_COLUMN_MAP: Final[dict[str, str]] = {
+    "关键词": "keyword",
+    "keyword": "keyword",
+    "新闻标题": "title",
+    "title": "title",
+    "新闻内容": "content",
+    "content": "content",
+    "发布时间": "published_at",
+    "发布时间(北京时间)": "published_at",
+    "publish_time": "published_at",
+    "文章来源": "source",
+    "source": "source",
+    "新闻链接": "url",
+    "url": "url",
 }
 
 DOLLAR_INDEX_COLUMN_MAP: Final[dict[str, str]] = {
@@ -1121,6 +1216,31 @@ def fetch_individual_fund_flow(symbol: str) -> pd.DataFrame:
     return renamed.loc[:, list(INDIVIDUAL_FUND_FLOW_COLUMN_MAP.values())]
 
 
+def _empty_continuous_volume_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(CONTINUOUS_VOLUME_COLUMN_MAP.values()))
+
+
+def fetch_stock_rank_cxfl_ths() -> pd.DataFrame:
+    """Fetch Tonghuashun continuous volume ranking snapshot."""
+    try:
+        dataframe = ak.stock_rank_cxfl_ths()
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch continuous volume ranking via AkShare: %s", exc)
+        return _empty_continuous_volume_frame()
+
+    if dataframe is None or dataframe.empty:
+        logger.warning("AkShare returned no continuous volume ranking data.")
+        return _empty_continuous_volume_frame()
+
+    renamed = dataframe.rename(columns=CONTINUOUS_VOLUME_COLUMN_MAP)
+    for column in CONTINUOUS_VOLUME_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    renamed["stock_code"] = renamed["stock_code"].astype(str).str.zfill(6)
+    return renamed.loc[:, list(CONTINUOUS_VOLUME_COLUMN_MAP.values())]
+
+
 def _empty_big_deal_fund_flow_frame() -> pd.DataFrame:
     return pd.DataFrame(columns=list(BIG_DEAL_FUND_FLOW_COLUMN_MAP.values()))
 
@@ -1335,6 +1455,7 @@ __all__ = [
     "INDUSTRY_FUND_FLOW_COLUMN_MAP",
     "CONCEPT_FUND_FLOW_COLUMN_MAP",
     "INDIVIDUAL_FUND_FLOW_COLUMN_MAP",
+    "CONTINUOUS_VOLUME_COLUMN_MAP",
     "BIG_DEAL_FUND_FLOW_COLUMN_MAP",
     "HSGT_FUND_FLOW_COLUMN_MAP",
     "MARGIN_ACCOUNT_COLUMN_MAP",
@@ -1354,6 +1475,7 @@ __all__ = [
     "fetch_industry_fund_flow",
     "fetch_concept_fund_flow",
     "fetch_individual_fund_flow",
+    "fetch_stock_rank_cxfl_ths",
     "fetch_big_deal_fund_flow",
     "fetch_hsgt_fund_flow_history",
     "fetch_hsgt_fund_flow_summary",

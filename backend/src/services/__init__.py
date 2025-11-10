@@ -56,6 +56,18 @@ from .industry_volume_price_service import (
     get_latest_industry_volume_price_reasoning,
     list_industry_volume_price_history,
 )
+from .stock_volume_price_service import (
+    build_stock_volume_price_dataset,
+    generate_stock_volume_price_reasoning,
+    get_latest_stock_volume_price_reasoning,
+    list_stock_volume_price_history,
+)
+from .stock_integrated_analysis_service import (
+    build_stock_integrated_context,
+    generate_stock_integrated_analysis,
+    get_latest_stock_integrated_analysis,
+    list_stock_integrated_analysis_history,
+)
 from .industry_directory_service import (
     list_industry_directory,
     resolve_industry_label,
@@ -86,6 +98,7 @@ from .big_deal_fund_flow_service import list_big_deal_fund_flow, sync_big_deal_f
 from .hsgt_fund_flow_service import list_hsgt_fund_flow, sync_hsgt_fund_flow
 from .stock_main_business_service import get_stock_main_business, sync_stock_main_business
 from .stock_main_composition_service import get_stock_main_composition, sync_stock_main_composition
+from .stock_news_service import list_stock_news, sync_stock_news
 from .global_flash_service import sync_global_flash
 from .news_classification_service import classify_relevance_batch, classify_impact_batch
 from .news_query_service import list_news_articles
@@ -122,6 +135,7 @@ from .favorite_stock_service import (
     set_favorite_state,
     get_favorite_status,
 )
+from .indicator_screening_service import sync_indicator_continuous_volume, list_indicator_screenings
 
 __all__ = [
     "get_stock_overview",
@@ -214,6 +228,14 @@ __all__ = [
     "generate_industry_volume_price_reasoning",
     "get_latest_industry_volume_price_reasoning",
     "list_industry_volume_price_history",
+    "build_stock_volume_price_dataset",
+    "generate_stock_volume_price_reasoning",
+    "get_latest_stock_volume_price_reasoning",
+    "list_stock_volume_price_history",
+    "build_stock_integrated_context",
+    "generate_stock_integrated_analysis",
+    "get_latest_stock_integrated_analysis",
+    "list_stock_integrated_analysis_history",
     "list_concept_insights",
     "list_concept_news",
     "build_industry_snapshot",
@@ -239,9 +261,11 @@ __all__ = [
     "sync_hsgt_fund_flow",
     "sync_stock_main_business",
     "sync_stock_main_composition",
+    "sync_stock_news",
     "list_fundamental_metrics",
     "list_big_deal_fund_flow",
     "get_stock_detail",
+    "list_stock_news",
     "add_stock_to_favorites",
     "remove_stock_from_favorites",
     "list_favorite_codes",
@@ -264,4 +288,6 @@ __all__ = [
     "refresh_industry_history",
     "sync_industry_index_history",
     "list_industry_index_history",
+    "sync_indicator_continuous_volume",
+    "list_indicator_screenings",
 ]
