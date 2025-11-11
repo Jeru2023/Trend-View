@@ -36,6 +36,26 @@ let latestItems = [];
 let chartInstance = null;
 let resizeListenerBound = false;
 
+const SERIES_CONFIG = [
+  { key: "m2_yoy", color: "#0f766e", labelKey: "seriesM2" },
+  { key: "m1_yoy", color: "#2563eb", labelKey: "seriesM1" },
+  { key: "m0_yoy", color: "#f97316", labelKey: "seriesM0" },
+];
+
+const TABLE_COLUMNS = [
+  { key: "m0", formatter: (value) => formatAmount(value) },
+  { key: "m0_yoy", formatter: (value) => formatPercent(value) },
+  { key: "m0_mom", formatter: (value) => formatPercent(value) },
+  { key: "m1", formatter: (value) => formatAmount(value) },
+  { key: "m1_yoy", formatter: (value) => formatPercent(value) },
+  { key: "m1_mom", formatter: (value) => formatPercent(value) },
+  { key: "m2", formatter: (value) => formatAmount(value) },
+  { key: "m2_yoy", formatter: (value) => formatPercent(value) },
+  { key: "m2_mom", formatter: (value) => formatPercent(value) },
+];
+
+const TABLE_COLUMN_COUNT = 1 + TABLE_COLUMNS.length;
+
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
   refreshButton: document.getElementById("m2-refresh"),
@@ -112,6 +132,22 @@ function formatDate(value) {
   }
 }
 
+function formatAmount(value) {
+  const numeric = parseNumericValue(value);
+  if (numeric === null) {
+    return "--";
+  }
+  return formatNumber(numeric, { maximumFractionDigits: 2 });
+}
+
+function formatPercent(value) {
+  const numeric = parseNumericValue(value);
+  if (numeric === null) {
+    return "--";
+  }
+  return `${numeric.toFixed(2)}%`;
+}
+
 function formatDateTime(value) {
   if (!value) {
     return "--";
@@ -129,6 +165,23 @@ function formatDateTime(value) {
   } catch (error) {
     return String(value);
   }
+}
+
+function getPeriodLabel(item) {
+  const rawLabel = item.period_label || item.periodLabel;
+  if (rawLabel && typeof rawLabel === "string") {
+    if (rawLabel.includes("-")) {
+      return rawLabel.slice(0, 7);
+    }
+    if (rawLabel.length === 6) {
+      return `${rawLabel.slice(0, 4)}-${rawLabel.slice(4, 6)}`;
+    }
+  }
+  const dateValue = item.period_date || item.periodDate;
+  if (dateValue) {
+    return formatDate(dateValue);
+  }
+  return rawLabel || "--";
 }
 
 function ensureChartInstance() {
@@ -176,19 +229,16 @@ function parseNumericValue(raw) {
   return null;
 }
 
-function resolveActualValue(item) {
-  const candidates = [
-    item.actual_value,
-    item.actualValue,
-    item.current_value,
-    item.currentValue,
-    item.value,
-  ];
-  for (const candidate of candidates) {
-    const numeric = parseNumericValue(candidate);
-    if (numeric !== null) {
-      return numeric;
-    }
+function resolveFieldValue(item, key) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  if (key in item) {
+    return item[key];
+  }
+  const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  if (camelKey in item) {
+    return item[camelKey];
   }
   return null;
 }
@@ -199,32 +249,48 @@ function renderChart(items = []) {
     return;
   }
 
-  const parsed = items
+  const rows = items
     .map((item) => {
       const period = item.period_date || item.periodDate || item.period_label || item.periodLabel;
       const parsedDate = period ? new Date(period) : null;
       if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
         return null;
       }
-      const value = resolveActualValue(item);
-      if (value === null) {
-        return null;
-      }
-      return {
-        date: parsedDate,
-        value,
-      };
+      return { date: parsedDate, record: item };
     })
     .filter(Boolean);
 
-  if (!parsed.length) {
+  if (!rows.length) {
     clearChart();
     return;
   }
 
-  parsed.sort((a, b) => a.date - b.date);
-  const categories = parsed.map((entry) => entry.date.toISOString().slice(0, 7));
-  const seriesData = parsed.map((entry) => Number(entry.value.toFixed(2)));
+  rows.sort((a, b) => a.date - b.date);
+  const categories = rows.map((entry) => entry.date.toISOString().slice(0, 7));
+  const dict = getDict();
+  const chartSeries = SERIES_CONFIG.map((config) => {
+    const label = dict[config.labelKey] || config.labelKey;
+    const data = rows.map((entry) => parseNumericValue(resolveFieldValue(entry.record, config.key)));
+    const hasData = data.some((value) => value !== null);
+    if (!hasData) {
+      return null;
+    }
+    return {
+      name: label,
+      type: "line",
+      smooth: true,
+      symbol: "circle",
+      symbolSize: 4,
+      lineStyle: { width: 2, color: config.color },
+      itemStyle: { color: config.color },
+      data: data.map((value) => (value === null ? null : Number(value.toFixed(2)))),
+    };
+  }).filter(Boolean);
+
+  if (!chartSeries.length) {
+    clearChart();
+    return;
+  }
 
   if (elements.chartContainer) {
     elements.chartContainer.classList.remove("hidden");
@@ -243,9 +309,13 @@ function renderChart(items = []) {
     {
       tooltip: {
         trigger: "axis",
-        valueFormatter: (value) => `${formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`,
+        valueFormatter: (value) =>
+          `${formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`,
       },
-      grid: { left: "5%", right: "4%", top: 24, bottom: 60 },
+      legend: {
+        data: chartSeries.map((series) => series.name),
+      },
+      grid: { left: "5%", right: "4%", top: 40, bottom: 60 },
       xAxis: {
         type: "category",
         data: categories,
@@ -264,17 +334,7 @@ function renderChart(items = []) {
         },
         splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.2)" } },
       },
-      series: [
-        {
-          type: "line",
-          smooth: true,
-          symbol: "circle",
-          symbolSize: 4,
-          data: seriesData,
-          lineStyle: { width: 2, color: "#0f766e" },
-          areaStyle: { color: "rgba(15, 118, 110, 0.12)" },
-        },
-      ],
+      series: chartSeries,
       animationDuration: 600,
     },
     true
@@ -290,27 +350,21 @@ function renderTable(items = []) {
   let validCount = 0;
 
   items.forEach((item) => {
-    const actual = resolveActualValue(item);
-    if (actual === null) {
-      return;
-    }
-    validCount += 1;
-    const periodLabel = item.period_label || item.periodLabel || formatDate(item.period_date || item.periodDate);
+    const periodLabel = getPeriodLabel(item);
     const row = document.createElement("tr");
-    const cells = [
-      periodLabel,
-      formatNumber(actual, { maximumFractionDigits: 2 }),
-      formatNumber(item.forecast_value ?? item.forecastValue, { maximumFractionDigits: 2 }),
-      formatNumber(item.previous_value ?? item.previousValue, { maximumFractionDigits: 2 }),
-    ];
+    const periodCell = document.createElement("td");
+    periodCell.textContent = periodLabel;
+    row.appendChild(periodCell);
 
-    cells.forEach((value) => {
+    TABLE_COLUMNS.forEach((column) => {
       const cell = document.createElement("td");
-      cell.textContent = typeof value === "string" ? value : String(value ?? "--");
+      const rawValue = resolveFieldValue(item, column.key);
+      cell.textContent = column.formatter(rawValue);
       row.appendChild(cell);
     });
 
     fragment.appendChild(row);
+    validCount += 1;
   });
 
   if (!validCount) {
@@ -330,7 +384,7 @@ function renderEmpty(message) {
   }
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 4;
+  cell.colSpan = TABLE_COLUMN_COUNT;
   cell.className = "table-empty";
   cell.textContent = message;
   row.appendChild(cell);
@@ -368,7 +422,7 @@ async function fetchM2() {
 
   try {
     await ensureEchartsLoaded();
-    const response = await fetch(`${API_BASE}/macro/m2?limit=500`);
+    const response = await fetch(`${API_BASE}/macro/m2?limit=40`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }

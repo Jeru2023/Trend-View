@@ -1,8 +1,14 @@
 CREATE TABLE IF NOT EXISTS {schema}.{table} (
     period_label TEXT PRIMARY KEY,
     period_date DATE NOT NULL,
-    actual_value DOUBLE PRECISION,
-    forecast_value DOUBLE PRECISION,
-    previous_value DOUBLE PRECISION,
+    m0 DOUBLE PRECISION,
+    m0_yoy DOUBLE PRECISION,
+    m0_mom DOUBLE PRECISION,
+    m1 DOUBLE PRECISION,
+    m1_yoy DOUBLE PRECISION,
+    m1_mom DOUBLE PRECISION,
+    m2 DOUBLE PRECISION,
+    m2_yoy DOUBLE PRECISION,
+    m2_mom DOUBLE PRECISION,
     updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
 );

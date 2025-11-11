@@ -20,9 +20,28 @@ SCHEMA_SQL_PATH = Path(__file__).resolve().parents[2] / "config" / "m2_schema.sq
 M2_FIELDS: Sequence[str] = (
     "period_label",
     "period_date",
-    "actual_value",
-    "forecast_value",
-    "previous_value",
+    "m0",
+    "m0_yoy",
+    "m0_mom",
+    "m1",
+    "m1_yoy",
+    "m1_mom",
+    "m2",
+    "m2_yoy",
+    "m2_mom",
+)
+
+M2_COLUMN_DEFINITIONS: Sequence[tuple[str, str]] = (
+    ("m0", "DOUBLE PRECISION"),
+    ("m0_yoy", "DOUBLE PRECISION"),
+    ("m0_mom", "DOUBLE PRECISION"),
+    ("m1", "DOUBLE PRECISION"),
+    ("m1_yoy", "DOUBLE PRECISION"),
+    ("m1_mom", "DOUBLE PRECISION"),
+    ("m2", "DOUBLE PRECISION"),
+    ("m2_yoy", "DOUBLE PRECISION"),
+    ("m2_mom", "DOUBLE PRECISION"),
+    ("updated_at", "TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()"),
 )
 
 
@@ -104,6 +123,18 @@ class MacroM2DAO(PostgresDAOBase):
                         )
                     )
 
+            for column_name, column_definition in M2_COLUMN_DEFINITIONS:
+                cur.execute(
+                    sql.SQL(
+                        "ALTER TABLE {schema}.{table} ADD COLUMN IF NOT EXISTS {column} {definition}"
+                    ).format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self._table_name),
+                        column=sql.Identifier(column_name),
+                        definition=sql.SQL(column_definition),
+                    )
+                )
+
     def upsert(self, dataframe: pd.DataFrame, *, conn: Optional[PGConnection] = None) -> int:
         if dataframe.empty:
             return 0
@@ -132,14 +163,47 @@ class MacroM2DAO(PostgresDAOBase):
             date_columns=("period_date",),
         )
 
+    def purge_empty_rows(self, *, conn: Optional[PGConnection] = None) -> int:
+        """
+        Remove legacy rows that lack all money-supply metrics (historical AkShare records).
+        """
+        delete_sql = sql.SQL(
+            """
+            DELETE FROM {schema}.{table}
+            WHERE COALESCE(
+                m0, m0_yoy, m0_mom,
+                m1, m1_yoy, m1_mom,
+                m2, m2_yoy, m2_mom
+            ) IS NULL
+            """
+        ).format(schema=sql.Identifier(self.config.schema), table=sql.Identifier(self._table_name))
+
+        if conn is None:
+            with self.connect() as owned_conn:
+                self.ensure_table(owned_conn)
+                with owned_conn.cursor() as cur:
+                    cur.execute(delete_sql)
+                    return cur.rowcount or 0
+
+        self.ensure_table(conn)
+        with conn.cursor() as cur:
+            cur.execute(delete_sql)
+            return cur.rowcount or 0
+
     def list_entries(self, *, limit: int = 200, offset: int = 0) -> Dict[str, object]:
         query = sql.SQL(
             """
             SELECT period_date,
                    period_label,
-                   actual_value,
-                   forecast_value,
-                   previous_value,
+                   m0,
+                   m0_yoy,
+                   m0_mom,
+                   m1,
+                   m1_yoy,
+                   m1_mom,
+                   m2,
+                   m2_yoy,
+                   m2_mom,
                    updated_at
             FROM {schema}.{table}
             ORDER BY period_date DESC, period_label DESC
@@ -172,14 +236,34 @@ class MacroM2DAO(PostgresDAOBase):
                 rows = cur.fetchall()
 
         items: List[Dict[str, object]] = []
-        for period_date, period_label, actual_value, forecast_value, previous_value, updated_at in rows:
+        for row in rows:
+            (
+                period_date,
+                period_label,
+                m0,
+                m0_yoy,
+                m0_mom,
+                m1,
+                m1_yoy,
+                m1_mom,
+                m2,
+                m2_yoy,
+                m2_mom,
+                updated_at,
+            ) = row
             items.append(
                 {
                     "period_date": period_date,
                     "period_label": period_label,
-                    "actual_value": actual_value,
-                    "forecast_value": forecast_value,
-                    "previous_value": previous_value,
+                    "m0": m0,
+                    "m0_yoy": m0_yoy,
+                    "m0_mom": m0_mom,
+                    "m1": m1,
+                    "m1_yoy": m1_yoy,
+                    "m1_mom": m1_mom,
+                    "m2": m2,
+                    "m2_yoy": m2_yoy,
+                    "m2_mom": m2_mom,
                     "updated_at": updated_at,
                 }
             )

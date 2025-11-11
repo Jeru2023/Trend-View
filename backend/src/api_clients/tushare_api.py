@@ -7,7 +7,7 @@ This module only contains helpers responsible for fetching data from Tushare.
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Sequence
+from typing import Final, List, Optional, Sequence
 
 import pandas as pd
 import tushare as ts
@@ -161,6 +161,19 @@ TRADE_CALENDAR_FIELDS: Sequence[str] = (
     "cal_date",
     "is_open",
 )
+
+MACRO_M2_COLUMN_MAP: Final[dict[str, str]] = {
+    "month": "period_label",
+    "m0": "m0",
+    "m0_yoy": "m0_yoy",
+    "m0_mom": "m0_mom",
+    "m1": "m1",
+    "m1_yoy": "m1_yoy",
+    "m1_mom": "m1_mom",
+    "m2": "m2",
+    "m2_yoy": "m2_yoy",
+    "m2_mom": "m2_mom",
+}
 
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
@@ -321,6 +334,37 @@ def get_daily_indicator(
         df[column] = None
 
     return df.loc[:, list(DAILY_INDICATOR_FIELDS)]
+
+
+def fetch_macro_m2_yearly(token: str, *, start_month: str, end_month: str) -> pd.DataFrame:
+    """
+    Fetch M0/M1/M2 money supply statistics from Tushare for the given month range.
+    """
+    if not token:
+        raise RuntimeError("Tushare token is required to fetch M2 data.")
+
+    if not start_month or not end_month:
+        raise ValueError("start_month and end_month are required (format YYYYMM).")
+
+    pro = ts.pro_api(token)
+    fields = ",".join(MACRO_M2_COLUMN_MAP.keys())
+    params = {
+        "start_m": start_month,
+        "end_m": end_month,
+        "fields": fields,
+    }
+    logger.debug("Requesting cn_m with params=%s", params)
+    dataframe = pro.cn_m(**params)
+    if dataframe is None or dataframe.empty:
+        logger.warning("Tushare returned no M2 data for range %s - %s", start_month, end_month)
+        return pd.DataFrame(columns=list(MACRO_M2_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=MACRO_M2_COLUMN_MAP)
+    for column in MACRO_M2_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(MACRO_M2_COLUMN_MAP.values())]
 
 
 def get_income_statements(
@@ -536,8 +580,10 @@ __all__ = [
     "INCOME_STATEMENT_FIELDS",
     "FINANCIAL_INDICATOR_FIELDS",
     "STOCK_BASIC_FIELDS",
+    "MACRO_M2_COLUMN_MAP",
     "fetch_stock_basic",
     "fetch_trade_calendar",
+    "fetch_macro_m2_yearly",
     "get_daily_trade",
     "get_daily_indicator",
     "get_income_statements",

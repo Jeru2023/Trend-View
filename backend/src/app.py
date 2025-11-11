@@ -2315,9 +2315,15 @@ class PmiListResponse(BaseModel):
 class M2Record(BaseModel):
     period_date: date = Field(..., alias="periodDate")
     period_label: Optional[str] = Field(None, alias="periodLabel")
-    actual_value: Optional[float] = Field(None, alias="actualValue")
-    forecast_value: Optional[float] = Field(None, alias="forecastValue")
-    previous_value: Optional[float] = Field(None, alias="previousValue")
+    m0: Optional[float]
+    m0_yoy: Optional[float]
+    m0_mom: Optional[float]
+    m1: Optional[float]
+    m1_yoy: Optional[float]
+    m1_mom: Optional[float]
+    m2: Optional[float]
+    m2_yoy: Optional[float]
+    m2_mom: Optional[float]
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     class Config:
@@ -7890,12 +7896,18 @@ def list_macro_m2_api(
     for entry in result.get("items", []):
         items.append(
             M2Record(
-                periodDate=entry.get("period_date"),
-                periodLabel=entry.get("period_label"),
-                actualValue=entry.get("actual_value"),
-                forecastValue=entry.get("forecast_value"),
-                previousValue=entry.get("previous_value"),
-                updatedAt=entry.get("updated_at"),
+                period_date=entry.get("period_date"),
+                period_label=entry.get("period_label"),
+                m0=entry.get("m0"),
+                m0_yoy=entry.get("m0_yoy"),
+                m0_mom=entry.get("m0_mom"),
+                m1=entry.get("m1"),
+                m1_yoy=entry.get("m1_yoy"),
+                m1_mom=entry.get("m1_mom"),
+                m2=entry.get("m2"),
+                m2_yoy=entry.get("m2_yoy"),
+                m2_mom=entry.get("m2_mom"),
+                updated_at=entry.get("updated_at"),
             )
         )
     return M2ListResponse(

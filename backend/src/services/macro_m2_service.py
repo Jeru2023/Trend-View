@@ -1,5 +1,5 @@
 """
-Service layer for synchronising monthly M2 money supply YoY data.
+Service layer for synchronising monthly money supply data (M0/M1/M2).
 """
 
 from __future__ import annotations
@@ -18,10 +18,22 @@ from ..dao import MacroM2DAO
 
 logger = logging.getLogger(__name__)
 
+MONEY_SUPPLY_FIELDS = [
+    "m0",
+    "m0_yoy",
+    "m0_mom",
+    "m1",
+    "m1_yoy",
+    "m1_mom",
+    "m2",
+    "m2_yoy",
+    "m2_mom",
+]
+
 
 def _prepare_macro_m2_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
     if dataframe is None or dataframe.empty:
-        columns = ["period_date"] + list(MACRO_M2_COLUMN_MAP.values())
+        columns = ["period_date", "period_label", *MONEY_SUPPLY_FIELDS]
         return pd.DataFrame(columns=columns)
 
     frame = dataframe.copy()
@@ -31,16 +43,21 @@ def _prepare_macro_m2_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
             frame[column] = None
 
     with pd.option_context("mode.chained_assignment", None):
-        period_series = pd.to_datetime(frame["period_label"], errors="coerce")
+        labels = frame["period_label"].astype(str).str.strip()
+        period_series = pd.to_datetime(labels, format="%Y%m", errors="coerce")
+        needs_second_pass = period_series.isna()
+        if needs_second_pass.any():
+            period_series.loc[needs_second_pass] = pd.to_datetime(
+                labels.loc[needs_second_pass], format="%Y-%m", errors="coerce"
+            )
         period_series = period_series + MonthEnd(0)
         frame["period_date"] = period_series.dt.date
 
-    numeric_columns = ["actual_value", "forecast_value", "previous_value"]
-    for column in numeric_columns:
+    for column in MONEY_SUPPLY_FIELDS:
         if column in frame.columns:
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
 
-    columns = ["period_date", "period_label", *numeric_columns]
+    columns = ["period_date", "period_label", *MONEY_SUPPLY_FIELDS]
     prepared = (
         frame.loc[:, columns]
         .dropna(subset=["period_date"])
@@ -50,12 +67,24 @@ def _prepare_macro_m2_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
     return prepared
 
 
+def _month_range_strings(years: int = 3) -> tuple[str, str]:
+    today = pd.Timestamp.today().normalize()
+    end_month = today.strftime("%Y%m")
+    start_month = (today - pd.DateOffset(years=years)).strftime("%Y%m")
+    return start_month, end_month
+
+
 def sync_macro_m2(*, settings_path: Optional[str] = None) -> dict[str, object]:
     started = time.perf_counter()
     settings = load_settings(settings_path)
     dao = MacroM2DAO(settings.postgres)
+    start_month, end_month = _month_range_strings()
 
-    raw = fetch_macro_m2_yearly()
+    raw = fetch_macro_m2_yearly(
+        token=settings.tushare.token,
+        start_month=start_month,
+        end_month=end_month,
+    )
     prepared = _prepare_macro_m2_frame(raw)
     if prepared.empty:
         elapsed = time.perf_counter() - started
@@ -63,13 +92,14 @@ def sync_macro_m2(*, settings_path: Optional[str] = None) -> dict[str, object]:
         return {"rows": 0, "elapsedSeconds": elapsed}
 
     affected = dao.upsert(prepared)
+    dao.purge_empty_rows()
     elapsed = time.perf_counter() - started
     return {"rows": int(affected), "elapsedSeconds": elapsed}
 
 
 def list_macro_m2(
     *,
-    limit: int = 200,
+    limit: int = 120,
     offset: int = 0,
     settings_path: Optional[str] = None,
 ) -> dict[str, object]:

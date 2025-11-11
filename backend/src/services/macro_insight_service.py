@@ -281,19 +281,31 @@ def _collect_macro_datasets(settings_path: Optional[str] = None) -> Tuple[List[D
 
     # M2
     m2_result = list_macro_m2(limit=SERIES_LIMIT, settings_path=settings_path)
-    m2_series = _sanitize_records(
-        m2_result.get("items", []),
-        columns=["actual_value", "forecast_value", "previous_value"],
-    )
+    m2_columns = [
+        "m2",
+        "m2_yoy",
+        "m2_mom",
+        "m1",
+        "m1_yoy",
+        "m1_mom",
+        "m0",
+        "m0_yoy",
+        "m0_mom",
+    ]
+    m2_series = _sanitize_records(m2_result.get("items", []), columns=m2_columns)
     if m2_series:
         dataset_payloads.append(
             {
                 "key": "m2",
                 "titleKey": "macroDatasetM2",
                 "fields": [
-                    {"key": "actual_value", "labelKey": "macroFieldActualValue", "format": "percent"},
-                    {"key": "forecast_value", "labelKey": "macroFieldForecastValue", "format": "percent"},
-                    {"key": "previous_value", "labelKey": "macroFieldPreviousValue", "format": "percent"},
+                    {"key": "m2_yoy", "labelKey": "macroFieldM2Yoy", "format": "percent"},
+                    {"key": "m2_mom", "labelKey": "macroFieldM2Mom", "format": "percent"},
+                    {"key": "m1_yoy", "labelKey": "macroFieldM1Yoy", "format": "percent"},
+                    {"key": "m0_yoy", "labelKey": "macroFieldM0Yoy", "format": "percent"},
+                    {"key": "m2", "labelKey": "macroFieldM2Value", "format": "number"},
+                    {"key": "m1", "labelKey": "macroFieldM1Value", "format": "number"},
+                    {"key": "m0", "labelKey": "macroFieldM0Value", "format": "number"},
                 ],
                 "series": m2_series,
                 "latest": m2_series[0],

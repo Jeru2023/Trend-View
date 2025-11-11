@@ -487,14 +487,6 @@ MACRO_PMI_COLUMN_MAP: Final[dict[str, str]] = {
     "前值": "previous_value",
 }
 
-MACRO_M2_COLUMN_MAP: Final[dict[str, str]] = {
-    "商品": "category",
-    "日期": "period_label",
-    "今值": "actual_value",
-    "预测值": "forecast_value",
-    "前值": "previous_value",
-}
-
 MACRO_PPI_COLUMN_MAP: Final[dict[str, str]] = {
     "月份": "period_label",
     "当月": "current_index",
@@ -1061,27 +1053,6 @@ def fetch_macro_non_man_pmi() -> pd.DataFrame:
             renamed[column] = None
 
     return renamed.loc[:, list(MACRO_PMI_COLUMN_MAP.values())]
-
-
-def fetch_macro_m2_yearly() -> pd.DataFrame:
-    """Fetch M2 money supply YoY data from Jin10."""
-
-    try:
-        dataframe = ak.macro_china_m2_yearly()
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch M2 data via AkShare: %s", exc)
-        return pd.DataFrame(columns=list(MACRO_M2_COLUMN_MAP.values()))
-
-    if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no M2 data.")
-        return pd.DataFrame(columns=list(MACRO_M2_COLUMN_MAP.values()))
-
-    renamed = dataframe.rename(columns=MACRO_M2_COLUMN_MAP)
-    for column in MACRO_M2_COLUMN_MAP.values():
-        if column not in renamed.columns:
-            renamed[column] = None
-
-    return renamed.loc[:, list(MACRO_M2_COLUMN_MAP.values())]
 
 
 def fetch_macro_ppi_monthly() -> pd.DataFrame:
@@ -1728,7 +1699,6 @@ __all__ = [
     "MACRO_SOCIAL_FINANCING_COLUMN_MAP",
     "MACRO_CPI_COLUMN_MAP",
     "MACRO_PMI_COLUMN_MAP",
-    "MACRO_M2_COLUMN_MAP",
     "MACRO_PPI_COLUMN_MAP",
     "MACRO_PBC_RATE_COLUMN_MAP",
     "GLOBAL_FLASH_COLUMN_MAP",
@@ -1753,7 +1723,6 @@ __all__ = [
     "fetch_macro_cpi_monthly",
     "fetch_macro_pmi_yearly",
     "fetch_macro_non_man_pmi",
-    "fetch_macro_m2_yearly",
     "fetch_macro_ppi_monthly",
     "fetch_macro_pbc_interest_rates",
     "fetch_global_flash_news",
