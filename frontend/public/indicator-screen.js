@@ -72,8 +72,11 @@ const INDICATOR_OPTIONS = [
 let currentLang = getInitialLanguage();
 let currentItems = [];
 let lastCapturedAt = null;
+let lastRealtimeSyncedAt = null;
+let lastBigdealSyncedAt = null;
 let isSyncing = false;
 let isRealtimeUpdating = false;
+let isBigdealUpdating = false;
 let currentPage = 1;
 let totalItems = 0;
 let selectedIndicators = [CONTINUOUS_VOLUME_CODE];
@@ -82,17 +85,21 @@ let filters = {
   netIncomeQoqRatio: null,
   peMin: null,
   peMax: null,
+  hasBigDealInflow: false,
 };
+let filterDebounceTimer = null;
+const FILTER_DEBOUNCE_MS = 500;
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
   refreshButton: document.getElementById("indicator-refresh-btn"),
   realtimeButton: document.getElementById("indicator-realtime-btn"),
+  bigdealButton: document.getElementById("indicator-bigdeal-btn"),
   status: document.getElementById("indicator-screen-status"),
   lastUpdated: document.getElementById("indicator-last-updated"),
-  indicatorName: document.getElementById("indicator-name"),
-  daysRange: document.getElementById("indicator-days-range"),
-  volumeHint: document.getElementById("indicator-volume-hint"),
+  realtimeUpdated: document.getElementById("indicator-realtime-updated"),
+  bigdealUpdated: document.getElementById("indicator-bigdeal-updated"),
+  indicatorTagContainer: document.getElementById("indicator-filter-tags"),
   tableHead: document.getElementById("indicator-table-head"),
   tableBody: document.getElementById("indicator-table-body"),
   resultCount: document.getElementById("indicator-result-count"),
@@ -104,7 +111,7 @@ const elements = {
   filterNetIncomeQoq: document.getElementById("filter-netincome-qoq"),
   filterPeMin: document.getElementById("filter-pe-min"),
   filterPeMax: document.getElementById("filter-pe-max"),
-  filterApply: document.getElementById("indicator-filter-apply"),
+  filterBigDealInflow: document.getElementById("filter-bigdeal-inflow"),
   snapshotButton: document.getElementById("indicator-snapshot-btn"),
 };
 
@@ -261,53 +268,107 @@ function renderUpdated() {
     return;
   }
   elements.lastUpdated.textContent = lastCapturedAt ? formatDateTime(lastCapturedAt) : "--";
+  renderRealtimeUpdated();
+  renderBigdealUpdated();
+}
+
+function renderRealtimeUpdated() {
+  if (!elements.realtimeUpdated) {
+    return;
+  }
+  elements.realtimeUpdated.textContent = lastRealtimeSyncedAt ? formatDateTime(lastRealtimeSyncedAt) : "--";
+}
+
+function renderBigdealUpdated() {
+  if (!elements.bigdealUpdated) {
+    return;
+  }
+  elements.bigdealUpdated.textContent = lastBigdealSyncedAt ? formatDateTime(lastBigdealSyncedAt) : "--";
 }
 
 function renderSummary() {
-  if (!elements.indicatorName || !elements.daysRange || !elements.volumeHint) {
+  if (!elements.tagList) {
     return;
   }
-  const label = selectedIndicators.map((code) => getIndicatorLabel(code)).join(" / ");
-  elements.indicatorName.textContent = label || "--";
-  if (!currentItems.length) {
-    elements.daysRange.textContent = "--";
-    elements.volumeHint.textContent = "--";
-    return;
-  }
-  const option = getIndicatorOption(primaryIndicator()) || {};
-  const validDays = currentItems
-    .map((item) => Number(item.volumeDays))
-    .filter((value) => Number.isFinite(value));
-  if (validDays.length) {
-    const min = Math.min(...validDays);
-    const max = Math.max(...validDays);
-    elements.daysRange.textContent = min === max ? `${min}` : `${min} ~ ${max}`;
-  } else {
-    elements.daysRange.textContent = "--";
-  }
-  const primaryDetails = getIndicatorData(currentItems[0], primaryIndicator());
-  const extraKey = option.summaryExtraKey || "volumeText";
-  if (extraKey === "turnoverPercent" || extraKey === "turnoverRate") {
-    const values = currentItems
-      .map((item) => Number(getIndicatorData(item, primaryIndicator())[extraKey]))
-      .filter((value) => Number.isFinite(value));
-    if (values.length) {
-      const min = Math.min(...values).toFixed(2);
-      const max = Math.max(...values).toFixed(2);
-      elements.volumeHint.textContent = min === max ? `${min}%` : `${min}% ~ ${max}%`;
+  const labels = elements.tagList.querySelectorAll(".indicator-tag");
+  labels.forEach((label) => {
+    const code = label.dataset.indicatorCode;
+    const isActive = selectedIndicators.includes(code);
+    const tooltip = isActive ? buildIndicatorTooltip(code) : "";
+    if (tooltip) {
+      label.classList.add("has-tooltip");
+      label.dataset.tooltip = tooltip;
+      label.setAttribute("aria-label", tooltip.replace(/\n/g, ", "));
     } else {
-      elements.volumeHint.textContent = "--";
+      label.classList.remove("has-tooltip");
+      delete label.dataset.tooltip;
+      label.removeAttribute("aria-label");
     }
-  } else if (extraKey === "volumeText") {
-    elements.volumeHint.textContent =
-      primaryDetails.volumeText ||
-      (primaryDetails.volumeShares
-        ? formatNumber(primaryDetails.volumeShares, { notation: "compact" })
-        : "--");
-  } else {
-    const value = primaryDetails[extraKey];
-    elements.volumeHint.textContent = value != null ? String(value) : "--";
+  });
+}
+
+function buildIndicatorTooltip(indicatorCode) {
+  if (!indicatorCode) {
+    return "";
   }
+  const dict = getDict();
+  const label = getIndicatorLabel(indicatorCode);
+  const option = getIndicatorOption(indicatorCode) || {};
+  const relatedItems = currentItems.filter((item) => {
+    const codes = item.matchedIndicators || [];
+    return codes.includes(indicatorCode) || item.indicatorCode === indicatorCode;
+  });
+
+  let daysText = "--";
+  let volumeText = "--";
+
+  if (relatedItems.length) {
+    const detailsList = relatedItems.map((item) => getIndicatorData(item, indicatorCode));
+    const validDays = detailsList
+      .map((detail) => Number(detail?.volumeDays ?? detail?.volume_days))
+      .filter((value) => Number.isFinite(value));
+    if (validDays.length) {
+      const min = Math.min(...validDays);
+      const max = Math.max(...validDays);
+      daysText = min === max ? `${min}` : `${min} ~ ${max}`;
+    }
+
+    const extraKey = option.summaryExtraKey || "volumeText";
+    if (extraKey === "turnoverPercent" || extraKey === "turnoverRate") {
+      const values = detailsList
+        .map((detail) => Number(detail?.[extraKey]))
+        .filter((value) => Number.isFinite(value));
+      if (values.length) {
+        const min = Math.min(...values).toFixed(2);
+        const max = Math.max(...values).toFixed(2);
+        volumeText = min === max ? `${min}%` : `${min}% ~ ${max}%`;
+      }
+    } else if (extraKey === "volumeText") {
+      const value =
+        detailsList.find((detail) => typeof detail?.volumeText === "string")?.volumeText ??
+        detailsList.find((detail) => Number.isFinite(detail?.volumeShares))?.volumeShares;
+      if (typeof value === "string") {
+        volumeText = value;
+      } else if (Number.isFinite(value)) {
+        volumeText = formatNumber(value, { notation: "compact" });
+      }
+    } else {
+      const value = detailsList.find((detail) => detail?.[extraKey] != null)?.[extraKey];
+      if (value != null) {
+        volumeText = String(value);
+      }
+    }
+  }
+
+  const lines = [
+    `${dict.tableIndicator || "Indicator"}: ${label || "--"}`,
+    `${dict.colDays || "Days"}: ${daysText}`,
+    `${dict.colVolume || "Volume"}: ${volumeText}`,
+  ];
+  if (!relatedItems.length) {
+    lines.push(dict.tooltipNoData || "Load this indicator to view parameters.");
+  }
+  return lines.join("\n");
 }
 
 function renderTable() {
@@ -324,7 +385,7 @@ function renderTable() {
     const emptyText = tbody.dataset[`empty${currentLang === "zh" ? "Zh" : "En"}`] || "--";
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 10;
+    cell.colSpan = columns.length || 1;
     cell.className = "table-empty";
     cell.textContent = emptyText;
     row.appendChild(cell);
@@ -374,6 +435,14 @@ function renderIndicatorBadges(record) {
     .join("")}</span>`;
 }
 
+function renderBigDealCell(record) {
+  const dict = getDict();
+  if (record.hasBigDealInflow) {
+    return `<span class="text-up">${dict.bigDealYes || "Yes"}</span>`;
+  }
+  return dict.bigDealNo || "--";
+}
+
 function getTrendClass(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric === 0) {
@@ -402,6 +471,9 @@ async function fetchIndicatorData(page = currentPage) {
     }
     if (filters.peMax !== null) {
       params.set("peMax", String(filters.peMax));
+    }
+    if (filters.hasBigDealInflow) {
+      params.set("hasBigDealInflow", "true");
     }
     const response = await fetch(`${API_BASE}/indicator-screenings?${params.toString()}`);
     if (!response.ok) {
@@ -502,6 +574,9 @@ async function handleRealtimeRefresh() {
       refreshedCount,
     );
     renderStatus(successText, "success");
+    const updatedAtRaw = payload.updatedAt || new Date().toISOString();
+    lastRealtimeSyncedAt = updatedAtRaw;
+    renderRealtimeUpdated();
     await fetchIndicatorData(currentPage);
   } catch (error) {
     console.error("Failed to run realtime refresh", error);
@@ -529,6 +604,9 @@ function bindEvents() {
   }
   if (elements.realtimeButton) {
     elements.realtimeButton.addEventListener("click", handleRealtimeRefresh);
+  }
+  if (elements.bigdealButton) {
+    elements.bigdealButton.addEventListener("click", handleBigdealRefresh);
   }
   if (elements.prevButton) {
     elements.prevButton.addEventListener("click", () => {
@@ -558,16 +636,53 @@ function bindEvents() {
     });
   }
   if (elements.filterNetIncome) {
-    elements.filterNetIncome.addEventListener("change", updateFilterState);
+    elements.filterNetIncome.addEventListener("input", updateFilterState);
+  }
+  if (elements.filterNetIncomeQoq) {
+    elements.filterNetIncomeQoq.addEventListener("input", updateFilterState);
   }
   if (elements.filterPeMin) {
-    elements.filterPeMin.addEventListener("change", updateFilterState);
+    elements.filterPeMin.addEventListener("input", updateFilterState);
   }
   if (elements.filterPeMax) {
-    elements.filterPeMax.addEventListener("change", updateFilterState);
+    elements.filterPeMax.addEventListener("input", updateFilterState);
   }
-  if (elements.filterApply) {
-    elements.filterApply.addEventListener("click", handleFilterApply);
+  if (elements.filterBigDealInflow) {
+    elements.filterBigDealInflow.addEventListener("change", updateFilterState);
+  }
+}
+
+async function handleBigdealRefresh() {
+  if (isBigdealUpdating) {
+    return;
+  }
+  const dict = getDict();
+  isBigdealUpdating = true;
+  if (elements.bigdealButton) {
+    elements.bigdealButton.disabled = true;
+  }
+  renderStatus(dict.bigdealRunning || "Updating big-deal data…", "info");
+  try {
+    const response = await fetch(`${API_BASE}/control/sync/big-deal-fund-flow`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      throw new Error(`Big-deal refresh failed with status ${response.status}`);
+    }
+    const successText = dict.bigdealSuccess || "Big-deal data sync started.";
+    renderStatus(successText, "success");
+    lastBigdealSyncedAt = new Date().toISOString();
+    renderBigdealUpdated();
+  } catch (error) {
+    console.error("Failed to sync big deal data", error);
+    renderStatus(dict.bigdealError || "Big-deal data sync failed.", "error");
+  } finally {
+    isBigdealUpdating = false;
+    if (elements.bigdealButton) {
+      elements.bigdealButton.disabled = false;
+    }
   }
 }
 
@@ -656,8 +771,7 @@ function toggleIndicator(code) {
       renderTable();
       renderUpdated();
       updatePaginationControls();
-      const dict = getDict();
-      renderStatus(dict.statusNeedIndicator || "Select at least one indicator.", "info");
+      renderStatus("", "info");
     }
   } else {
     selectedIndicators = [...selectedIndicators, code];
@@ -698,12 +812,18 @@ function updateFilterState() {
   filters.netIncomeQoqRatio = qoqValue !== null && Number.isFinite(qoqValue) ? qoqValue / 100 : null;
   filters.peMin = elements.filterPeMin?.value ? Number(elements.filterPeMin.value) : null;
   filters.peMax = elements.filterPeMax?.value ? Number(elements.filterPeMax.value) : null;
+  filters.hasBigDealInflow = Boolean(elements.filterBigDealInflow?.checked);
+  scheduleFilterRefresh();
 }
 
-function handleFilterApply() {
-  updateFilterState();
-  currentPage = 1;
-  fetchIndicatorData(1);
+function scheduleFilterRefresh() {
+  if (filterDebounceTimer) {
+    clearTimeout(filterDebounceTimer);
+  }
+  filterDebounceTimer = setTimeout(() => {
+    currentPage = 1;
+    fetchIndicatorData(1);
+  }, FILTER_DEBOUNCE_MS);
 }
 
 function primaryIndicator() {
@@ -754,6 +874,11 @@ function getColumnsForSelection() {
       id: "industry",
       labelKey: "colIndustry",
       renderer: (record) => record.industry || "--",
+    },
+    {
+      id: "bigDeal",
+      labelKey: "colBigDeal",
+      renderer: (record) => renderBigDealCell(record),
     },
   ];
   return [...baseColumns, ...indicatorColumns, ...tailColumns];

@@ -42,11 +42,17 @@ export const tradingStatsTab = {
       return;
     }
 
+    const getDetailUrl =
+      typeof ctx.buildDetailUrl === "function"
+        ? ctx.buildDetailUrl
+        : (code) => `stock-detail.html?code=${encodeURIComponent(code)}`;
+
     items.forEach((item) => {
       const row = document.createElement("tr");
+      const detailUrl = getDetailUrl(item.code);
       const cells = [
-        `<td><a class="table-link" href="stock-detail.html?code=${encodeURIComponent(item.code)}">${item.code}</a></td>`,
-        `<td>${item.name ? `<a class="table-link" href="stock-detail.html?code=${encodeURIComponent(item.code)}">${item.name}</a>` : ctx.emptyValue}</td>`,
+        `<td><a class="table-link" href="${detailUrl}">${item.code}</a></td>`,
+        `<td>${item.name ? `<a class="table-link" href="${detailUrl}">${item.name}</a>` : ctx.emptyValue}</td>`,
       ];
 
       STAT_FIELDS.forEach((field) => {

@@ -57,7 +57,7 @@ function getDict() {
   return translations[state.lang] || translations.zh || translations.en;
 }
 
-function setLoading(isLoading) {
+function setLoading(isLoading, labelOverride) {
   state.loading = isLoading;
   const button = elements.refreshButton;
   if (!button) return;
@@ -66,7 +66,7 @@ function setLoading(isLoading) {
   if (isLoading) {
     button.disabled = true;
     button.dataset.loading = "1";
-    if (label) label.textContent = dict.refreshing || "Refreshing...";
+    if (label) label.textContent = labelOverride || dict.refreshing || "Refreshing...";
   } else {
     button.disabled = false;
     delete button.dataset.loading;
@@ -466,7 +466,7 @@ function renderIndustryGrid(snapshot) {
     card.appendChild(header);
 
     const metrics = document.createElement("div");
-    metrics.className = "concept-card__metrics";
+    metrics.className = "industry-card__metrics industry-card__metrics--primary";
     const flow = entry.fundFlow || {};
     const metricItems = [
       { label: dict.score || "Score", value: formatNumber(flow.score, 3) },
@@ -597,10 +597,15 @@ function renderAll() {
   renderHistory(state.history);
 }
 
-async function fetchInsight() {
-  setLoading(true);
+async function fetchInsight(options = {}) {
+  const { skipButtonState = false, skipInitialStatus = false } = options;
+  if (!skipButtonState) {
+    setLoading(true);
+  }
   const dict = getDict();
-  setStatus(dict.loading || "Loading...", "info");
+  if (!skipInitialStatus) {
+    setStatus(dict.loading || "Loading...", "info");
+  }
   try {
     const [insightResp, historyResp] = await Promise.all([
       fetch(`${API_BASE}/market/industry-insight`).then((res) => {
@@ -654,7 +659,9 @@ async function fetchInsight() {
     console.error(error);
     setStatus(dict.loadFailed || "Failed to load industry insight.", "error");
   } finally {
-    setLoading(false);
+    if (!skipButtonState) {
+      setLoading(false);
+    }
   }
 }
 
@@ -701,12 +708,110 @@ function initLanguage() {
   persistLanguage(state.lang);
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchIndustryJobStatus() {
+  try {
+    const response = await fetch(`${API_BASE}/control/status`, { cache: "no-cache" });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch job status: ${response.status}`);
+    }
+    const payload = await response.json();
+    return payload?.jobs?.industry_insight || null;
+  } catch (error) {
+    console.error("Failed to fetch industry insight job status:", error);
+    return null;
+  }
+}
+
+async function waitForIndustryJobCompletion(notBefore) {
+  const dict = getDict();
+  const timeoutMs = 4 * 60 * 1000;
+  const pollIntervalMs = 2500;
+  const startTime = Date.now();
+  let observedStart = null;
+
+  while (Date.now() - startTime < timeoutMs) {
+    const status = await fetchIndustryJobStatus();
+    if (status) {
+      const jobStartedAt = status.startedAt ? Date.parse(status.startedAt) : null;
+      const isCurrentJob =
+        !notBefore ||
+        !jobStartedAt ||
+        jobStartedAt >= notBefore - 2000; /* allow small clock drift */
+
+      if (!isCurrentJob) {
+        await delay(pollIntervalMs);
+        continue;
+      }
+
+      if (status.status === "running") {
+        observedStart = jobStartedAt || observedStart || Date.now();
+        const message = status.message || dict.jobRunning || "Reasoning in progress...";
+        setStatus(message, "info");
+      } else if (status.status === "success" || status.status === "idle") {
+        return status;
+      } else if (status.status === "error") {
+        const errorMessage = status.error || dict.jobFailed || "Reasoning job failed.";
+        const error = new Error(errorMessage);
+        error.jobStatus = status;
+        throw error;
+      }
+    }
+    await delay(pollIntervalMs);
+  }
+
+  throw new Error(dict.jobTimeout || "Reasoning timed out. Check the control panel.");
+}
+
+async function triggerIndustryInsightJob() {
+  const dict = getDict();
+  const payload = {
+    lookbackHours: Math.min(Math.max(Number(state.snapshot?.lookbackHours) || 48, 1), 168),
+    industryLimit: Math.min(Math.max(Number(state.snapshot?.industryCount) || 5, 1), 10),
+    runLLM: true,
+  };
+
+  const response = await fetch(`${API_BASE}/control/sync/industry-insight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(dict.jobFailed || `Failed to trigger reasoning (${response.status}).`);
+  }
+
+  return Date.now();
+}
+
+async function handleRefreshClick() {
+  if (state.loading) {
+    return;
+  }
+  const dict = getDict();
+  try {
+    setLoading(true, dict.syncing || dict.refreshing || "Refreshing...");
+    setStatus(dict.jobStarting || "Triggering reasoning job...", "info");
+    const requestedAt = await triggerIndustryInsightJob();
+    setStatus(dict.jobRunning || "Reasoning in progress...", "info");
+    await waitForIndustryJobCompletion(requestedAt);
+    await fetchInsight({ skipButtonState: true, skipInitialStatus: true });
+  } catch (error) {
+    console.error("Failed to refresh industry insight:", error);
+    const message = error?.message || dict.jobFailed || "Failed to refresh insight.";
+    setStatus(message, "error");
+  } finally {
+    setLoading(false);
+  }
+}
+
 function init() {
   initLanguage();
   if (elements.refreshButton) {
-    elements.refreshButton.addEventListener("click", () => {
-      if (!state.loading) fetchInsight();
-    });
+    elements.refreshButton.addEventListener("click", handleRefreshClick);
   }
   fetchInsight();
 }

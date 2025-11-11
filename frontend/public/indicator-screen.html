@@ -34,9 +34,6 @@
         <header class="content__header">
           <div>
             <h1 class="page-heading" data-i18n="indicatorScreen.pageTitle">指标选股</h1>
-            <p class="page-subtitle" data-i18n="indicatorScreen.pageSubtitle">
-              跟踪同花顺持续放量指标入选个股，并跳转查看个股综合分析。
-            </p>
           </div>
           <div class="header-actions">
             <div class="language-switcher">
@@ -48,65 +45,82 @@
 
         <section class="page indicator-screen">
           <div class="info-bar indicator-info-bar">
-            <button id="indicator-refresh-btn" class="btn btn--primary" type="button" data-i18n="indicatorScreen.refreshButton">
-              更新指标
-            </button>
-            <button id="indicator-realtime-btn" class="btn btn--ghost" type="button" data-i18n="indicatorScreen.realtimeButton">
-              同步实时行情
-            </button>
-            <span data-i18n="indicatorScreen.lastUpdated">更新时间：</span>
-            <strong id="indicator-last-updated">--</strong>
+            <div class="indicator-info-block">
+              <button id="indicator-refresh-btn" class="btn btn--primary" type="button" data-i18n="indicatorScreen.refreshButton">
+                更新指标
+              </button>
+              <div class="indicator-info-meta">
+                <span data-i18n="indicatorScreen.lastUpdated">指标数据：</span>
+                <strong id="indicator-last-updated">--</strong>
+              </div>
+            </div>
+            <div class="indicator-info-block">
+              <button id="indicator-realtime-btn" class="btn btn--ghost" type="button" data-i18n="indicatorScreen.realtimeButton">
+                同步实时行情
+              </button>
+              <div class="indicator-info-meta">
+                <span data-i18n="indicatorScreen.lastUpdatedRealtime">实时行情：</span>
+                <strong id="indicator-realtime-updated">--</strong>
+              </div>
+            </div>
+            <div class="indicator-info-block">
+              <button id="indicator-bigdeal-btn" class="btn btn--ghost" type="button" data-i18n="indicatorScreen.refreshBigDeal">
+                更新大单数据
+              </button>
+              <div class="indicator-info-meta">
+                <span data-i18n="indicatorScreen.lastUpdatedBigDeal">大单数据：</span>
+                <strong id="indicator-bigdeal-updated">--</strong>
+              </div>
+            </div>
           </div>
 
           <p id="indicator-screen-status" class="page-status" aria-live="polite"></p>
 
-          <div class="card indicator-summary">
-            <div>
-              <div class="indicator-summary__label" data-i18n="indicatorScreen.tableIndicator">指标</div>
-              <div class="indicator-summary__value" id="indicator-name">--</div>
-            </div>
-            <div>
-              <div class="indicator-summary__label" data-i18n="indicatorScreen.colDays">放量天数</div>
-              <div class="indicator-summary__value" id="indicator-days-range">--</div>
-            </div>
-            <div>
-              <div class="indicator-summary__label" data-i18n="indicatorScreen.colVolume">成交量</div>
-              <div class="indicator-summary__value" id="indicator-volume-hint">--</div>
-            </div>
-          </div>
-
-          <div class="indicator-filter">
-            <div class="indicator-filter__label" data-i18n="indicatorScreen.filterLabel">指标筛选</div>
-            <div id="indicator-tag-list" class="indicator-tag-list"></div>
-          </div>
-
-          <div class="indicator-filter">
-            <div class="indicator-filter__field indicator-filter__field--suffix">
-              <label for="filter-netincome" data-i18n="indicatorScreen.filterNetIncome">净利同比 &gt;</label>
-              <div class="indicator-filter__input-suffix">
-                <input type="number" id="filter-netincome" placeholder="0" step="0.1" />
-                <span class="input-suffix">%</span>
+          <section class="indicator-filter-card" aria-label="filter tray">
+            <header class="indicator-filter-card__header">
+              <h3 data-i18n="indicatorScreen.filterTrayTitle">筛选条件</h3>
+            </header>
+            <div class="indicator-filter-card__body">
+              <div class="indicator-filter-card__column indicator-filter-card__column--tags">
+                <div class="indicator-filter indicator-filter--tags" id="indicator-filter-tags">
+                  <div class="indicator-filter__label" data-i18n="indicatorScreen.filterLabel">指标筛选</div>
+                  <div id="indicator-tag-list" class="indicator-tag-list"></div>
+                </div>
+              </div>
+              <div class="indicator-filter-card__column indicator-filter-card__column--inputs">
+                <div class="indicator-filter indicator-filter--inputs">
+                  <div class="indicator-filter__field indicator-filter__field--suffix">
+                    <label for="filter-netincome" data-i18n="indicatorScreen.filterNetIncome">净利同比 &gt;</label>
+                    <div class="indicator-filter__input-suffix">
+                      <input type="number" id="filter-netincome" placeholder="0" step="0.1" />
+                      <span class="input-suffix">%</span>
+                    </div>
+                  </div>
+                  <div class="indicator-filter__field indicator-filter__field--suffix">
+                    <label for="filter-netincome-qoq" data-i18n="indicatorScreen.filterNetIncomeQoq">净利环比 &gt;</label>
+                    <div class="indicator-filter__input-suffix">
+                      <input type="number" id="filter-netincome-qoq" placeholder="0" step="0.1" />
+                      <span class="input-suffix">%</span>
+                    </div>
+                  </div>
+                  <div class="indicator-filter__field indicator-filter__field--inline">
+                    <label for="filter-pe-min" data-i18n="indicatorScreen.filterPeMin">PE 最小</label>
+                    <input type="number" id="filter-pe-min" placeholder="-" step="0.1" />
+                  </div>
+                  <div class="indicator-filter__field indicator-filter__field--inline">
+                    <label for="filter-pe-max" data-i18n="indicatorScreen.filterPeMax">PE 最大</label>
+                    <input type="number" id="filter-pe-max" placeholder="-" step="0.1" />
+                  </div>
+                  <div class="indicator-filter__field indicator-filter__field--checkbox">
+                    <label class="indicator-filter__checkbox">
+                      <input type="checkbox" id="filter-bigdeal-inflow" />
+                      <span data-i18n="indicatorScreen.filterBigDealInflow">仅看当日大单正流入</span>
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="indicator-filter__field indicator-filter__field--suffix">
-              <label for="filter-netincome-qoq" data-i18n="indicatorScreen.filterNetIncomeQoq">净利环比 &gt;</label>
-              <div class="indicator-filter__input-suffix">
-                <input type="number" id="filter-netincome-qoq" placeholder="0" step="0.1" />
-                <span class="input-suffix">%</span>
-              </div>
-            </div>
-            <div class="indicator-filter__field">
-              <label for="filter-pe-min" data-i18n="indicatorScreen.filterPeMin">PE 最小</label>
-              <input type="number" id="filter-pe-min" placeholder="-" step="0.1" />
-            </div>
-            <div class="indicator-filter__field">
-              <label for="filter-pe-max" data-i18n="indicatorScreen.filterPeMax">PE 最大</label>
-              <input type="number" id="filter-pe-max" placeholder="-" step="0.1" />
-            </div>
-            <button type="button" class="btn btn--ghost indicator-filter__apply" id="indicator-filter-apply" data-i18n="indicatorScreen.filterApply">
-              应用
-            </button>
-          </div>
+          </section>
 
           <div class="indicator-table-controls">
             <div id="indicator-result-count">--</div>
@@ -142,6 +156,6 @@
 
     <script src="i18n.js?v=20270418"></script>
     <script src="sidebar.js?v=20270440"></script>
-    <script type="module" src="indicator-screen.js?v=20270452"></script>
+    <script type="module" src="indicator-screen.js?v=20270453"></script>
   </body>
 </html>

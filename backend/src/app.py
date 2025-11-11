@@ -3113,6 +3113,7 @@ class IndicatorScreeningRecord(BaseModel):
     net_income_yoy_latest: Optional[float] = Field(None, alias="netIncomeYoyLatest")
     pe_ratio: Optional[float] = Field(None, alias="peRatio")
     matched_indicators: List[str] = Field(default_factory=list, alias="matchedIndicators")
+    has_big_deal_inflow: Optional[bool] = Field(None, alias="hasBigDealInflow")
     indicator_details: Dict[str, Dict[str, Any]] = Field(default_factory=dict, alias="indicatorDetails")
 
     class Config:
@@ -8958,6 +8959,11 @@ def list_indicator_screenings_endpoint(
     net_income_qoq_min: Optional[float] = Query(None, alias="netIncomeQoqMin", description="Minimum net income QoQ."),
     pe_min: Optional[float] = Query(None, alias="peMin", description="Minimum PE ratio."),
     pe_max: Optional[float] = Query(None, alias="peMax", description="Maximum PE ratio."),
+    has_big_deal_inflow: Optional[bool] = Query(
+        None,
+        alias="hasBigDealInflow",
+        description="Require same-day big-deal inflow when true.",
+    ),
     limit: int = Query(200, ge=1, le=500, description="Maximum number of entries to return."),
     offset: int = Query(0, ge=0, description="Offset for pagination."),
 ) -> IndicatorScreeningListResponse:
@@ -8969,6 +8975,7 @@ def list_indicator_screenings_endpoint(
         net_income_qoq_min=net_income_qoq_min,
         pe_min=pe_min,
         pe_max=pe_max,
+        has_big_deal_inflow=has_big_deal_inflow,
     )
     items = [
         IndicatorScreeningRecord(
@@ -8998,6 +9005,7 @@ def list_indicator_screenings_endpoint(
             turnoverPercent=entry.get("turnoverPercent"),
             industry=entry.get("industry"),
             matchedIndicators=entry.get("matchedIndicators") or [],
+            hasBigDealInflow=entry.get("hasBigDealInflow"),
             indicatorDetails=entry.get("indicatorDetails") or {},
         )
         for entry in result.get("items", [])

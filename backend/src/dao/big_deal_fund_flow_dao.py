@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date, time, timedelta
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -222,6 +222,58 @@ class BigDealFundFlowDAO(PostgresDAOBase):
             items.append(record)
 
         return {"total": int(total), "items": items}
+
+    def fetch_buy_amount_map(
+        self,
+        stock_codes: Sequence[str],
+        trade_date: Optional[date] = None,
+    ) -> dict[str, float]:
+        unique_codes = sorted({(code or "").strip() for code in stock_codes if code})
+        if not unique_codes:
+            return {}
+
+        day = trade_date or datetime.now().date()
+        start = datetime.combine(day, time.min)
+        end = start + timedelta(days=1)
+
+        code_placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in unique_codes)
+        query = sql.SQL(
+            """
+            SELECT stock_code,
+                   COALESCE(SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END), 0) AS buy_amount,
+                   COALESCE(SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END), 0) AS sell_amount
+            FROM {schema}.{table}
+            WHERE stock_code IN ({codes})
+              AND trade_time >= %s
+              AND trade_time < %s
+            GROUP BY stock_code
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+            codes=code_placeholders,
+        )
+
+        params: List[object] = ["%买%", "%卖%"]
+        params.extend(unique_codes)
+        params.extend([start, end])
+
+        results: dict[str, float] = {}
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                for stock_code, buy_amount, sell_amount in cur.fetchall():
+                    try:
+                        buy_numeric = float(buy_amount or 0.0)
+                    except (TypeError, ValueError):
+                        buy_numeric = 0.0
+                    try:
+                        sell_numeric = float(sell_amount or 0.0)
+                    except (TypeError, ValueError):
+                        sell_numeric = 0.0
+                    results[str(stock_code).strip()] = buy_numeric - sell_numeric
+        return results
 
 
 __all__ = [

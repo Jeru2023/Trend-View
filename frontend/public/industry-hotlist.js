@@ -1,4 +1,4 @@
-console.info("Industry hotlist module v20270437");
+console.info("Industry hotlist module v20270490");
 
 const translations = getTranslations("industryHotlist");
 
@@ -7,6 +7,9 @@ const API_BASE =
   (window.location.hostname === "localhost"
     ? "http://localhost:8000"
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
+
+const JOB_POLL_INTERVAL = 2500;
+const JOB_TIMEOUT_MS = 3 * 60 * 1000;
 
 const LANG_STORAGE_KEY = "trend-view-lang";
 
@@ -109,6 +112,18 @@ function formatPercent(value, digits = 1) {
   return `${numeric.toFixed(digits)}%`;
 }
 
+function formatStageChange(stage) {
+  if (!stage) return "--";
+  const stageText = formatPercent(stage.stageChangePercent, 1);
+  if (stageText !== "--") return stageText;
+  return formatPercent(stage.priceChangePercent, 1);
+}
+
+function updateGeneratedAt(snapshot) {
+  if (!elements.generatedAt) return;
+  elements.generatedAt.textContent = formatDateTime(snapshot?.generatedAt);
+}
+
 function formatMoney(value) {
   if (value === null || value === undefined) return "--";
   const numeric = Number(value);
@@ -176,9 +191,7 @@ function buildStageTable(stages) {
     dict.tableHeaderInflow || "Inflow",
     dict.tableHeaderOutflow || "Outflow",
     dict.tableHeaderPriceChange || "Price %",
-    dict.tableHeaderStageChange || "Stage %",
     dict.tableHeaderLeading || "Leader",
-    dict.tableHeaderUpdated || "Updated",
   ].forEach((label) => {
     const th = document.createElement("th");
     th.textContent = label;
@@ -196,10 +209,8 @@ function buildStageTable(stages) {
       formatMoney(stage.netAmount),
       formatMoney(stage.inflow),
       formatMoney(stage.outflow),
-      formatPercent(stage.priceChangePercent, 1),
-      formatPercent(stage.stageChangePercent, 1),
+      formatStageChange(stage),
       formatLeading(stage.leadingStock, stage.leadingStockChangePercent),
-      stage.updatedAt ? formatDateTime(stage.updatedAt) : "--",
     ];
     cells.forEach((value) => {
       const td = document.createElement("td");
@@ -236,7 +247,7 @@ function renderIndustryCards(items) {
     card.appendChild(header);
 
     const summary = document.createElement("div");
-    summary.className = "flow-card__summary";
+    summary.className = "flow-card__summary flow-card__summary--triple";
     summary.innerHTML = `
       <div class="flow-card__summary-item">
         <span>${dict.scoreLabel || "Score"}</span>
@@ -254,7 +265,7 @@ function renderIndustryCards(items) {
     card.appendChild(summary);
 
     const stats = document.createElement("div");
-    stats.className = "flow-card__stats";
+    stats.className = "flow-card__stats flow-card__stats--triple";
     stats.innerHTML = `
       <div class="flow-card__stat">
         <span>${dict.totalInflowLabel || "Inflow"}</span>
@@ -286,6 +297,7 @@ function renderIndustryCards(items) {
 }
 
 function renderAll() {
+  updateGeneratedAt(state.snapshot);
   renderSymbols(state.snapshot);
   renderIndustryCards(state.snapshot?.industries || []);
 }
@@ -299,7 +311,7 @@ async function fetchHotlist() {
     const snapshot = await response.json();
     state.snapshot = snapshot;
     renderAll();
-    setStatus(`${getDict().statusLoaded || "Ranking updated."} ${formatDateTime(snapshot.generatedAt)}`);
+    setStatus("");
   } catch (error) {
     console.error(error);
     setStatus(getDict().statusError || "Failed to load ranking, please retry.", "error");
@@ -338,9 +350,7 @@ function initLanguage() {
 function init() {
   initLanguage();
   if (elements.refreshButton) {
-    elements.refreshButton.addEventListener("click", () => {
-      if (!state.loading) fetchHotlist();
-    });
+    elements.refreshButton.addEventListener("click", handleRefreshClick);
   }
   fetchHotlist();
 }
@@ -349,4 +359,58 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
+}
+
+async function handleRefreshClick() {
+  if (state.loading) return;
+  const dict = getDict();
+  setLoading(true);
+  setStatus(dict.statusSyncingConcept || "Syncing concept fund flow…", "info");
+  try {
+    await triggerConceptFundFlowSync();
+    setStatus(dict.statusWaitingConcept || "Waiting for concept fund flow sync…", "info");
+    await waitForConceptFundFlowJobCompletion();
+    await fetchHotlist();
+  } catch (error) {
+    console.error("Industry hotlist refresh failed", error);
+    setStatus(dict.statusRefreshFailed || "Failed to refresh hot industries.", "error");
+    setLoading(false);
+  }
+}
+
+async function triggerConceptFundFlowSync() {
+  const symbols = Array.isArray(state.snapshot?.symbols)
+    ? state.snapshot.symbols.map((item) => item.symbol).filter(Boolean)
+    : [];
+  const payload = symbols.length ? { symbols } : {};
+  const response = await fetch(`${API_BASE}/control/sync/concept-fund-flow`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok && response.status !== 409) {
+    throw new Error(`Concept fund flow sync failed with status ${response.status}`);
+  }
+}
+
+async function waitForConceptFundFlowJobCompletion(timeoutMs = JOB_TIMEOUT_MS) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await fetch(`${API_BASE}/control/status`).then((res) => res.json());
+    const job = status?.jobs?.concept_fund_flow;
+    if (job) {
+      if (job.status === "success" || job.status === "idle") {
+        return job;
+      }
+      if (job.status === "error") {
+        throw new Error(job.error || "Concept fund flow sync failed");
+      }
+    }
+    await delay(JOB_POLL_INTERVAL);
+  }
+  throw new Error("Concept fund flow sync timed out");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

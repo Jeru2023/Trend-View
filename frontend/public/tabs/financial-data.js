@@ -16,8 +16,13 @@ export const financialDataTab = {
       return;
     }
 
+    const getDetailUrl =
+      typeof ctx.buildDetailUrl === "function"
+        ? ctx.buildDetailUrl
+        : (code) => `stock-detail.html?code=${encodeURIComponent(code)}`;
+
     items.forEach((item) => {
-      const detailUrl = `stock-detail.html?code=${encodeURIComponent(item.code)}`;
+      const detailUrl = getDetailUrl(item.code);
       const codeCell = `<a class="table-link" href="${detailUrl}">${item.code}</a>`;
       const nameCell =
         item.name !== null && item.name !== undefined && item.name !== ""

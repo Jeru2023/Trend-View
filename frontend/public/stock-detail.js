@@ -222,6 +222,7 @@ const INDIVIDUAL_FUND_FLOW_METRICS = {
 };
 
 const elements = {
+  backLink: document.querySelector(".detail-back-link"),
   status: document.getElementById("detail-status"),
   grid: document.getElementById("detail-grid"),
   hero: document.getElementById("detail-hero"),
@@ -1896,6 +1897,42 @@ function wrapSignedValue(value, display) {
   return `<span class="${cls}">${text}</span>`;
 }
 
+function toFiniteNumber(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function derivePercentFromPriceChange(tradePrice, priceChange) {
+  const trade = toFiniteNumber(tradePrice);
+  const delta = toFiniteNumber(priceChange);
+  if (trade === null || delta === null) {
+    return null;
+  }
+  const baseline = trade - delta;
+  if (!baseline) {
+    return null;
+  }
+  const percent = (delta / baseline) * 100;
+  return Number.isFinite(percent) ? percent : null;
+}
+
+function normalizePercentValue(rawValue, tradePrice, priceChange) {
+  const derived = derivePercentFromPriceChange(tradePrice, priceChange);
+  const rawNumeric = toFiniteNumber(rawValue);
+  if (derived === null) {
+    return rawNumeric;
+  }
+  if (rawNumeric === null) {
+    return derived;
+  }
+  const diff = Math.abs(rawNumeric - derived);
+  const tolerance = Math.max(0.15, Math.abs(derived) * 0.1);
+  return diff > tolerance ? derived : rawNumeric;
+}
+
 function escapeHTML(value) {
   if (value === null || value === undefined) {
     return "";
@@ -2484,7 +2521,11 @@ function renderBigDealCard(items) {
       });
       const amount = formatCurrency(item.trade_amount || item.tradeAmount, { maximumFractionDigits: 0 });
       const volume = formatCurrency(item.trade_volume || item.tradeVolume, { maximumFractionDigits: 0 });
-      const changePct = formatPercentFlexible(item.price_change_percent || item.priceChangePercent);
+      const rawChangePct = item.price_change_percent || item.priceChangePercent;
+      const normalizedPct = normalizePercentValue(rawChangePct, item.trade_price || item.tradePrice, item.price_change || item.priceChange);
+      const fallbackPct = toFiniteNumber(rawChangePct);
+      const percentValue = normalizedPct !== null ? normalizedPct : fallbackPct;
+      const changePct = percentValue !== null ? formatPercent(percentValue) : "--";
       const change = formatNumber(item.price_change || item.priceChange, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
@@ -2501,7 +2542,7 @@ function renderBigDealCard(items) {
             codeParts.detailCode
           )}" target="_blank" rel="noopener noreferrer">${stockName}</a>`
         : `<span class="big-deal-row__name">${stockName}</span>`;
-      const changePctContent = wrapSignedValue(item.price_change_percent || item.priceChangePercent, changePct);
+      const changePctContent = wrapSignedValue(percentValue, changePct);
       const changeAmountContent = wrapSignedValue(item.price_change || item.priceChange, change);
       const rowClass =
         sideRaw && sideRaw.includes("买")
@@ -4654,6 +4695,7 @@ function initNewsAndVolumeActions() {
 }
 
 function initialize() {
+  applyBackLink();
   applyTranslations();
   initLanguageButtons();
   initFavoriteToggle();
@@ -4670,6 +4712,42 @@ function initialize() {
   document.title = `${translations[currentLang].pageTitle} - ${code}`;
   fetchDetail(code);
   window.addEventListener("resize", resizeCandlestickChart);
+}
+
+function applyBackLink() {
+  if (!elements.backLink) {
+    return;
+  }
+  const target = resolveBackLinkTarget();
+  if (target) {
+    elements.backLink.href = target;
+  }
+}
+
+function resolveBackLinkTarget() {
+  const params = new URLSearchParams(window.location.search);
+  const backParam = params.get("back");
+  if (backParam) {
+    try {
+      const absolute = new URL(backParam, window.location.origin);
+      if (absolute.origin === window.location.origin) {
+        return `${absolute.pathname}${absolute.search}${absolute.hash}`;
+      }
+    } catch (error) {
+      /* ignore malformed back param */
+    }
+  }
+  if (document.referrer) {
+    try {
+      const refUrl = new URL(document.referrer);
+      if (refUrl.origin === window.location.origin) {
+        return `${refUrl.pathname}${refUrl.search}${refUrl.hash}`;
+      }
+    } catch (error) {
+      /* ignore */
+    }
+  }
+  return "index.html";
 }
 
 

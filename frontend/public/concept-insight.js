@@ -680,9 +680,7 @@ function initLanguage() {
 function init() {
   initLanguage();
   if (elements.refreshButton) {
-    elements.refreshButton.addEventListener("click", () => {
-      if (!state.loading) fetchInsight();
-    });
+    elements.refreshButton.addEventListener("click", handleRefreshClick);
   }
   fetchInsight();
 }
@@ -691,4 +689,62 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
+}
+
+async function handleRefreshClick() {
+  if (state.loading) {
+    return;
+  }
+  const dict = getDict();
+  setLoading(true);
+  setStatus(dict.jobTriggering || "Triggering concept insight job…", "info");
+  try {
+    await triggerConceptSyncJob();
+    setStatus(dict.jobQueued || "Concept insight job started. Waiting for completion…", "info");
+    await waitForConceptJobCompletion();
+    await fetchInsight();
+  } catch (error) {
+    console.error("Concept insight refresh failed", error);
+    setStatus(dict.jobFailed || "Failed to refresh concept insight.", "error");
+    setLoading(false);
+  }
+}
+
+async function triggerConceptSyncJob() {
+  const payload = {
+    lookbackHours: state.snapshot?.lookbackHours || 48,
+    conceptLimit: state.snapshot?.conceptCount || 10,
+    runLLM: true,
+    refreshIndexHistory: true,
+  };
+  const response = await fetch(`${API_BASE}/control/sync/concept-insight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Concept insight sync failed with status ${response.status}`);
+  }
+}
+
+async function waitForConceptJobCompletion(timeoutMs = 4 * 60 * 1000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await fetch(`${API_BASE}/control/status`).then((res) => res.json());
+    const job = status?.jobs?.concept_insight;
+    if (job) {
+      if (job.status === "success" || job.status === "idle") {
+        return job;
+      }
+      if (job.status === "error") {
+        throw new Error(job.error || "Concept insight job failed");
+      }
+    }
+    await delay(2500);
+  }
+  throw new Error("Concept insight job timed out");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

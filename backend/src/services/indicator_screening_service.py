@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, time
-from typing import Any, Dict, Iterable, List, Sequence
+from datetime import date, datetime, timedelta, time
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pandas as pd
 from zoneinfo import ZoneInfo
@@ -20,6 +20,7 @@ from ..api_clients import (
 from ..config.runtime_config import VolumeSurgeConfig, load_runtime_config
 from ..config.settings import load_settings
 from ..dao import (
+    BigDealFundFlowDAO,
     DailyIndicatorDAO,
     DailyTradeDAO,
     FundamentalMetricsDAO,
@@ -584,6 +585,7 @@ def list_indicator_screenings(
     net_income_qoq_min: float | None = None,
     pe_min: float | None = None,
     pe_max: float | None = None,
+    has_big_deal_inflow: bool | None = None,
     settings_path: str | None = None,
 ) -> dict[str, Any]:
     codes = _normalize_indicator_codes(indicator_codes)
@@ -592,6 +594,8 @@ def list_indicator_screenings(
     require_metrics = any(value is not None for value in (net_income_yoy_min, net_income_qoq_min, pe_min, pe_max))
     fundamental_dao = FundamentalMetricsDAO(settings.postgres) if require_metrics else None
     daily_indicator_dao = DailyIndicatorDAO(settings.postgres) if require_metrics else None
+    big_deal_dao = BigDealFundFlowDAO(settings.postgres)
+    require_big_deal_filter = has_big_deal_inflow is True
 
     def _maybe_attach_metrics(entries: list[dict[str, Any]]) -> None:
         if not require_metrics or not entries:
@@ -610,17 +614,24 @@ def list_indicator_screenings(
         raw_items = dataset.get("items", [])
         _maybe_attach_metrics(raw_items)
         entries = [_serialize_entry(entry) for entry in raw_items]
+        captured_at = _localize_datetime(dataset.get("latest_captured_at"))
+        _annotate_big_deal_inflow(
+            entries,
+            big_deal_dao=big_deal_dao,
+            trade_date=datetime.now(LOCAL_TZ).date(),
+        )
         filtered_entries = _apply_indicator_filters(entries, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
+        filtered_entries = _apply_big_deal_filter(filtered_entries, require_big_deal_filter)
         total_filtered = len(filtered_entries)
         sliced = filtered_entries[offset : offset + limit]
-    return {
-        "indicatorCode": primary_code,
-        "indicatorCodes": codes,
-        "indicatorName": INDICATOR_DEFINITIONS[primary_code]["name"],
-        "capturedAt": _localize_datetime(dataset.get("latest_captured_at")),
-        "total": total_filtered,
-        "items": sliced,
-    }
+        return {
+            "indicatorCode": primary_code,
+            "indicatorCodes": codes,
+            "indicatorName": INDICATOR_DEFINITIONS[primary_code]["name"],
+            "capturedAt": captured_at,
+            "total": total_filtered,
+            "items": sliced,
+        }
 
 
 def run_indicator_realtime_refresh(
@@ -747,6 +758,7 @@ def run_indicator_realtime_refresh(
         _maybe_attach_metrics(items)
         per_code_records[code] = {entry["stock_code"]: entry for entry in items if entry.get("stock_code")}
 
+    latest_captured = _resolve_latest_captured(per_code_records)
     intersection_items: List[dict[str, Any]] = []
     primary_entries = list(per_code_records[primary_code].values())
     primary_entries.sort(key=lambda item: (item.get("rank") or 10**9, item.get("stock_code") or ""))
@@ -765,15 +777,15 @@ def run_indicator_realtime_refresh(
         serialized["indicatorDetails"] = details
         intersection_items.append(serialized)
 
+    _annotate_big_deal_inflow(
+        intersection_items,
+        big_deal_dao=big_deal_dao,
+        trade_date=datetime.now(LOCAL_TZ).date(),
+    )
     filtered = _apply_indicator_filters(intersection_items, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
+    filtered = _apply_big_deal_filter(filtered, require_big_deal_filter)
     total = len(filtered)
     sliced = filtered[offset : offset + limit]
-    latest_captured = None
-    for code in codes:
-        for entry in per_code_records[code].values():
-            localized = _localize_datetime(entry.get("captured_at"))
-            if localized and (latest_captured is None or localized > latest_captured):
-                latest_captured = localized
 
     return {
         "indicatorCode": primary_code,
@@ -876,6 +888,7 @@ def _serialize_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "peRatio": _safe_float(entry.get("pe_ratio")),
         "industry": entry.get("industry"),
         "matchedIndicators": [indicator_code] if indicator_code else [],
+        "hasBigDealInflow": False,
     }
     serialized["indicatorDetails"] = {}
     if indicator_code:
@@ -914,6 +927,43 @@ def _normalize_indicator_codes(codes: Sequence[str] | None) -> List[str]:
         if code in INDICATOR_DEFINITIONS and code not in normalized:
             normalized.append(code)
     return normalized or [DEFAULT_INDICATOR_CODE]
+
+
+def _resolve_latest_captured(per_code_records: Dict[str, Dict[str, dict]]) -> datetime | None:
+    latest: datetime | None = None
+    for record_map in per_code_records.values():
+        for entry in record_map.values():
+            localized = _localize_datetime(entry.get("captured_at"))
+            if localized and (latest is None or localized > latest):
+                latest = localized
+    return latest
+
+
+def _annotate_big_deal_inflow(
+    entries: Sequence[dict[str, Any]],
+    *,
+    big_deal_dao: BigDealFundFlowDAO | None,
+    trade_date: Optional[date] = None,
+) -> None:
+    if not entries or big_deal_dao is None:
+        return
+    codes = sorted({entry.get("stockCode") for entry in entries if entry.get("stockCode")})
+    if not codes:
+        return
+    target_date = trade_date or datetime.now(LOCAL_TZ).date()
+    inflow_map = big_deal_dao.fetch_buy_amount_map(codes, trade_date=target_date)
+    for entry in entries:
+        code = entry.get("stockCode")
+        entry["hasBigDealInflow"] = bool(inflow_map.get(code) and inflow_map.get(code) > 0)
+
+
+def _apply_big_deal_filter(
+    items: Sequence[dict[str, Any]],
+    require_inflow: bool,
+) -> list[dict[str, Any]]:
+    if not require_inflow:
+        return list(items)
+    return [entry for entry in items if entry.get("hasBigDealInflow")]
 
 
 def _localize_datetime(value: Any) -> datetime | None:

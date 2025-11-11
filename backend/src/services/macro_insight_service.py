@@ -343,7 +343,7 @@ def generate_macro_insight(
     datasets, warnings, snapshot_date = _collect_macro_datasets(settings_path=settings_path)
 
     generated_at_local = datetime.now(_LOCAL_TZ)
-    snapshot_date = snapshot_date or generated_at.date()
+    snapshot_date = snapshot_date or generated_at_local.date()
 
     summary_json: Optional[Dict[str, Any]] = None
     raw_response: Optional[str] = None
@@ -354,7 +354,7 @@ def generate_macro_insight(
             logger.info("DeepSeek configuration missing; skipping macro insight reasoning")
         else:
             macro_payload = {
-                "generated_at": generated_at.isoformat(),
+                "generated_at": generated_at_local.isoformat(),
                 "snapshot_date": snapshot_date.isoformat(),
                 "datasets": datasets,
                 "warnings": warnings,

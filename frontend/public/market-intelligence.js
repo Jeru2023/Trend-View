@@ -1076,7 +1076,25 @@ function createTabContext(tab) {
     favoritesGroupNone: FAVORITES_GROUP_NONE,
     favoritesGroupAll: FAVORITES_GROUP_ALL,
     currentFavoriteGroup: state.favoriteGroup,
+    buildDetailUrl,
   };
+}
+
+function buildDetailUrl(code) {
+  const base = `stock-detail.html?code=${encodeURIComponent(code)}`;
+  const backTarget = getBackTargetParam();
+  if (!backTarget) {
+    return base;
+  }
+  const separator = base.includes("?") ? "&" : "?";
+  return `${base}${separator}back=${encodeURIComponent(backTarget)}`;
+}
+
+function getBackTargetParam() {
+  const path = window.location.pathname || "/index.html";
+  const search = window.location.search || "";
+  const hash = window.location.hash || "";
+  return `${path}${search}${hash}`;
 }
 
 async function ensureTabReady(tabId) {

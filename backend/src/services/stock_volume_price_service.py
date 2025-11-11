@@ -6,19 +6,21 @@ import json
 from datetime import datetime
 import math
 from statistics import mean, pstdev
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from zoneinfo import ZoneInfo
 
 from ..api_clients import generate_finance_analysis
 from ..config.settings import load_settings
-from ..dao import DailyTradeDAO, StockVolumePriceReasoningDAO
+from ..dao import BigDealFundFlowDAO, DailyTradeDAO, IndividualFundFlowDAO, StockVolumePriceReasoningDAO
 from .stock_basic_service import get_stock_overview
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+INDIVIDUAL_FLOW_LIMIT = 40
+BIG_DEAL_SNAPSHOT_LIMIT = 30
 
 VOLUME_PRICE_PROMPT = """
-你是一名精通威科夫量价分析法的资深A股策略顾问。以下是个股 {stock_name} ({stock_code}) 最近 {lookback_days} 个交易日的行情 JSON 数据。请输出结构化 JSON，格式如下：
+你是一名精通威科夫量价分析法的资深A股策略顾问。以下是个股 {stock_name} ({stock_code}) 最近 {lookback_days} 个交易日的量价 + 资金 JSON 数据（history、statistics、individualFundFlow.items、bigDealTrades.items）。请输出结构化 JSON，格式如下：
 {{
   "wyckoffPhase": "吸筹/上涨/再吸筹/派发/下跌/再派发/震荡/不确定",
   "stageSummary": "不少于80字，结合威科夫原理与数据的综合分析。",
@@ -38,6 +40,7 @@ VOLUME_PRICE_PROMPT = """
 1. 先判断趋势与价格相对位置，再给出阶段。只有在出现高位滞涨、放量破位、区间涨幅转负等明确信号时才判定为“派发/下跌”；否则可使用吸筹/上涨/再吸筹/震荡/不确定。
 2. 所有观点必须引用 JSON 数据中的具体数值或统计（例如最高/最低价、statistics.window20.changePercent、volume 相对 avgVolume 等）。
 3. 若数据不足以确认阶段，需将 “wyckoffPhase” 设为“震荡”或“不确定”，并在 stageSummary 中说明原因与待确认事项。
+4. 若 individualFundFlow.items 有记录，需要评价净流入/排名/阶段涨跌幅等资金行为；若 bigDealTrades.items 不为空，需点名最近大单方向（trade_side）、成交额（trade_amount）或占比，以印证量价推理。
 
 以下为输入数据：
 {payload}
@@ -78,6 +81,61 @@ def _safe_float(value: Any) -> Optional[float]:
     return numeric
 
 
+def _serialize_datetime(value: Any) -> Any:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=LOCAL_TZ).isoformat()
+        return value.astimezone(LOCAL_TZ).isoformat()
+    return value
+
+
+def _normalize_record_for_json(record: Dict[str, Any]) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {}
+    for key, value in record.items():
+        normalized[key] = _serialize_datetime(value)
+    return normalized
+
+
+def _normalize_code_aliases(ts_code: str) -> List[str]:
+    text = (ts_code or "").strip().upper()
+    if not text:
+        return []
+    aliases = {text}
+    if "." in text:
+        prefix, _suffix = text.split(".", 1)
+        prefix = prefix.strip()
+        if prefix:
+            aliases.add(prefix)
+            if prefix.isdigit():
+                aliases.add(prefix.zfill(6))
+    elif text.isdigit():
+        aliases.add(text.zfill(6))
+    digits_only = "".join(ch for ch in text if ch.isdigit())
+    if digits_only:
+        aliases.add(digits_only.zfill(6))
+    return [alias for alias in aliases if alias]
+
+
+def _load_individual_fund_flow_snapshot(code_aliases: Sequence[str], settings) -> Dict[str, Any]:
+    dao = IndividualFundFlowDAO(settings.postgres)
+    snapshot = dao.list_entries(stock_codes=code_aliases or None, limit=INDIVIDUAL_FLOW_LIMIT, offset=0)
+    items = snapshot.get("items") or []
+    snapshot["items"] = [_normalize_record_for_json(item) for item in items]
+    return snapshot
+
+
+def _load_big_deal_snapshot(code_aliases: Sequence[str], settings) -> Dict[str, Any]:
+    dao = BigDealFundFlowDAO(settings.postgres)
+    snapshot = dao.list_entries(
+        stock_codes=code_aliases or None,
+        limit=BIG_DEAL_SNAPSHOT_LIMIT,
+        offset=0,
+    )
+    items = snapshot.get("items") or []
+    snapshot["items"] = [_normalize_record_for_json(item) for item in items]
+    return snapshot
+
+
 def _resolve_stock_profile(code: str, *, settings_path: Optional[str] = None) -> dict[str, Any]:
     overview = get_stock_overview(
         codes=[code],
@@ -99,6 +157,9 @@ def build_stock_volume_price_dataset(
     profile = _resolve_stock_profile(code, settings_path=settings_path)
     settings = load_settings(settings_path)
     daily_trade_dao = DailyTradeDAO(settings.postgres)
+    code_aliases = _normalize_code_aliases(profile["code"])
+    individual_fund_flow = _load_individual_fund_flow_snapshot(code_aliases, settings)
+    big_deal_snapshot = _load_big_deal_snapshot(code_aliases, settings)
     history_rows = daily_trade_dao.fetch_price_history(profile["code"], limit=min(max(lookback_days + 30, 120), 400))
     if not history_rows:
         return {
@@ -107,6 +168,8 @@ def build_stock_volume_price_dataset(
             "lookbackDays": lookback_days,
             "history": [],
             "statistics": {},
+            "individualFundFlow": individual_fund_flow,
+            "bigDealTrades": big_deal_snapshot,
         }
 
     trimmed = history_rows[-lookback_days:]
@@ -166,6 +229,8 @@ def build_stock_volume_price_dataset(
         "lookbackDays": lookback_days,
         "history": normalised,
         "statistics": stats,
+        "individualFundFlow": individual_fund_flow,
+        "bigDealTrades": big_deal_snapshot,
     }
 
 
