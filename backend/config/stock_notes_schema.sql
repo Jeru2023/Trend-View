@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS {schema}.{table} (
+    id BIGSERIAL PRIMARY KEY,
+    stock_code TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS {stock_code_idx}
+    ON {schema}.{table} (stock_code, created_at DESC, id DESC);

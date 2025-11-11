@@ -259,6 +259,14 @@ const elements = {
   individualFundFlowList: document.getElementById("individual-fund-flow-list"),
   bigDealCard: document.getElementById("big-deal-card"),
   bigDealList: document.getElementById("big-deal-list"),
+  stockNotesCard: document.getElementById("stock-notes-card"),
+  stockNotesForm: document.getElementById("stock-notes-form"),
+  stockNotesInput: document.getElementById("stock-notes-input"),
+  stockNotesSubmit: document.getElementById("stock-notes-submit"),
+  stockNotesError: document.getElementById("stock-notes-error"),
+  stockNotesHistory: document.getElementById("stock-notes-history"),
+  stockNotesEmpty: document.getElementById("stock-notes-empty"),
+  stockNotesStatus: document.getElementById("stock-notes-status"),
   searchWrapper: document.getElementById("detail-search"),
   searchInput: document.getElementById("detail-search-input"),
   searchResults: document.getElementById("detail-search-results"),
@@ -303,6 +311,13 @@ const favoriteGroupsCache = {
   items: [],
   loaded: false,
   loading: null,
+};
+
+const stockNotesState = {
+  code: null,
+  items: [],
+  loading: false,
+  submitting: false,
 };
 
 function ensureEchartsLoaded() {
@@ -1800,6 +1815,11 @@ function applyTranslations() {
   renderPerformanceHighlights(performanceData);
   renderIndividualFundFlowCard(detailExtras.individualFundFlow);
   renderBigDealCard(detailExtras.bigDeals);
+  renderStockNotes(stockNotesState.items);
+  setStockNotesSubmitting(stockNotesState.submitting);
+  if (stockNotesState.loading && elements.stockNotesStatus) {
+    elements.stockNotesStatus.textContent = dict.stockNotesLoading;
+  }
   if (currentDetail) {
     updateMainBusinessCard(currentDetail.businessProfile);
     updateMainCompositionCard(currentDetail.businessComposition);
@@ -2537,6 +2557,210 @@ function renderBigDealCard(items) {
   detailExtras.bigDeals = subset;
 }
 
+function resetStockNotesPanel() {
+  stockNotesState.code = null;
+  stockNotesState.items = [];
+  stockNotesState.loading = false;
+  stockNotesState.submitting = false;
+  if (!elements.stockNotesCard) {
+    return;
+  }
+  if (elements.stockNotesHistory) {
+    elements.stockNotesHistory.innerHTML = "";
+  }
+  if (elements.stockNotesEmpty) {
+    elements.stockNotesEmpty.classList.add("hidden");
+  }
+  if (elements.stockNotesStatus) {
+    elements.stockNotesStatus.classList.add("hidden");
+  }
+  showStockNotesError("");
+  if (elements.stockNotesSubmit) {
+    elements.stockNotesSubmit.disabled = false;
+    elements.stockNotesSubmit.textContent = translations[currentLang].stockNotesSubmit;
+  }
+  if (elements.stockNotesInput) {
+    elements.stockNotesInput.value = "";
+  }
+}
+
+function showStockNotesError(message) {
+  if (!elements.stockNotesError) {
+    return;
+  }
+  if (message) {
+    elements.stockNotesError.textContent = message;
+    elements.stockNotesError.classList.remove("hidden");
+  } else {
+    elements.stockNotesError.textContent = "";
+    elements.stockNotesError.classList.add("hidden");
+  }
+}
+
+function setStockNotesLoading(isLoading) {
+  stockNotesState.loading = isLoading;
+  if (!elements.stockNotesStatus) {
+    return;
+  }
+  if (isLoading) {
+    elements.stockNotesStatus.textContent = translations[currentLang].stockNotesLoading;
+    elements.stockNotesStatus.classList.remove("hidden");
+  } else {
+    elements.stockNotesStatus.classList.add("hidden");
+  }
+  if (elements.stockNotesEmpty && isLoading) {
+    elements.stockNotesEmpty.classList.add("hidden");
+  }
+}
+
+function setStockNotesSubmitting(isSubmitting) {
+  stockNotesState.submitting = isSubmitting;
+  if (!elements.stockNotesSubmit) {
+    return;
+  }
+  elements.stockNotesSubmit.disabled = isSubmitting;
+  elements.stockNotesSubmit.textContent = isSubmitting
+    ? translations[currentLang].stockNotesSubmitting
+    : translations[currentLang].stockNotesSubmit;
+}
+
+function formatNoteContent(value) {
+  if (!value) {
+    return "--";
+  }
+  return escapeHTML(String(value)).replace(/\n/g, "<br>");
+}
+
+function renderStockNotes(items) {
+  if (!elements.stockNotesCard || !elements.stockNotesHistory) {
+    return;
+  }
+  const entries = Array.isArray(items) ? items : [];
+  if (!entries.length) {
+    elements.stockNotesHistory.innerHTML = "";
+    if (elements.stockNotesEmpty && !stockNotesState.loading) {
+      elements.stockNotesEmpty.classList.remove("hidden");
+    }
+    return;
+  }
+  if (elements.stockNotesEmpty) {
+    elements.stockNotesEmpty.classList.add("hidden");
+  }
+  const content = entries
+    .map((note) => {
+      const created = formatDateTime(note.createdAt || note.created_at);
+      const formatted = formatNoteContent(note.content);
+      return `
+        <article class="stock-note-entry">
+          <div class="stock-note-entry__meta">${created || "--"}</div>
+          <p class="stock-note-entry__content">${formatted}</p>
+        </article>
+      `;
+    })
+    .join("");
+  elements.stockNotesHistory.innerHTML = content;
+}
+
+async function loadStockNotes(code, { force = false } = {}) {
+  if (!elements.stockNotesCard) {
+    return;
+  }
+  const normalized = normalizeCode(code);
+  if (!normalized) {
+    resetStockNotesPanel();
+    return;
+  }
+  if (!force && stockNotesState.code === normalized && stockNotesState.items.length) {
+    return;
+  }
+  stockNotesState.code = normalized;
+  setStockNotesLoading(true);
+  showStockNotesError("");
+  try {
+    const response = await fetch(
+      `${API_BASE}/stocks/${encodeURIComponent(normalized)}/notes?limit=100`
+    );
+    if (!response.ok) {
+      throw new Error(translations[currentLang].stockNotesLoadError);
+    }
+    const data = await response.json();
+    stockNotesState.items = Array.isArray(data.items) ? data.items : [];
+    renderStockNotes(stockNotesState.items);
+  } catch (error) {
+    console.error("Failed to load stock notes:", error);
+    stockNotesState.items = [];
+    renderStockNotes(stockNotesState.items);
+    showStockNotesError(
+      error?.message || translations[currentLang].stockNotesLoadError || "Unable to load notes."
+    );
+  } finally {
+    setStockNotesLoading(false);
+    if (!stockNotesState.items.length) {
+      renderStockNotes(stockNotesState.items);
+    }
+  }
+}
+
+function initStockNotesForm() {
+  if (!elements.stockNotesForm) {
+    return;
+  }
+  elements.stockNotesForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (stockNotesState.submitting) {
+      return;
+    }
+    const code = currentDetail?.profile?.code;
+    if (!code) {
+      showStockNotesError(translations[currentLang].stockNotesLoadError);
+      return;
+    }
+    const content = (elements.stockNotesInput?.value || "").trim();
+    if (!content) {
+      showStockNotesError(translations[currentLang].stockNotesValidation);
+      elements.stockNotesInput?.focus();
+      return;
+    }
+    showStockNotesError("");
+    setStockNotesSubmitting(true);
+    try {
+      const response = await fetch(
+        `${API_BASE}/stocks/${encodeURIComponent(code)}/notes`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        }
+      );
+      if (!response.ok) {
+        let message = translations[currentLang].stockNotesSaveError;
+        try {
+          const payload = await response.json();
+          if (payload?.detail) {
+            message = payload.detail;
+          }
+        } catch (parseError) {
+          // ignore parse error
+        }
+        throw new Error(message);
+      }
+      const saved = await response.json();
+      if (elements.stockNotesInput) {
+        elements.stockNotesInput.value = "";
+      }
+      stockNotesState.items = [saved, ...(stockNotesState.items || [])];
+      renderStockNotes(stockNotesState.items);
+    } catch (error) {
+      console.error("Failed to save stock note:", error);
+      showStockNotesError(
+        error?.message || translations[currentLang].stockNotesSaveError || "Failed to save note."
+      );
+    } finally {
+      setStockNotesSubmitting(false);
+    }
+  });
+}
+
 async function loadBigDealData(code) {
   if (!elements.bigDealCard) {
     return;
@@ -2684,6 +2908,11 @@ function setActiveTab(tab, { force = false } = {}) {
     ensureStockVolumeLoaded();
   } else if (tab === "analysis") {
     ensureStockIntegratedLoaded();
+  } else if (tab === "notes") {
+    const code = currentDetail?.profile?.code;
+    if (code) {
+      loadStockNotes(code);
+    }
   }
 }
 
@@ -3869,17 +4098,18 @@ function renderCandlestickChart() {
           const low = source?.low ?? candlestickPoint?.data?.[2];
           const high = source?.high ?? candlestickPoint?.data?.[3];
           let pctText = '<span class="tooltip-row__value">--</span>';
-          if (typeof open === "number" && typeof close === "number" && open) {
-            const pct = ((close - open) / open) * 100;
-            if (Number.isFinite(pct)) {
-              const pctDisplay = `${pct > 0 ? "+" : ""}${pct.toFixed(2)}%`;
-              pctText =
-                pct > 0
-                  ? `<span class="tooltip-row__value tooltip-row__value--up">${pctDisplay}</span>`
-                  : pct < 0
-                  ? `<span class="tooltip-row__value tooltip-row__value--down">${pctDisplay}</span>`
-                  : `<span class="tooltip-row__value">${pctDisplay}</span>`;
-            }
+          let pctValue = Number(source?.pctChange);
+          if (!Number.isFinite(pctValue) && typeof open === "number" && typeof close === "number" && open) {
+            pctValue = ((close - open) / open) * 100;
+          }
+          if (Number.isFinite(pctValue)) {
+            const pctDisplay = `${pctValue > 0 ? "+" : ""}${pctValue.toFixed(2)}%`;
+            pctText =
+              pctValue > 0
+                ? `<span class="tooltip-row__value tooltip-row__value--up">${pctDisplay}</span>`
+                : pctValue < 0
+                ? `<span class="tooltip-row__value tooltip-row__value--down">${pctDisplay}</span>`
+                : `<span class="tooltip-row__value">${pctDisplay}</span>`;
           }
           const header = `<div class="tooltip-title">${candlestickPoint?.axisValueLabel ?? ""}</div>`;
           const lines = [
@@ -4302,6 +4532,7 @@ function setStatus(messageKey, isError = false) {
   resetNewsState();
   resetVolumeState();
   resetIntegratedState();
+  resetStockNotesPanel();
   if (elements.performanceCard) {
     elements.performanceCard.classList.add("hidden");
   }
@@ -4360,6 +4591,7 @@ async function fetchDetail(code) {
     loadPerformanceData(normalizedCode);
     loadIndividualFundFlowData(normalizedCode);
     loadBigDealData(normalizedCode);
+    loadStockNotes(normalizedCode, { force: true });
     showDetail();
   } catch (error) {
     console.error("Failed to load stock detail:", error);
@@ -4428,6 +4660,7 @@ function initialize() {
   initSearch();
   initDetailTabs();
   initNewsAndVolumeActions();
+  initStockNotesForm();
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
   if (!code) {

@@ -99,6 +99,8 @@ from .hsgt_fund_flow_service import list_hsgt_fund_flow, sync_hsgt_fund_flow
 from .stock_main_business_service import get_stock_main_business, sync_stock_main_business
 from .stock_main_composition_service import get_stock_main_composition, sync_stock_main_composition
 from .stock_news_service import list_stock_news, sync_stock_news
+from .stock_note_service import add_stock_note, list_stock_notes
+from .intraday_volume_profile_service import sync_intraday_volume_profiles
 from .global_flash_service import sync_global_flash
 from .news_classification_service import classify_relevance_batch, classify_impact_batch
 from .news_query_service import list_news_articles
@@ -140,6 +142,7 @@ from .indicator_screening_service import (
     sync_indicator_screening,
     sync_all_indicator_screenings,
     list_indicator_screenings,
+    run_indicator_realtime_refresh,
 )
 
 __all__ = [
@@ -271,6 +274,9 @@ __all__ = [
     "list_big_deal_fund_flow",
     "get_stock_detail",
     "list_stock_news",
+    "add_stock_note",
+    "list_stock_notes",
+    "sync_intraday_volume_profiles",
     "add_stock_to_favorites",
     "remove_stock_from_favorites",
     "list_favorite_codes",
@@ -297,4 +303,5 @@ __all__ = [
     "sync_indicator_screening",
     "sync_all_indicator_screenings",
     "list_indicator_screenings",
+    "run_indicator_realtime_refresh",
 ]

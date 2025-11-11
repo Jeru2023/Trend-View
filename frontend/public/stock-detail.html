@@ -149,6 +149,9 @@
           <button class="detail-tabs__btn" type="button" data-tab="analysis">
             <span data-i18n="tabIntegrated">Integrated</span>
           </button>
+          <button class="detail-tabs__btn" type="button" data-tab="notes">
+            <span data-i18n="tabNotes">Notes</span>
+          </button>
         </div>
 
         <div class="detail-tab-panels">
@@ -359,6 +362,42 @@
                 </div>
                 <div class="detail-volume-history__list" id="stock-integrated-history-list" data-empty="1"></div>
               </div>
+              </article>
+            </section>
+
+          <section class="detail-tab-panel" data-tab-panel="notes">
+            <article class="detail-card detail-card--wide" id="stock-notes-card">
+              <header class="detail-card__header">
+                <h2 data-i18n="stockNotesTitle">Personal Notes</h2>
+                <p class="detail-card__subtitle" data-i18n="stockNotesSubtitle">
+                  Keep a private log for this stock.
+                </p>
+              </header>
+              <form class="stock-notes__form" id="stock-notes-form">
+                <label class="sr-only" for="stock-notes-input" data-i18n="stockNotesLabel">Note</label>
+                <textarea
+                  class="stock-notes__textarea"
+                  id="stock-notes-input"
+                  rows="3"
+                  maxlength="1000"
+                  data-placeholder-en="Add a quick note..."
+                  data-placeholder-zh="记录你的想法..."
+                  required
+                ></textarea>
+                <div class="stock-notes__form-actions">
+                  <span class="stock-notes__error hidden" id="stock-notes-error"></span>
+                  <button type="submit" class="btn btn--primary" id="stock-notes-submit" data-i18n="stockNotesSubmit">
+                    Save Note
+                  </button>
+                </div>
+              </form>
+              <p class="stock-notes__status hidden" id="stock-notes-status" data-i18n="stockNotesLoading">
+                Loading notes...
+              </p>
+              <p class="stock-notes__empty hidden" id="stock-notes-empty" data-i18n="stockNotesEmpty">
+                No notes yet.
+              </p>
+              <div class="stock-notes__history" id="stock-notes-history"></div>
             </article>
           </section>
         </div>

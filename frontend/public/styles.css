@@ -1609,6 +1609,78 @@ body {
     color: var(--text-muted);
 }
 
+.stock-notes__form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.stock-notes__textarea {
+    width: 100%;
+    min-height: 96px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    background: rgba(248, 250, 252, 0.8);
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.stock-notes__textarea:focus {
+    outline: 2px solid rgba(59, 130, 246, 0.4);
+    border-color: rgba(59, 130, 246, 0.6);
+    background: #fff;
+}
+
+.stock-notes__form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.stock-notes__error {
+    color: #b91c1c;
+    font-size: 0.85rem;
+}
+
+.stock-notes__status,
+.stock-notes__empty {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.stock-notes__history {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.stock-note-entry {
+    border: 1px solid rgba(148, 163, 184, 0.26);
+    border-radius: var(--radius);
+    padding: 14px;
+    background: rgba(248, 250, 252, 0.8);
+}
+
+.stock-note-entry__meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.stock-note-entry__content {
+    margin: 0;
+    color: var(--text);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .detail-list {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -2076,6 +2148,19 @@ body {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+#indicator-realtime-btn {
+  background: rgba(16, 185, 129, 0.18);
+  color: #065f46;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+#indicator-realtime-btn:hover,
+#indicator-realtime-btn:focus-visible {
+  background: rgba(16, 185, 129, 0.28);
+  color: #064e3b;
+  outline: none;
 }
 
 .indicator-table-controls {

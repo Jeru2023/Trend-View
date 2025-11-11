@@ -73,6 +73,7 @@ let currentLang = getInitialLanguage();
 let currentItems = [];
 let lastCapturedAt = null;
 let isSyncing = false;
+let isRealtimeUpdating = false;
 let currentPage = 1;
 let totalItems = 0;
 let selectedIndicators = [CONTINUOUS_VOLUME_CODE];
@@ -86,6 +87,7 @@ let filters = {
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
   refreshButton: document.getElementById("indicator-refresh-btn"),
+  realtimeButton: document.getElementById("indicator-realtime-btn"),
   status: document.getElementById("indicator-screen-status"),
   lastUpdated: document.getElementById("indicator-last-updated"),
   indicatorName: document.getElementById("indicator-name"),
@@ -189,6 +191,34 @@ function escapeHTML(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function normalizeTsCode(value) {
+  if (!value) {
+    return "";
+  }
+  const text = String(value).trim().toUpperCase();
+  if (!text) {
+    return "";
+  }
+  if (text.includes(".")) {
+    const [symbol, suffix] = text.split(".", 2);
+    const normalizedSymbol = symbol ? symbol.trim().padStart(6, "0") : "";
+    const normalizedSuffix = (suffix || "").trim().slice(0, 2) || "SH";
+    return normalizedSymbol ? `${normalizedSymbol}.${normalizedSuffix}` : "";
+  }
+  const digits = text.replace(/[^0-9]/g, "").slice(-6);
+  if (!digits) {
+    return "";
+  }
+  const padded = digits.padStart(6, "0");
+  let suffix = "SZ";
+  if (["6", "9", "5"].includes(padded[0])) {
+    suffix = "SH";
+  } else if (["4", "8"].includes(padded[0])) {
+    suffix = "BJ";
+  }
+  return `${padded}.${suffix}`;
 }
 
 function applyTranslations() {
@@ -446,6 +476,44 @@ async function handleRefresh() {
   }
 }
 
+async function handleRealtimeRefresh() {
+  if (isRealtimeUpdating) {
+    return;
+  }
+  const dict = getDict();
+  isRealtimeUpdating = true;
+  if (elements.realtimeButton) {
+    elements.realtimeButton.disabled = true;
+  }
+  renderStatus(dict.realtimeRunning || "Fetching realtime quotes…", "info");
+  try {
+    const response = await fetch(`${API_BASE}/indicator-screenings/realtime-refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ syncAll: true }),
+    });
+    if (!response.ok) {
+      throw new Error(`Realtime refresh failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    const refreshedCount = Number(payload.processed ?? 0) || 0;
+    const successText = (dict.realtimeSuccess || "Realtime update completed ({count}).").replace(
+      "{count}",
+      refreshedCount,
+    );
+    renderStatus(successText, "success");
+    await fetchIndicatorData(currentPage);
+  } catch (error) {
+    console.error("Failed to run realtime refresh", error);
+    renderStatus(dict.realtimeError || "Realtime update failed.", "error");
+  } finally {
+    isRealtimeUpdating = false;
+    if (elements.realtimeButton) {
+      elements.realtimeButton.disabled = false;
+    }
+  }
+}
+
 function bindEvents() {
   elements.langButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -458,6 +526,9 @@ function bindEvents() {
   });
   if (elements.refreshButton) {
     elements.refreshButton.addEventListener("click", handleRefresh);
+  }
+  if (elements.realtimeButton) {
+    elements.realtimeButton.addEventListener("click", handleRealtimeRefresh);
   }
   if (elements.prevButton) {
     elements.prevButton.addEventListener("click", () => {
@@ -503,7 +574,7 @@ function bindEvents() {
 function initialize() {
   bindEvents();
   applyTranslations();
-    fetchIndicatorData();
+  fetchIndicatorData();
 }
 
 initialize();

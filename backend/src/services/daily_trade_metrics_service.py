@@ -8,7 +8,7 @@ import logging
 import math
 import time
 from datetime import date, timedelta
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 import pandas as pd
 
@@ -223,6 +223,53 @@ def sync_daily_trade_metrics(
     }
 
 
+def recompute_trade_metrics_for_codes(
+    codes: Sequence[str],
+    *,
+    include_intraday: bool = False,
+    settings_path: Optional[str] = None,
+) -> dict[str, object]:
+    if not codes:
+        return {"rows": 0}
+
+    unique_codes = list(dict.fromkeys(code for code in codes if code))
+    if not unique_codes:
+        return {"rows": 0}
+
+    settings = load_settings(settings_path)
+    daily_trade_dao = DailyTradeDAO(settings.postgres)
+    metrics_dao = DailyTradeMetricsDAO(settings.postgres)
+
+    records: list[dict[str, object]] = []
+    for ts_code in unique_codes:
+        history = daily_trade_dao.fetch_price_history(
+            ts_code,
+            limit=MIN_HISTORY_DAYS,
+            include_intraday=include_intraday,
+        )
+        if not history:
+            continue
+        frame = pd.DataFrame(history)
+        frame["ts_code"] = ts_code
+        sanitized = _sanitize_history(frame)
+        if sanitized.empty:
+            continue
+        metrics = _compute_metrics_for_group(sanitized)
+        if metrics:
+            records.append(metrics)
+
+    if not records:
+        return {"rows": 0}
+
+    metrics_frame = pd.DataFrame.from_records(records)
+    if "volume_spike" not in metrics_frame.columns:
+        metrics_frame["volume_spike"] = None
+
+    affected = metrics_dao.upsert_partial(metrics_frame)
+    return {"rows": affected}
+
+
 __all__ = [
     "sync_daily_trade_metrics",
+    "recompute_trade_metrics_for_codes",
 ]

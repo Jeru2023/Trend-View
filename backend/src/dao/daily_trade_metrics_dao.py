@@ -87,6 +87,21 @@ class DailyTradeMetricsDAO(PostgresDAOBase):
 
         return affected
 
+    def upsert_partial(self, dataframe: pd.DataFrame) -> int:
+        if dataframe.empty:
+            return 0
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            return self._upsert_dataframe(
+                conn,
+                schema=self.config.schema,
+                table=self._table_name,
+                dataframe=dataframe,
+                columns=DAILY_TRADE_METRICS_FIELDS,
+                conflict_keys=self._conflict_keys,
+                date_columns=("trade_date",),
+            )
+
     def stats(self) -> dict[str, Optional[datetime]]:
         with self.connect() as conn:
             self.ensure_table(conn)

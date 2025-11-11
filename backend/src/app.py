@@ -122,6 +122,8 @@ from .services import (
     list_big_deal_fund_flow,
     list_hsgt_fund_flow,
     list_stock_news,
+    add_stock_note,
+    list_stock_notes,
     list_margin_account_info,
     list_market_activity,
     list_market_fund_flow,
@@ -196,6 +198,7 @@ from .services import (
     sync_indicator_screening,
     sync_all_indicator_screenings,
     list_indicator_screenings,
+    run_indicator_realtime_refresh,
     list_industry_index_history,
     list_concept_constituents,
     sync_concept_directory,
@@ -582,6 +585,7 @@ class DailyTradeBar(BaseModel):
     low: float
     close: float
     volume: Optional[float] = None
+    pct_change: Optional[float] = Field(None, alias="pctChange")
 
 
 class StockDetailResponse(BaseModel):
@@ -657,6 +661,27 @@ class FavoriteGroupItem(BaseModel):
 
 class FavoriteGroupListResponse(BaseModel):
     items: List[FavoriteGroupItem]
+
+
+class StockNoteItem(BaseModel):
+    id: int
+    stock_code: str = Field(..., alias="stockCode")
+    content: str
+    created_at: datetime = Field(..., alias="createdAt")
+    updated_at: datetime = Field(..., alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+        allow_population_by_alias = True
+
+
+class StockNoteListResponse(BaseModel):
+    total: int
+    items: List[StockNoteItem]
+
+
+class StockNoteCreateRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
 
 
 class FavoriteUpsertRequest(BaseModel):
@@ -3120,6 +3145,18 @@ class IndicatorSyncResponse(BaseModel):
 
 class IndicatorSyncBatchResponse(BaseModel):
     results: List[IndicatorSyncResponse]
+
+
+class IndicatorRealtimeRequest(BaseModel):
+    codes: Optional[List[str]] = Field(None, description="Optional subset of ts_codes to refresh.")
+    syncAll: bool = Field(False, description="Refresh all stocks when true.")
+
+
+class IndicatorRealtimeResponse(BaseModel):
+    processed: int
+    metricsUpdated: int
+    codes: List[str]
+    updatedAt: datetime
 
 
 class MarketFundFlowRecord(BaseModel):
@@ -7176,6 +7213,30 @@ def get_stock_detail_api(
     return StockDetailResponse(**detail)
 
 
+@app.get("/stocks/{code}/notes", response_model=StockNoteListResponse)
+def list_stock_notes_api(
+    code: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> StockNoteListResponse:
+    try:
+        result = list_stock_notes(code, limit=limit, offset=offset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items = [StockNoteItem(**entry) for entry in result.get("items", [])]
+    total = int(result.get("total", len(items)))
+    return StockNoteListResponse(total=total, items=items)
+
+
+@app.post("/stocks/{code}/notes", response_model=StockNoteItem)
+def create_stock_note_api(code: str, payload: StockNoteCreateRequest = Body(...)) -> StockNoteItem:
+    try:
+        record = add_stock_note(code, payload.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return StockNoteItem(**record)
+
+
 @app.get("/favorites", response_model=FavoriteListResponse)
 def list_favorites_api(
     group: Optional[str] = Query(
@@ -8976,6 +9037,12 @@ def sync_indicator_screening_endpoint(
         batch = sync_all_indicator_screenings()
         payload = [IndicatorSyncResponse(**item) for item in batch]
     return IndicatorSyncBatchResponse(results=payload)
+
+
+@app.post("/indicator-screenings/realtime-refresh", response_model=IndicatorRealtimeResponse)
+def indicator_realtime_refresh_endpoint(payload: IndicatorRealtimeRequest) -> IndicatorRealtimeResponse:
+    result = run_indicator_realtime_refresh(payload.codes, sync_all=payload.syncAll)
+    return IndicatorRealtimeResponse(**result)
 
 
 @app.get("/fund-flow/market", response_model=MarketFundFlowListResponse)

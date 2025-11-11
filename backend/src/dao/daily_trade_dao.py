@@ -42,6 +42,16 @@ class DailyTradeDAO(PostgresDAOBase):
             schema=self.config.schema,
             table=self._table_name,
         )
+        with conn.cursor() as cur:
+            cur.execute(
+                sql.SQL(
+                    "ALTER TABLE {schema}.{table} "
+                    "ADD COLUMN IF NOT EXISTS is_intraday BOOLEAN NOT NULL DEFAULT FALSE"
+                ).format(
+                    schema=sql.Identifier(self.config.schema),
+                    table=sql.Identifier(self._table_name),
+                )
+            )
 
     def clear_table(self) -> int:
         """Remove all rows from the daily trade table."""
@@ -93,17 +103,20 @@ class DailyTradeDAO(PostgresDAOBase):
                 count, last_updated = cur.fetchone()
         return {"count": count or 0, "updated_at": last_updated}
 
-    def latest_trade_date(self) -> Optional[datetime]:
+    def latest_trade_date(self, *, include_intraday: bool = False) -> Optional[datetime]:
         """Return the most recent trade_date available in the table."""
+        where_clause = sql.SQL("")
+        if not include_intraday:
+            where_clause = sql.SQL(" WHERE is_intraday = FALSE")
+
         with self.connect() as conn:
             self.ensure_table(conn)
+            query = sql.SQL("SELECT MAX(trade_date) FROM {schema}.{table}").format(
+                schema=sql.Identifier(self.config.schema),
+                table=sql.Identifier(self._table_name),
+            ) + where_clause
             with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL("SELECT MAX(trade_date) FROM {schema}.{table}").format(
-                        schema=sql.Identifier(self.config.schema),
-                        table=sql.Identifier(self._table_name),
-                    )
-                )
+                cur.execute(query)
                 row = cur.fetchone()
         return row[0] if row else None
 
@@ -142,7 +155,7 @@ class DailyTradeDAO(PostgresDAOBase):
                    pct_chg,
                    vol
             FROM {schema}.{table}
-            WHERE ts_code = ANY(%s)
+            WHERE ts_code = ANY(%s) AND is_intraday = FALSE
             ORDER BY ts_code, trade_date DESC
             """
         ).format(
@@ -171,6 +184,7 @@ class DailyTradeDAO(PostgresDAOBase):
         *,
         start_date: date | datetime | str | None = None,
         end_date: date | datetime | str | None = None,
+        include_intraday: bool = False,
     ) -> pd.DataFrame:
         """
         Load close price history within the given date range.
@@ -199,6 +213,9 @@ class DailyTradeDAO(PostgresDAOBase):
             clauses.append("trade_date <= %s")
             params.append(end)
 
+        if not include_intraday:
+            clauses.append("is_intraday = FALSE")
+
         with self.connect() as conn:
             self.ensure_table(conn)
             base_sql = sql.SQL(
@@ -224,6 +241,7 @@ class DailyTradeDAO(PostgresDAOBase):
         ts_code: str,
         *,
         limit: int = 180,
+        include_intraday: bool = False,
     ) -> list[dict[str, object]]:
         """
         Return recent OHLCV bars for the given security.
@@ -233,27 +251,32 @@ class DailyTradeDAO(PostgresDAOBase):
         if limit is not None and limit <= 0:
             return []
 
+        where_clause = sql.SQL("WHERE ts_code = %s")
+        params: list[object] = [ts_code]
+        if not include_intraday:
+            where_clause += sql.SQL(" AND is_intraday = FALSE")
         query = sql.SQL(
             """
-            SELECT trade_date, open, high, low, close, vol
+            SELECT trade_date, open, high, low, close, vol, pct_chg
             FROM {schema}.{table}
-            WHERE ts_code = %s
+            {where_clause}
             ORDER BY trade_date DESC
             LIMIT %s
             """
         ).format(
             schema=sql.Identifier(self.config.schema),
             table=sql.Identifier(self._table_name),
+            where_clause=where_clause,
         )
 
         with self.connect() as conn:
             self.ensure_table(conn)
             with conn.cursor() as cur:
-                cur.execute(query, (ts_code, limit))
+                cur.execute(query, tuple(params + [limit]))
                 rows = cur.fetchall()
 
         history = []
-        for trade_date, open_price, high_price, low_price, close_price, volume in reversed(rows):
+        for trade_date, open_price, high_price, low_price, close_price, volume, pct_change in reversed(rows):
             history.append(
                 {
                     "trade_date": trade_date.isoformat() if isinstance(trade_date, date) else str(trade_date),
@@ -262,6 +285,7 @@ class DailyTradeDAO(PostgresDAOBase):
                     "low": float(low_price) if low_price is not None else None,
                     "close": float(close_price) if close_price is not None else None,
                     "volume": float(volume) if volume is not None else None,
+                    "pct_change": float(pct_change) if pct_change is not None else None,
                 }
             )
         return history
@@ -270,4 +294,3 @@ class DailyTradeDAO(PostgresDAOBase):
 __all__ = [
     "DailyTradeDAO",
 ]
-

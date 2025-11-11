@@ -281,6 +281,7 @@ def get_stock_detail(
                 "low": low_price,
                 "close": close_price,
                 "volume": _safe_float(row.get("volume")),
+                "pctChange": _safe_float(row.get("pct_change")),
             }
         )
 

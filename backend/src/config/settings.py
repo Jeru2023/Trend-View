@@ -82,6 +82,9 @@ class PostgresSettings:
     individual_fund_flow_table: str
     big_deal_fund_flow_table: str
     stock_integrated_analysis_table: str
+    intraday_volume_profile_daily_table: str
+    intraday_volume_profile_avg_table: str
+    stock_notes_table: str
     indicator_screening_table: str
     hsgt_fund_flow_table: str
     peripheral_insight_table: str
@@ -302,6 +305,15 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             stock_integrated_analysis_table=str(
                 postgres_config.get("stock_integrated_analysis_table", "stock_integrated_analysis")
+            ),
+            intraday_volume_profile_daily_table=str(
+                postgres_config.get("intraday_volume_profile_daily_table", "intraday_volume_profile_daily")
+            ),
+            intraday_volume_profile_avg_table=str(
+                postgres_config.get("intraday_volume_profile_avg_table", "intraday_volume_profile_avg")
+            ),
+            stock_notes_table=str(
+                postgres_config.get("stock_notes_table", "stock_notes")
             ),
             indicator_screening_table=str(
                 postgres_config.get("indicator_screening_table", "indicator_screening")

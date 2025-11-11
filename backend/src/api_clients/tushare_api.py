@@ -46,6 +46,7 @@ DAILY_TRADE_FIELDS: Sequence[str] = (
     "pct_chg",
     "vol",
     "amount",
+    "is_intraday",
 )
 
 
@@ -289,7 +290,13 @@ def get_daily_trade(
 
     missing_columns = [col for col in DAILY_TRADE_FIELDS if col not in df.columns]
     for column in missing_columns:
-        df[column] = None
+        if column == "is_intraday":
+            df[column] = False
+        else:
+            df[column] = None
+
+    if "is_intraday" in df.columns:
+        df["is_intraday"] = df["is_intraday"].fillna(False)
 
     return df.loc[:, list(DAILY_TRADE_FIELDS)]
 
@@ -390,6 +397,100 @@ def get_financial_indicators(
         df[column] = None
 
     return df.loc[:, list(FINANCIAL_INDICATOR_FIELDS)]
+
+
+def get_realtime_quotes(
+    ts_codes: Sequence[str],
+    *,
+    token: Optional[str] = None,
+    chunk_size: int = 50,
+) -> pd.DataFrame:
+    """Fetch realtime quotes for the specified ``ts_code`` list via Tushare realtime API."""
+    if not ts_codes:
+        return pd.DataFrame(
+            columns=[
+                "code",
+                "name",
+                "trade_date",
+                "trade_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "pre_close",
+                "volume",
+                "amount",
+            ]
+        )
+
+    if token:
+        try:
+            ts.set_token(token)
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to set Tushare token for realtime quotes", exc_info=True)
+
+    unique_codes = list(dict.fromkeys(code.strip().upper() for code in ts_codes if code))
+    frames: List[pd.DataFrame] = []
+    for start in range(0, len(unique_codes), chunk_size):
+        chunk = unique_codes[start : start + chunk_size]
+        try:
+            df = ts.realtime_quote(ts_code=",".join(chunk))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Realtime quote request failed for chunk %s: %s", chunk, exc)
+            continue
+        if df is None or df.empty:
+            continue
+        frames.append(df)
+
+    if not frames:
+        return pd.DataFrame(
+            columns=[
+                "code",
+                "name",
+                "trade_date",
+                "trade_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "pre_close",
+                "volume",
+                "amount",
+            ]
+        )
+
+    result = pd.concat(frames, ignore_index=True)
+    rename_map = {
+        "NAME": "name",
+        "TS_CODE": "code",
+        "DATE": "trade_date",
+        "TIME": "trade_time",
+        "OPEN": "open",
+        "HIGH": "high",
+        "LOW": "low",
+        "PRICE": "close",
+        "PRE_CLOSE": "pre_close",
+        "VOLUME": "volume",
+        "AMOUNT": "amount",
+    }
+    result = result.rename(columns=rename_map)
+    for column in rename_map.values():
+        if column not in result.columns:
+            result[column] = None
+    desired_columns = [
+        "code",
+        "name",
+        "trade_date",
+        "trade_time",
+        "open",
+        "high",
+        "low",
+        "close",
+        "pre_close",
+        "volume",
+        "amount",
+    ]
+    return result.loc[:, desired_columns]
 
 
 def fetch_trade_calendar(

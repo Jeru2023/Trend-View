@@ -10,10 +10,12 @@ import pandas as pd
 from zoneinfo import ZoneInfo
 
 from ..api_clients import (
+    DAILY_TRADE_FIELDS,
     fetch_stock_rank_cxfl_ths,
     fetch_stock_rank_ljqs_ths,
     fetch_stock_rank_xstp_ths,
     fetch_stock_rank_lxsz_ths,
+    get_realtime_quotes,
 )
 from ..config.runtime_config import VolumeSurgeConfig, load_runtime_config
 from ..config.settings import load_settings
@@ -24,6 +26,11 @@ from ..dao import (
     IndicatorScreeningDAO,
     StockBasicDAO,
 )
+from .intraday_volume_profile_service import (
+    estimate_full_day_volume,
+    load_average_profile_map,
+)
+from .daily_trade_metrics_service import recompute_trade_metrics_for_codes
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -132,6 +139,30 @@ def _format_stock_code_full(code: str) -> str:
     if cleaned.startswith(("6", "9", "5")):
         return f"{cleaned}.SH"
     return f"{cleaned}.SZ"
+
+
+def _normalize_ts_code(code: str) -> str | None:
+    if not code:
+        return None
+    text = code.strip().upper()
+    if not text:
+        return None
+    if "." in text:
+        symbol, suffix = text.split(".", 1)
+        symbol = symbol.strip().zfill(6)
+        suffix = suffix.strip()[:2]
+        return f"{symbol}.{suffix}" if symbol else None
+    digits = "".join(filter(str.isdigit, text))
+    if not digits:
+        return None
+    digits = digits[-6:].zfill(6)
+    if digits.startswith(("4", "8")):
+        suffix = "BJ"
+    elif digits.startswith(("6", "9", "5")):
+        suffix = "SH"
+    else:
+        suffix = "SZ"
+    return f"{digits}.{suffix}"
 
 
 def _format_volume_label(value: Any) -> str | None:
@@ -582,14 +613,132 @@ def list_indicator_screenings(
         filtered_entries = _apply_indicator_filters(entries, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
         total_filtered = len(filtered_entries)
         sliced = filtered_entries[offset : offset + limit]
-        return {
-            "indicatorCode": primary_code,
-            "indicatorCodes": codes,
-            "indicatorName": INDICATOR_DEFINITIONS[primary_code]["name"],
-            "capturedAt": _localize_datetime(dataset.get("latest_captured_at")),
-            "total": total_filtered,
-            "items": sliced,
-        }
+    return {
+        "indicatorCode": primary_code,
+        "indicatorCodes": codes,
+        "indicatorName": INDICATOR_DEFINITIONS[primary_code]["name"],
+        "capturedAt": _localize_datetime(dataset.get("latest_captured_at")),
+        "total": total_filtered,
+        "items": sliced,
+    }
+
+
+def run_indicator_realtime_refresh(
+    codes: Sequence[str] | None,
+    *,
+    sync_all: bool = False,
+    settings_path: Optional[str] = None,
+) -> dict[str, object]:
+    settings = load_settings(settings_path)
+    stock_dao = StockBasicDAO(settings.postgres)
+
+    target_codes: List[str]
+    if sync_all or not codes:
+        target_codes = stock_dao.list_codes()
+    else:
+        target_codes = list(codes)
+
+    normalized_codes = list(dict.fromkeys(filter(None, (_normalize_ts_code(code) for code in target_codes))))
+    if not normalized_codes:
+        raise ValueError("No valid stock codes were provided for realtime refresh.")
+
+    daily_trade_dao = DailyTradeDAO(settings.postgres)
+    total_processed = 0
+    total_metrics = 0
+    all_codes: list[str] = []
+    chunk_size = 50  # Tushare realtime endpoint limits 50 codes per request
+
+    for start in range(0, len(normalized_codes), chunk_size):
+        chunk = normalized_codes[start : start + chunk_size]
+        try:
+            realtime_df = get_realtime_quotes(chunk, token=settings.tushare.token)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Realtime quote batch failed for %s: %s", chunk[:3], exc)
+            continue
+        if realtime_df.empty:
+            continue
+        profile_map = load_average_profile_map(chunk, settings_path=settings_path)
+        rows: list[dict[str, object]] = []
+        processed_codes: list[str] = []
+
+        for record in realtime_df.to_dict("records"):
+            ts_code = _normalize_ts_code(str(record.get("code") or ""))
+            if not ts_code:
+                continue
+
+            trade_date_raw = record.get("trade_date")
+            trade_time = str(record.get("trade_time") or "15:00:00")
+            try:
+                trade_date = datetime.strptime(str(trade_date_raw).strip(), "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                try:
+                    trade_date = datetime.strptime(str(trade_date_raw).strip(), "%Y%m%d").date()
+                except (ValueError, TypeError):
+                    trade_date = datetime.now(LOCAL_TZ).date()
+
+            current_volume_hands = _safe_float(record.get("volume"))
+            if current_volume_hands is None:
+                continue
+            current_volume_shares = current_volume_hands * 100
+            estimated_shares, _ = estimate_full_day_volume(
+                ts_code,
+                trade_time,
+                current_volume_shares,
+                profile_map=profile_map,
+                settings_path=settings_path,
+            )
+            estimated_hands = estimated_shares / 100
+
+            close_price = _safe_float(record.get("close"))
+            pre_close = _safe_float(record.get("pre_close"))
+            change_value = None
+            pct_change = None
+            if close_price is not None and pre_close not in (None, 0):
+                change_value = close_price - pre_close
+                pct_change = (change_value / pre_close) * 100
+
+            rows.append(
+                {
+                    "ts_code": ts_code,
+                    "trade_date": trade_date,
+                    "open": _safe_float(record.get("open")),
+                    "high": _safe_float(record.get("high")),
+                    "low": _safe_float(record.get("low")),
+                    "close": close_price,
+                    "pre_close": pre_close,
+                    "change": change_value,
+                    "pct_chg": pct_change,
+                    "vol": estimated_hands,
+                    "amount": _safe_float(record.get("amount")),
+                    "is_intraday": True,
+                }
+            )
+            processed_codes.append(ts_code)
+
+        if not rows:
+            continue
+
+        dataframe = pd.DataFrame(rows, columns=list(DAILY_TRADE_FIELDS))
+        affected = daily_trade_dao.upsert(dataframe)
+        total_processed += affected
+        all_codes.extend(processed_codes)
+
+        metrics_result = recompute_trade_metrics_for_codes(
+            processed_codes,
+            include_intraday=True,
+            settings_path=settings_path,
+        )
+        total_metrics += metrics_result.get("rows", 0)
+
+    if total_processed == 0:
+        raise RuntimeError("Realtime quotes did not contain usable rows.")
+
+    return {
+        "processed": total_processed,
+        "metricsUpdated": total_metrics,
+        "codes": all_codes,
+        "updatedAt": datetime.now(LOCAL_TZ),
+    }
 
     per_code_records: Dict[str, Dict[str, dict]] = {}
     for code in codes:
@@ -779,4 +928,5 @@ __all__ = [
     "sync_indicator_screening",
     "sync_indicator_continuous_volume",
     "list_indicator_screenings",
+    "run_indicator_realtime_refresh",
 ]

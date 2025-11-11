@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS {schema}.{table} (
     pct_chg NUMERIC,
     vol NUMERIC,
     amount NUMERIC,
+    is_intraday BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (ts_code, trade_date)
 );

@@ -60,6 +60,9 @@ from .industry_volume_price_reasoning_dao import IndustryVolumePriceReasoningDAO
 from .stock_volume_price_reasoning_dao import StockVolumePriceReasoningDAO
 from .stock_news_dao import StockNewsDAO
 from .stock_integrated_analysis_dao import StockIntegratedAnalysisDAO
+from .stock_note_dao import StockNoteDAO
+from .intraday_volume_profile_daily_dao import IntradayVolumeProfileDailyDAO
+from .intraday_volume_profile_avg_dao import IntradayVolumeProfileAverageDAO
 from .indicator_screening_dao import IndicatorScreeningDAO
 
 __all__ = [
@@ -123,5 +126,8 @@ __all__ = [
     "StockVolumePriceReasoningDAO",
     "StockNewsDAO",
     "StockIntegratedAnalysisDAO",
+    "StockNoteDAO",
+    "IntradayVolumeProfileDailyDAO",
+    "IntradayVolumeProfileAverageDAO",
     "IndicatorScreeningDAO",
 ]

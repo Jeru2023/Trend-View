@@ -13,6 +13,7 @@ from .tushare_api import (
     get_daily_trade,
     get_income_statements,
     get_financial_indicators,
+    get_realtime_quotes,
     TRADE_CALENDAR_FIELDS,
 )
 from .akshare_api import (
@@ -95,6 +96,7 @@ __all__ = [
     "get_daily_trade",
     "get_income_statements",
     "get_financial_indicators",
+    "get_realtime_quotes",
     "TRADE_CALENDAR_FIELDS",
     "PERFORMANCE_EXPRESS_COLUMN_MAP",
     "PERFORMANCE_FORECAST_COLUMN_MAP",

@@ -7,8 +7,8 @@
   "concept_alias_map": {},
   "volume_surge_config": {
     "min_volume_ratio": 1.5,
-    "breakout_threshold_percent": 0.0,
+    "breakout_threshold_percent": 2.0,
     "daily_change_threshold_percent": 2.0,
-    "max_range_percent": 20.0
+    "max_range_percent": 10.0
   }
 }
