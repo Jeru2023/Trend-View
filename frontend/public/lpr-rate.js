@@ -1,4 +1,4 @@
-const translations = getTranslations("ppi");
+const translations = getTranslations("lprRate");
 
 const LANG_STORAGE_KEY = "trend-view-lang";
 const API_BASE =
@@ -9,27 +9,19 @@ const API_BASE =
 
 const ECHARTS_CDN = "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js";
 let echartsLoader = null;
+let chartInstance = null;
+let resizeListenerBound = false;
+let currentLang = getInitialLanguage();
+let latestItems = [];
 
-function ensureEchartsLoaded() {
-  if (window.echarts) {
-    return Promise.resolve();
-  }
-  if (echartsLoader) {
-    return echartsLoader;
-  }
-  echartsLoader = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = ECHARTS_CDN;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => {
-      echartsLoader = null;
-      reject(new Error("Failed to load chart library"));
-    };
-    document.head.appendChild(script);
-  });
-  return echartsLoader;
-}
+const elements = {
+  langButtons: document.querySelectorAll(".lang-btn"),
+  refreshButton: document.getElementById("lpr-rate-refresh"),
+  lastSynced: document.getElementById("lpr-rate-last-synced"),
+  chartContainer: document.getElementById("lpr-rate-chart"),
+  chartEmpty: document.getElementById("lpr-rate-chart-empty"),
+  tableBody: document.getElementById("lpr-rate-tbody"),
+};
 
 function getInitialLanguage() {
   try {
@@ -60,80 +52,63 @@ function persistLanguage(lang) {
   document.documentElement.setAttribute("data-pref-lang", lang);
 }
 
-let currentLang = getInitialLanguage();
-let latestItems = [];
-let chartInstance = null;
-let resizeListenerBound = false;
-
-const elements = {
-  langButtons: document.querySelectorAll(".lang-btn"),
-  refreshButton: document.getElementById("ppi-refresh"),
-  lastSynced: document.getElementById("ppi-last-synced"),
-  chartContainer: document.getElementById("ppi-chart"),
-  chartEmpty: document.getElementById("ppi-chart-empty"),
-  tableBody: document.getElementById("ppi-tbody"),
-};
-
 function getDict() {
   return translations[currentLang] || translations.en;
 }
 
-function formatNumber(value, options = {}) {
-  if (value === null || value === undefined || value === "") {
-    return "--";
+function ensureEchartsLoaded() {
+  if (window.echarts) {
+    return Promise.resolve();
+  }
+  if (echartsLoader) {
+    return echartsLoader;
+  }
+  echartsLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = ECHARTS_CDN;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      echartsLoader = null;
+      reject(new Error("Failed to load chart library"));
+    };
+    document.head.appendChild(script);
+  });
+  return echartsLoader;
+}
+
+function parseDateLike(value) {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!trimmed || /^nan$/i.test(trimmed) || /^null$/i.test(trimmed) || trimmed === "--") {
-      return "--";
+    if (!trimmed) {
+      return null;
+    }
+    if (/^\d{8}$/.test(trimmed)) {
+      const year = Number(trimmed.slice(0, 4));
+      const month = Number(trimmed.slice(4, 6)) - 1;
+      const day = Number(trimmed.slice(6, 8));
+      const candidate = new Date(year, month, day);
+      if (
+        !Number.isNaN(candidate.getTime()) &&
+        candidate.getFullYear() === year &&
+        candidate.getMonth() === month &&
+        candidate.getDate() === day
+      ) {
+        return candidate;
+      }
+    }
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
     }
   }
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return "--";
-  }
-  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
-  return new Intl.NumberFormat(locale, options).format(numeric);
-}
-
-function formatPercent(value, options = {}) {
-  const formatted = formatNumber(value, options);
-  return formatted === "--" ? formatted : `${formatted}%`;
-}
-
-function formatDate(value) {
-  if (!value) {
-    return "--";
-  }
-  try {
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return String(value);
-    }
-    const locale = currentLang === "zh" ? "zh-CN" : "en-US";
-    return date.toLocaleDateString(locale, { year: "numeric", month: "short" });
-  } catch (error) {
-    return String(value);
-  }
-}
-
-function formatDateTime(value) {
-  if (!value) {
-    return "--";
-  }
-  try {
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return String(value);
-    }
-    const locale = currentLang === "zh" ? "zh-CN" : "en-US";
-    return `${date.toLocaleDateString(locale)} ${date.toLocaleTimeString(locale, {
-      hour: "2-digit",
-      minute: "2-digit",
-    })}`;
-  } catch (error) {
-    return String(value);
-  }
+  return null;
 }
 
 function parseNumericValue(raw) {
@@ -148,11 +123,51 @@ function parseNumericValue(raw) {
     if (!trimmed || /^nan$/i.test(trimmed) || /^null$/i.test(trimmed) || trimmed === "--") {
       return null;
     }
-    const normalized = trimmed.replace(/,/g, "").replace(/%$/, "");
+    const normalized = trimmed.replace(/,/g, "");
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function formatNumber(value, options = {}) {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  return new Intl.NumberFormat(locale, options).format(value);
+}
+
+function formatPercent(value) {
+  const formatted = formatNumber(value, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  return formatted === "--" ? formatted : `${formatted}%`;
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "--";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  return date.toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "--";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  return `${date.toLocaleDateString(locale)} ${date.toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
 }
 
 function ensureChartInstance() {
@@ -181,51 +196,39 @@ function clearChart() {
   }
 }
 
-function renderChart(items = []) {
-  if (!items.length) {
-    clearChart();
-    return;
-  }
-
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - 60);
-
-  const parsed = items
+function normalizeRecords(records = []) {
+  return records
     .map((item) => {
-      const period =
-        item.period_date || item.periodDate || item.period_label || item.periodLabel || null;
-      const periodDate = period ? new Date(period) : null;
-      if (!periodDate || Number.isNaN(periodDate.getTime())) {
-        return null;
-      }
-      const currentIndex = parseNumericValue(item.current_index ?? item.currentIndex);
-      const yoyChange = parseNumericValue(item.yoy_change ?? item.yoyChange);
-      if (currentIndex === null) {
+      const periodValue =
+        item.period_date || item.periodDate || item.period_label || item.periodLabel;
+      const periodDate = parseDateLike(periodValue);
+      const rate1Y = parseNumericValue(item.rate_1y ?? item.rate1Y);
+      const rate5Y = parseNumericValue(item.rate_5y ?? item.rate5Y);
+      if (!periodDate || (rate1Y === null && rate5Y === null)) {
         return null;
       }
       return {
         periodDate,
-        label: `${periodDate.getFullYear()}-${String(periodDate.getMonth() + 1).padStart(2, "0")}`,
-        currentIndex,
-        yoyChange,
+        label: periodDate.toISOString().slice(0, 10),
+        displayLabel: formatDate(periodDate),
+        rate1Y,
+        rate5Y,
       };
     })
-    .filter(Boolean)
-    .filter((entry) => entry.periodDate >= cutoff);
+    .filter(Boolean);
+}
 
-  if (!parsed.length) {
+function renderChart(items = []) {
+  const normalized = normalizeRecords(items);
+  if (!normalized.length) {
     clearChart();
     return;
   }
 
-  parsed.sort((a, b) => a.periodDate - b.periodDate);
-  const categories = parsed.map((entry) => entry.label);
-  const currentSeries = parsed.map((entry) =>
-    typeof entry.currentIndex === "number" ? Number(entry.currentIndex.toFixed(2)) : null
-  );
-  const yoySeries = parsed.map((entry) =>
-    typeof entry.yoyChange === "number" ? Number(entry.yoyChange.toFixed(2)) : null
-  );
+  normalized.sort((a, b) => a.periodDate - b.periodDate);
+  const categories = normalized.map((entry) => entry.label);
+  const series1Y = normalized.map((entry) => entry.rate1Y);
+  const series5Y = normalized.map((entry) => entry.rate5Y);
 
   if (elements.chartContainer) {
     elements.chartContainer.classList.remove("hidden");
@@ -243,87 +246,58 @@ function renderChart(items = []) {
   const dict = getDict();
   chart.setOption(
     {
+      color: ["#1d4ed8", "#0f766e"],
       tooltip: {
         trigger: "axis",
-        formatter(params = []) {
-          if (!Array.isArray(params) || !params.length) {
-            return "";
+        valueFormatter(value) {
+          if (value === null || value === undefined || Number.isNaN(value)) {
+            return "--";
           }
-          const rows = params
-            .map((param) => {
-              const value =
-                param.seriesName === dict.chartLegendYoy
-                  ? formatPercent(param.value, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  : formatNumber(param.value, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    });
-              return `${param.marker}${param.seriesName}: ${value}`;
-            })
-            .join("<br/>");
-          return `${params[0].axisValue}<br/>${rows}`;
+          return `${Number(value).toFixed(2)}%`;
         },
       },
       legend: {
-        data: [dict.chartLegendCurrent, dict.chartLegendYoy],
+        data: [dict.chartLegend1Y, dict.chartLegend5Y],
         top: 10,
         left: "center",
       },
-      grid: { left: "5%", right: "8%", top: 70, bottom: 60 },
+      grid: { left: 48, right: 24, top: 70, bottom: 60 },
       xAxis: {
         type: "category",
         data: categories,
         boundaryGap: false,
         axisLabel: {
-          rotate: categories.length > 18 ? 45 : categories.length > 12 ? 30 : 0,
-          margin: 16,
+          rotate: categories.length > 12 ? 45 : 0,
+          margin: 18,
         },
       },
-      yAxis: [
-        {
-          type: "value",
-          name: dict.chartLegendCurrent,
-          axisLabel: {
-            formatter(value) {
-              return `${Number(value).toFixed(1)}`;
-            },
+      yAxis: {
+        type: "value",
+        axisLabel: {
+          formatter(value) {
+            return `${Number(value).toFixed(2)}%`;
           },
-          splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.2)" } },
         },
-        {
-          type: "value",
-          name: dict.chartLegendYoy,
-          axisLabel: {
-            formatter(value) {
-              return `${Number(value).toFixed(1)}%`;
-            },
-          },
-          splitLine: { show: false },
-        },
-      ],
+        splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.2)" } },
+      },
       series: [
         {
-          name: dict.chartLegendCurrent,
+          name: dict.chartLegend1Y,
           type: "line",
           smooth: true,
           symbol: "circle",
           symbolSize: 4,
-          data: currentSeries,
-          lineStyle: { width: 2, color: "#2563eb" },
-          areaStyle: { color: "rgba(37, 99, 235, 0.12)" },
+          data: series1Y,
+          lineStyle: { width: 2 },
         },
         {
-          name: dict.chartLegendYoy,
+          name: dict.chartLegend5Y,
           type: "line",
           smooth: true,
-          symbol: "circle",
+          symbol: "diamond",
           symbolSize: 4,
-          yAxisIndex: 1,
-          data: yoySeries,
-          lineStyle: { width: 2, color: "#16a34a", type: "dashed" },
+          data: series5Y,
+          lineStyle: { width: 2 },
         },
       ],
       animationDuration: 600,
@@ -339,7 +313,7 @@ function renderEmpty(message) {
   }
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 4;
+  cell.colSpan = 3;
   cell.className = "table-empty";
   cell.textContent = message;
   row.appendChild(cell);
@@ -351,36 +325,25 @@ function renderTable(items = []) {
   if (!elements.tableBody) {
     return;
   }
-  const displayItems = items.filter(
-    (item) => parseNumericValue(item.current_index ?? item.currentIndex) !== null
-  );
-  if (!displayItems.length) {
-    const dict = getDict();
-    const message = dict.empty || "No PPI data.";
-    renderEmpty(message);
+  const dict = getDict();
+  const normalized = normalizeRecords(items);
+  if (!normalized.length) {
+    renderEmpty(dict.empty || "No LPR data.");
     return;
   }
 
+  normalized.sort((a, b) => b.periodDate - a.periodDate);
   const fragment = document.createDocumentFragment();
-  displayItems.forEach((item) => {
-    const current = parseNumericValue(item.current_index ?? item.currentIndex);
-    if (current === null) {
-      return;
-    }
-    const yoy = parseNumericValue(item.yoy_change ?? item.yoyChange);
-    const cumulative = parseNumericValue(item.cumulative_index ?? item.cumulativeIndex);
-    const periodLabel =
-      item.period_label || item.periodLabel || formatDate(item.period_date || item.periodDate);
+  normalized.forEach((entry) => {
     const row = document.createElement("tr");
     const cells = [
-      periodLabel,
-      formatNumber(current, { maximumFractionDigits: 2 }),
-      formatPercent(yoy, { maximumFractionDigits: 2 }),
-      formatNumber(cumulative, { maximumFractionDigits: 2 }),
+      entry.displayLabel,
+      formatPercent(entry.rate1Y),
+      formatPercent(entry.rate5Y),
     ];
     cells.forEach((value) => {
       const cell = document.createElement("td");
-      cell.textContent = typeof value === "string" ? value : String(value ?? "--");
+      cell.textContent = value;
       row.appendChild(cell);
     });
     fragment.appendChild(row);
@@ -413,13 +376,12 @@ function setRefreshLoading(isLoading) {
   }
 }
 
-async function fetchPpi() {
+async function fetchLprRates() {
   const dict = getDict();
   renderEmpty(dict.loading || "Loading...");
-
   try {
     await ensureEchartsLoaded();
-    const response = await fetch(`${API_BASE}/macro/ppi?limit=500`);
+    const response = await fetch(`${API_BASE}/macro/lpr?limit=500`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -427,9 +389,9 @@ async function fetchPpi() {
     latestItems = Array.isArray(data.items) ? data.items : [];
     renderChart(latestItems);
     renderTable(latestItems);
-    updateLastSynced(data.lastSyncedAt || data.last_synced_at || data.updated_at);
+    updateLastSynced(data.lastSyncedAt || data.updated_at || data.last_synced_at);
   } catch (error) {
-    console.error("Failed to fetch PPI data:", error);
+    console.error("Failed to fetch LPR data:", error);
     latestItems = [];
     clearChart();
     renderEmpty(error?.message || "Failed to load data");
@@ -443,7 +405,7 @@ async function triggerManualSync() {
   }
   setRefreshLoading(true);
   try {
-    const response = await fetch(`${API_BASE}/control/sync/ppi`, {
+    const response = await fetch(`${API_BASE}/control/sync/lpr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -460,9 +422,9 @@ async function triggerManualSync() {
       }
       throw new Error(detail);
     }
-    setTimeout(fetchPpi, 800);
+    setTimeout(fetchLprRates, 800);
   } catch (error) {
-    console.error("Manual PPI sync failed:", error);
+    console.error("Manual LPR sync failed:", error);
     latestItems = [];
     clearChart();
     renderEmpty(error?.message || "Failed to load data");
@@ -521,7 +483,7 @@ async function initialize() {
   applyTranslations();
   bindLanguageButtons();
   bindActions();
-  await fetchPpi();
+  await fetchLprRates();
 }
 
 window.applyTranslations = applyTranslations;

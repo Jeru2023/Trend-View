@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from psycopg2 import sql
 from psycopg2.extensions import connection as PGConnection
@@ -152,6 +152,55 @@ class MacroInsightDAO(PostgresDAOBase):
                 )
                 count, last_updated = cur.fetchone()
         return {"count": count or 0, "updated_at": last_updated}
+
+    def list_snapshots(self, *, limit: int = 6, offset: int = 0) -> List[Dict[str, Any]]:
+        query = sql.SQL(
+            """
+            SELECT snapshot_date,
+                   generated_at,
+                   summary_json,
+                   raw_response,
+                   model,
+                   created_at,
+                   updated_at
+            FROM {schema}.{table}
+            ORDER BY snapshot_date DESC, generated_at DESC
+            LIMIT %s OFFSET %s
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, (limit, offset))
+                rows = cur.fetchall()
+
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            (
+                snapshot_date,
+                generated_at,
+                summary_json,
+                raw_response,
+                model,
+                created_at,
+                updated_at,
+            ) = row
+            results.append(
+                {
+                    "snapshot_date": snapshot_date,
+                    "generated_at": generated_at,
+                    "summary_json": summary_json,
+                    "raw_response": raw_response,
+                    "model": model,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                }
+            )
+        return results
 
 
 __all__ = ["MacroInsightDAO"]

@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-i18n="pageTitle">中国央行利率决议</title>
-    <link rel="stylesheet" href="styles.css?v=20251101" />
+    <title data-i18n="pageTitle">SHIBOR 利率</title>
+    <link rel="stylesheet" href="styles.css?v=20270478" />
     <script>
       (function () {
         var key = "trend-view-lang";
@@ -26,16 +26,16 @@
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
   </head>
-  <body data-active-nav="macro-pbc-rate">
+  <body data-active-nav="macro-shibor">
     <div class="layout">
       <div data-sidebar-container></div>
 
       <main class="content">
         <header class="content__header">
           <div>
-            <h1 class="page-heading" data-i18n="pageTitle">中国央行利率决议</h1>
+            <h1 class="page-heading" data-i18n="pageTitle">SHIBOR 利率</h1>
             <p class="page-subtitle" data-i18n="pageSubtitle">
-              中国人民银行发布的贷款市场报价利率（LPR）及相关决议信息。
+              监控银行间拆借利率 (SHIBOR) 各期限（ON、1W、1M、3M 等）走势。
             </p>
           </div>
           <div class="header-actions">
@@ -49,42 +49,47 @@
         <section class="page">
           <div class="dollar-index-controls">
             <div class="dollar-index-actions">
-              <button class="primary-btn" id="pbc-rate-refresh" data-i18n="refreshButton">
+              <button class="primary-btn" id="shibor-refresh" data-i18n="refreshButton">
                 更新
               </button>
             </div>
             <div class="dollar-index-meta">
               <span data-i18n="lastSyncedLabel">数据更新时间</span>
-              <strong id="pbc-rate-last-synced">--</strong>
+              <strong id="shibor-last-synced">--</strong>
             </div>
           </div>
 
           <article class="chart-card">
             <header class="chart-card__header">
-              <h2 data-i18n="chartTitle">基准利率走势</h2>
+              <h2 data-i18n="chartTitle">SHIBOR 走势</h2>
             </header>
             <div class="chart-card__body" style="height:360px">
-              <div class="chart-container" id="pbc-rate-chart"></div>
-              <p class="chart-empty hidden" id="pbc-rate-chart-empty" data-i18n="chartEmpty">
-                暂无利率决议信息。
+              <div class="chart-container" id="shibor-chart"></div>
+              <p class="chart-empty hidden" id="shibor-chart-empty" data-i18n="chartEmpty">
+                暂无 SHIBOR 数据。
               </p>
             </div>
           </article>
 
           <div class="table-wrapper">
-            <table class="data-table" id="pbc-rate-table">
+            <table class="data-table" id="shibor-table">
               <thead>
                 <tr>
-                  <th data-i18n="tablePeriod">决议日期</th>
-                  <th data-i18n="tableActual">今值 (%)</th>
-                  <th data-i18n="tableForecast">预测值 (%)</th>
-                  <th data-i18n="tablePrevious">前值 (%)</th>
+                  <th data-i18n="tablePeriod">日期</th>
+                  <th data-i18n="tableOn">隔夜</th>
+                  <th data-i18n="table1W">1W</th>
+                  <th data-i18n="table2W">2W</th>
+                  <th data-i18n="table1M">1M</th>
+                  <th data-i18n="table3M">3M</th>
+                  <th data-i18n="table6M">6M</th>
+                  <th data-i18n="table9M">9M</th>
+                  <th data-i18n="table1Y">1Y</th>
                 </tr>
               </thead>
               <tbody
-                id="pbc-rate-tbody"
-                data-empty-en="No interest rate decisions."
-                data-empty-zh="暂无央行决议信息。"
+                id="shibor-tbody"
+                data-empty-en="No SHIBOR data."
+                data-empty-zh="暂无 SHIBOR 数据。"
               ></tbody>
             </table>
           </div>
@@ -92,8 +97,8 @@
       </main>
     </div>
 
-    <script src="i18n.js?v=20270415"></script>
+    <script src="i18n.js?v=20270507"></script>
     <script src="sidebar.js?v=20270478"></script>
-    <script type="module" src="pbc-rate.js?v=20260408"></script>
+    <script type="module" src="shibor.js?v=20270507"></script>
   </body>
 </html>

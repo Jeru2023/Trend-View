@@ -85,6 +85,7 @@ class PostgresSettings:
     intraday_volume_profile_daily_table: str
     intraday_volume_profile_avg_table: str
     stock_notes_table: str
+    investment_journal_table: str
     indicator_screening_table: str
     hsgt_fund_flow_table: str
     peripheral_insight_table: str
@@ -94,7 +95,8 @@ class PostgresSettings:
     pmi_table: str
     m2_table: str
     ppi_table: str
-    pbc_rate_table: str
+    lpr_table: str
+    shibor_table: str
     connect_timeout: int = 3
     application_name: str = DEFAULT_APPLICATION_NAME
     statement_timeout_ms: Optional[int] = None
@@ -315,6 +317,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             stock_notes_table=str(
                 postgres_config.get("stock_notes_table", "stock_notes")
             ),
+            investment_journal_table=str(
+                postgres_config.get("investment_journal_table", "investment_journal")
+            ),
             indicator_screening_table=str(
                 postgres_config.get("indicator_screening_table", "indicator_screening")
             ),
@@ -342,8 +347,13 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ppi_table=str(
                 postgres_config.get("ppi_table", "macro_ppi")
             ),
-            pbc_rate_table=str(
-                postgres_config.get("pbc_rate_table", "macro_pbc_rate")
+            lpr_table=str(
+                postgres_config.get("lpr_table")
+                or postgres_config.get("pbc_rate_table")
+                or "macro_pbc_rate"
+            ),
+            shibor_table=str(
+                postgres_config.get("shibor_table", "macro_shibor")
             ),
             connect_timeout=int(postgres_config.get("connect_timeout", 3)),
             application_name=str(application_name).strip() if isinstance(application_name, str) and application_name.strip() else DEFAULT_APPLICATION_NAME,

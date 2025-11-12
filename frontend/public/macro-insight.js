@@ -15,9 +15,21 @@ const elements = {
   datasets: document.getElementById("macro-insight-datasets"),
   warnings: document.getElementById("macro-insight-warnings"),
   refreshButton: document.getElementById("macro-insight-refresh"),
+  history: document.getElementById("macro-insight-history"),
 };
 
 let currentLang = getInitialLanguage();
+const state = {
+  summary: null,
+  generatedAt: null,
+  model: null,
+  datasets: [],
+  warnings: [],
+  history: [],
+  fallbackSummary: null,
+  fallbackGeneratedAt: null,
+  snapshotDate: null,
+};
 
 function getInitialLanguage() {
   try {
@@ -99,10 +111,30 @@ function formatDate(value) {
   return String(value);
 }
 
-function renderSummary(summary, generatedAt, model) {
+function formatDateTime(value) {
+  if (!value) {
+    return "--";
+  }
+  try {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+    const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+    return `${date.toLocaleDateString(locale)} ${date.toLocaleTimeString(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+  } catch (error) {
+    return String(value);
+  }
+}
+
+function renderSummary(summary, generatedAt, model, options = {}) {
+  const { isFallback = false } = options;
   const dict = getDict();
   if (elements.generatedAt) {
-    elements.generatedAt.textContent = generatedAt ? formatDate(generatedAt) : "--";
+    elements.generatedAt.textContent = generatedAt ? formatDateTime(generatedAt) : "--";
   }
   if (!elements.summary) {
     return;
@@ -123,6 +155,13 @@ function renderSummary(summary, generatedAt, model) {
 
   if (elements.model) {
     elements.model.textContent = model || "";
+  }
+
+  if (isFallback) {
+    const fallbackNote = document.createElement("p");
+    fallbackNote.className = "macro-fallback-note";
+    fallbackNote.textContent = dict.fallbackSummaryNote || "Showing the most recent historical summary.";
+    elements.summary.appendChild(fallbackNote);
   }
 
   const biasLabel = dict[`bias_${summary.market_bias}`] || summary.market_bias || "neutral";
@@ -350,31 +389,151 @@ function renderWarnings(warnings) {
   container.appendChild(list);
 }
 
+function renderHistory(items) {
+  const container = elements.history;
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  const dict = getDict();
+  if (!items || !items.length) {
+    const message =
+      dict.historyEmpty ||
+      (currentLang === "zh" ? container.dataset.emptyZh : container.dataset.emptyEn) ||
+      "No historical macro insights.";
+    const empty = document.createElement("p");
+    empty.className = "insight-history__empty";
+    empty.textContent = message;
+    container.appendChild(empty);
+    return;
+  }
+
+  items.forEach((item) => {
+    const summary = item.summaryJson;
+    if (!summary) {
+      return;
+    }
+    const card = document.createElement("article");
+    card.className = "concept-history-card";
+
+    const header = document.createElement("header");
+    header.className = "concept-history-card__header";
+    const time = document.createElement("time");
+    time.textContent = formatDateTime(item.generatedAt || item.snapshotDate);
+    header.appendChild(time);
+    card.appendChild(header);
+
+    if (summary.market_bias) {
+      const bias = document.createElement("p");
+      bias.className = "macro-history-bias";
+      const biasLabel = dict.biasLabel || "Bias";
+      const biasValue = dict[`bias_${summary.market_bias}`] || summary.market_bias;
+      bias.textContent = `${biasLabel}: ${biasValue || "--"}`;
+      card.appendChild(bias);
+    }
+
+    if (summary.macro_overview) {
+      const overview = document.createElement("p");
+      overview.className = "macro-history-overview";
+      overview.textContent = summary.macro_overview;
+      card.appendChild(overview);
+    }
+
+    if (Array.isArray(summary.key_indicators) && summary.key_indicators.length) {
+      const list = document.createElement("ul");
+      list.className = "concept-history-card__concepts";
+      summary.key_indicators.slice(0, 3).forEach((indicator) => {
+        const li = document.createElement("li");
+        const name = indicator.indicator || "--";
+        const value = indicator.latest_value || "--";
+        li.textContent = `${name} · ${value}`;
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+    }
+
+    container.appendChild(card);
+  });
+}
+
+function renderAll() {
+  const activeSummary = state.summary || state.fallbackSummary;
+  const activeGeneratedAt = state.summary ? state.generatedAt : state.fallbackGeneratedAt;
+  const isFallback = !state.summary && !!state.fallbackSummary;
+  renderSummary(activeSummary, activeGeneratedAt, state.model, { isFallback });
+  renderDatasets(state.datasets);
+  renderWarnings(state.warnings);
+  renderHistory(state.history);
+}
+
 async function loadMacroInsight(showLoading = false) {
   if (showLoading && elements.refreshButton) {
     elements.refreshButton.disabled = true;
     elements.refreshButton.classList.add("loading");
   }
   try {
-    const response = await fetch(`${API_BASE}/macro/insight`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        renderSummary(null, null, null);
-        renderDatasets([]);
-        renderWarnings([]);
-        return;
+    const insightPromise = fetch(`${API_BASE}/macro/insight`).then((res) => {
+      if (res.status === 404) {
+        return null;
       }
-      throw new Error(`Request failed with status ${response.status}`);
+      if (!res.ok) {
+        throw new Error(`Request failed with status ${res.status}`);
+      }
+      return res.json();
+    });
+    const historyPromise = fetch(`${API_BASE}/macro/insight/history?limit=6`).then((res) => {
+      if (!res.ok) {
+        throw new Error(`Failed to load macro insight history: ${res.status}`);
+      }
+      return res.json();
+    });
+
+    const [insightPayload, historyPayload] = await Promise.all([insightPromise, historyPromise]);
+    if (insightPayload) {
+      state.summary = insightPayload.summary || null;
+      state.generatedAt = insightPayload.generatedAt || null;
+      state.model = insightPayload.model || null;
+      state.datasets = insightPayload.datasets || [];
+      state.warnings = insightPayload.warnings || [];
+      state.snapshotDate = insightPayload.snapshotDate || null;
+    } else {
+      state.summary = null;
+      state.generatedAt = null;
+      state.model = null;
+      state.datasets = [];
+      state.warnings = [];
+      state.snapshotDate = null;
     }
-    const payload = await response.json();
-    renderSummary(payload.summary, payload.generatedAt, payload.model);
-    renderDatasets(payload.datasets || []);
-    renderWarnings(payload.warnings || []);
+
+    let historyItems = Array.isArray(historyPayload?.items) ? historyPayload.items : [];
+    if (state.snapshotDate) {
+      historyItems = historyItems.filter((item) => item.snapshotDate !== state.snapshotDate);
+    }
+    const historyWithSummary = historyItems.filter((item) => item?.summaryJson);
+    state.history = historyWithSummary;
+    state.fallbackSummary = null;
+    state.fallbackGeneratedAt = null;
+    if (!state.summary && historyWithSummary.length) {
+      state.fallbackSummary = historyWithSummary[0].summaryJson;
+      state.fallbackGeneratedAt = historyWithSummary[0].generatedAt;
+      if (!state.model) {
+        state.model = historyWithSummary[0].model || null;
+      }
+    }
+
+    renderAll();
   } catch (error) {
     console.error("Failed to load macro insight", error);
-    renderSummary(null, null, null);
-    renderDatasets([]);
-    renderWarnings([]);
+    state.summary = null;
+    state.generatedAt = null;
+    state.model = null;
+    state.datasets = [];
+    state.warnings = [];
+    state.history = [];
+    state.fallbackSummary = null;
+    state.fallbackGeneratedAt = null;
+    state.snapshotDate = null;
+    renderAll();
   } finally {
     if (elements.refreshButton) {
       elements.refreshButton.disabled = false;
@@ -417,6 +576,7 @@ function applyTranslations() {
   elements.langButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.lang === currentLang);
   });
+  renderAll();
 }
 
 function bindEvents() {

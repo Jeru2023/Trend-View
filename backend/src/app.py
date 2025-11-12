@@ -5,10 +5,12 @@ FastAPI application exposing Trend View backend services and control panel APIs.
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 import json
 import math
 import logging
 import time
+import re
 from datetime import date, datetime, timedelta
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union, Set
 
@@ -56,7 +58,8 @@ from .dao import (
     MacroPmiDAO,
     MacroM2DAO,
     MacroPpiDAO,
-    MacroPbcRateDAO,
+    MacroLprDAO,
+    MacroShiborDAO,
     MacroInsightDAO,
     IndustryFundFlowDAO,
     ConceptFundFlowDAO,
@@ -107,8 +110,10 @@ from .services import (
     sync_macro_m2,
     list_macro_ppi,
     sync_macro_ppi,
-    list_macro_pbc_rate,
-    sync_macro_pbc_rate,
+    list_macro_lpr,
+    sync_macro_lpr,
+    list_macro_shibor,
+    sync_macro_shibor,
     list_industry_fund_flow,
     list_concept_fund_flow,
     list_concept_index_history,
@@ -124,6 +129,7 @@ from .services import (
     list_stock_news,
     add_stock_note,
     list_stock_notes,
+    list_recent_stock_notes,
     list_margin_account_info,
     list_market_activity,
     list_market_fund_flow,
@@ -209,9 +215,13 @@ from .services import (
     sync_market_activity,
     sync_market_fund_flow,
     get_latest_macro_insight,
+    list_macro_insight_history,
     generate_macro_insight,
     build_market_overview_payload,
     generate_market_overview_reasoning,
+    list_investment_journal_entries,
+    get_investment_journal_entry,
+    upsert_investment_journal_entry,
     sync_stock_basic,
     sync_stock_main_business,
     sync_stock_main_composition,
@@ -258,6 +268,21 @@ def _stringify_value(value: Any) -> str:
     if isinstance(value, (list, tuple)):
         return "；".join(str(item) for item in value)
     return str(value)
+
+
+_SANITIZE_SCRIPT_STYLE_RE = re.compile(r"<\s*(script|style)[^>]*>.*?<\s*/\s*\1\s*>", re.IGNORECASE | re.DOTALL)
+_SANITIZE_EVENT_RE = re.compile(r"\son[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*')", re.IGNORECASE)
+_SANITIZE_JS_URL_RE = re.compile(r"javascript\s*:", re.IGNORECASE)
+
+
+def _sanitize_rich_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    sanitized = _SANITIZE_SCRIPT_STYLE_RE.sub("", value)
+    sanitized = _SANITIZE_EVENT_RE.sub("", sanitized)
+    sanitized = _SANITIZE_JS_URL_RE.sub("", sanitized)
+    sanitized = sanitized.strip()
+    return sanitized or None
 
 
 def _format_volume_summary_lines(summary_payload: Any, raw_text: Optional[str]) -> List[str]:
@@ -350,6 +375,8 @@ def _submit_scheduler_task(coro: Awaitable[object]) -> bool:
 
 FAVORITE_GROUP_NONE_SENTINEL = "__ungrouped__"
 MAX_FAVORITE_GROUP_LENGTH = 64
+DEFAULT_MARKET_INSIGHT_LOOKBACK_HOURS = 24
+MARKET_INSIGHT_STALE_GRACE_HOURS = 2
 
 
 def _validate_favorite_group_name(value: Optional[str]) -> Optional[str]:
@@ -1392,12 +1419,25 @@ class SyncMacroPpiResponse(BaseModel):
         allow_population_by_field_name = True
 
 
-class SyncMacroPbcRateRequest(BaseModel):
+class SyncMacroLprRequest(BaseModel):
     class Config:
         extra = "forbid"
 
 
-class SyncMacroPbcRateResponse(BaseModel):
+class SyncMacroLprResponse(BaseModel):
+    rows: int
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncMacroShiborRequest(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class SyncMacroShiborResponse(BaseModel):
     rows: int
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
@@ -2354,21 +2394,43 @@ class PpiListResponse(BaseModel):
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
 
 
-class PbcRateRecord(BaseModel):
+class LprRecord(BaseModel):
     period_date: date = Field(..., alias="periodDate")
     period_label: Optional[str] = Field(None, alias="periodLabel")
-    actual_value: Optional[float] = Field(None, alias="actualValue")
-    forecast_value: Optional[float] = Field(None, alias="forecastValue")
-    previous_value: Optional[float] = Field(None, alias="previousValue")
+    rate_1y: Optional[float] = Field(None, alias="rate1Y")
+    rate_5y: Optional[float] = Field(None, alias="rate5Y")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     class Config:
         allow_population_by_field_name = True
 
 
-class PbcRateListResponse(BaseModel):
+class LprListResponse(BaseModel):
     total: int
-    items: List[PbcRateRecord]
+    items: List[LprRecord]
+    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class ShiborRecord(BaseModel):
+    period_date: date = Field(..., alias="periodDate")
+    period_label: Optional[str] = Field(None, alias="periodLabel")
+    on_rate: Optional[float] = Field(None, alias="onRate")
+    rate_1w: Optional[float] = Field(None, alias="rate1W")
+    rate_2w: Optional[float] = Field(None, alias="rate2W")
+    rate_1m: Optional[float] = Field(None, alias="rate1M")
+    rate_3m: Optional[float] = Field(None, alias="rate3M")
+    rate_6m: Optional[float] = Field(None, alias="rate6M")
+    rate_9m: Optional[float] = Field(None, alias="rate9M")
+    rate_1y: Optional[float] = Field(None, alias="rate1Y")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ShiborListResponse(BaseModel):
+    total: int
+    items: List[ShiborRecord]
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
 
 
@@ -2471,6 +2533,37 @@ class MacroInsightResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class MacroInsightHistoryItem(BaseModel):
+    snapshot_date: date = Field(..., alias="snapshotDate")
+    generated_at: Optional[datetime] = Field(None, alias="generatedAt")
+    summary_json: Optional[Dict[str, Any]] = Field(None, alias="summaryJson")
+    raw_response: Optional[str] = Field(None, alias="rawResponse")
+    model: Optional[str] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MacroInsightHistoryResponse(BaseModel):
+    items: List[MacroInsightHistoryItem]
+
+
+class MarketInsightHistoryItem(BaseModel):
+    summary_id: str = Field(..., alias="summaryId")
+    generated_at: Optional[datetime] = Field(None, alias="generatedAt")
+    window_start: Optional[datetime] = Field(None, alias="windowStart")
+    window_end: Optional[datetime] = Field(None, alias="windowEnd")
+    summary_json: Optional[Dict[str, Any]] = Field(None, alias="summaryJson")
+    model_used: Optional[str] = Field(None, alias="modelUsed")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class MarketInsightHistoryResponse(BaseModel):
+    items: List[MarketInsightHistoryItem]
+
+
 class MarketOverviewReasoningSnapshot(BaseModel):
     summary: Optional[Dict[str, Any]] = None
     raw_text: Optional[str] = Field(None, alias="rawText")
@@ -2500,6 +2593,25 @@ class MarketOverviewResponse(BaseModel):
 
 class MarketOverviewReasonRequest(BaseModel):
     run_llm: bool = Field(True, alias="runLLM")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class InvestmentJournalEntryPayload(BaseModel):
+    review_html: Optional[str] = Field(None, alias="reviewHtml")
+    plan_html: Optional[str] = Field(None, alias="planHtml")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class InvestmentJournalEntryResponse(BaseModel):
+    entry_date: date = Field(..., alias="entryDate")
+    review_html: Optional[str] = Field(None, alias="reviewHtml")
+    plan_html: Optional[str] = Field(None, alias="planHtml")
+    created_at: Optional[datetime] = Field(None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     class Config:
         allow_population_by_field_name = True
@@ -3297,6 +3409,23 @@ def _runtime_config_to_payload(config: RuntimeConfig) -> RuntimeConfigPayload:
             max_range_percent=config.volume_surge_config.max_range_percent,
         ),
     )
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _sanitize_for_json(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_for_json(item) for item in value)
+    if isinstance(value, Decimal):
+        value = float(value)
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        if math.isnan(numeric) or math.isinf(numeric):
+            return None
+        return numeric
+    return value
 
 
 async def _run_stock_basic_job(list_statuses: Optional[List[str]], market: Optional[str]) -> None:
@@ -4614,31 +4743,65 @@ async def _run_macro_ppi_job(request: SyncMacroPpiRequest) -> None:  # noqa: ARG
     await loop.run_in_executor(None, job)
 
 
-async def _run_macro_pbc_rate_job(request: SyncMacroPbcRateRequest) -> None:  # noqa: ARG001
+async def _run_macro_lpr_job(request: SyncMacroLprRequest) -> None:  # noqa: ARG001
     loop = asyncio.get_running_loop()
 
     def job() -> None:
         started = time.perf_counter()
-        monitor.update("pbc_rate", message="Syncing PBC interest rate data", progress=0.0)
+        monitor.update("lpr_rate", message="Syncing LPR data", progress=0.0)
         try:
-            result = sync_macro_pbc_rate()
-            stats = MacroPbcRateDAO(load_settings().postgres).stats()
+            result = sync_macro_lpr()
+            stats = MacroLprDAO(load_settings().postgres).stats()
             elapsed = time.perf_counter() - started
             total_rows = stats.get("count") if isinstance(stats, dict) else None
             if total_rows is None:
                 total_rows = result.get("rows")
             monitor.finish(
-                "pbc_rate",
+                "lpr_rate",
                 success=True,
                 total_rows=int(total_rows) if total_rows is not None else None,
-                message=f"Synced {result.get('rows', 0)} PBC rate rows",
+                message=f"Synced {result.get('rows', 0)} LPR rows",
                 finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
                 last_duration=elapsed,
             )
         except Exception as exc:  # pragma: no cover - defensive
             elapsed = time.perf_counter() - started
             monitor.finish(
-                "pbc_rate",
+                "lpr_rate",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_macro_shibor_job(request: SyncMacroShiborRequest) -> None:  # noqa: ARG001
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("shibor_rate", message="Syncing SHIBOR data", progress=0.0)
+        try:
+            result = sync_macro_shibor()
+            stats = MacroShiborDAO(load_settings().postgres).stats()
+            elapsed = time.perf_counter() - started
+            total_rows = stats.get("count") if isinstance(stats, dict) else None
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "shibor_rate",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} SHIBOR rows",
+                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "shibor_rate",
                 success=False,
                 error=str(exc),
                 last_duration=elapsed,
@@ -4793,10 +4956,16 @@ async def _run_macro_aggregate_job(request: SyncMacroAggregateRequest) -> None:
             SyncMacroM2Request(),
         ),
         (
-            "pbc_rate",
-            "Syncing PBC interest rate data",
-            _run_macro_pbc_rate_job,
-            SyncMacroPbcRateRequest(),
+            "lpr_rate",
+            "Syncing LPR data",
+            _run_macro_lpr_job,
+            SyncMacroLprRequest(),
+        ),
+        (
+            "shibor_rate",
+            "Syncing SHIBOR data",
+            _run_macro_shibor_job,
+            SyncMacroShiborRequest(),
         ),
         (
             "macro_insight",
@@ -5898,12 +6067,20 @@ async def start_macro_ppi_job(payload: SyncMacroPpiRequest) -> None:
     asyncio.create_task(_run_macro_ppi_job(payload))
 
 
-async def start_macro_pbc_rate_job(payload: SyncMacroPbcRateRequest) -> None:
-    if _job_running("pbc_rate"):
-        raise HTTPException(status_code=409, detail="PBC interest rate sync already running")
-    monitor.start("pbc_rate", message="Syncing PBC interest rate data")
-    monitor.update("pbc_rate", progress=0.0)
-    asyncio.create_task(_run_macro_pbc_rate_job(payload))
+async def start_macro_lpr_job(payload: SyncMacroLprRequest) -> None:
+    if _job_running("lpr_rate"):
+        raise HTTPException(status_code=409, detail="LPR sync already running")
+    monitor.start("lpr_rate", message="Syncing LPR data")
+    monitor.update("lpr_rate", progress=0.0)
+    asyncio.create_task(_run_macro_lpr_job(payload))
+
+
+async def start_macro_shibor_job(payload: SyncMacroShiborRequest) -> None:
+    if _job_running("shibor_rate"):
+        raise HTTPException(status_code=409, detail="SHIBOR sync already running")
+    monitor.start("shibor_rate", message="Syncing SHIBOR data")
+    monitor.update("shibor_rate", progress=0.0)
+    asyncio.create_task(_run_macro_shibor_job(payload))
 
 
 async def start_futures_realtime_job(payload: SyncFuturesRealtimeRequest) -> None:
@@ -5941,7 +6118,8 @@ async def start_macro_aggregate_job(payload: SyncMacroAggregateRequest) -> None:
         ("ppi_monthly", "PPI sync already running"),
         ("pmi_monthly", "PMI sync already running"),
         ("m2_monthly", "M2 sync already running"),
-        ("pbc_rate", "PBC rate sync already running"),
+        ("lpr_rate", "LPR sync already running"),
+        ("shibor_rate", "SHIBOR sync already running"),
     ]
 
     for job_key, detail in dependent_jobs:
@@ -7590,6 +7768,20 @@ def get_index_history_api(
     default_code = next(iter(INDEX_CONFIG.keys()))
     selected_code = (index_code or default_code).strip().upper()
 
+    def _safe_numeric(value: Optional[object]) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            numeric = float(value)
+        else:
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                return None
+        if math.isnan(numeric) or math.isinf(numeric):
+            return None
+        return numeric
+
     history_rows = list_index_history(
         index_code=selected_code,
         limit=limit,
@@ -7604,24 +7796,24 @@ def get_index_history_api(
     if not inferred_name and index_meta:
         inferred_name = index_meta.get("name")
 
-    items_payload = [
-        {
+    items_payload: List[Dict[str, object]] = []
+    for row in history_rows:
+        item = {
             "indexCode": row.get("index_code") or selected_code,
             "indexName": row.get("index_name") or inferred_name,
             "tradeDate": row.get("trade_date"),
-            "open": row.get("open"),
-            "close": row.get("close"),
-            "high": row.get("high"),
-            "low": row.get("low"),
-            "volume": row.get("volume"),
-            "amount": row.get("amount"),
-            "amplitude": row.get("amplitude"),
-            "pctChange": row.get("pct_change"),
-            "changeAmount": row.get("change_amount"),
-            "turnover": row.get("turnover"),
+            "open": _safe_numeric(row.get("open")),
+            "close": _safe_numeric(row.get("close")),
+            "high": _safe_numeric(row.get("high")),
+            "low": _safe_numeric(row.get("low")),
+            "volume": _safe_numeric(row.get("volume")),
+            "amount": _safe_numeric(row.get("amount")),
+            "amplitude": _safe_numeric(row.get("amplitude")),
+            "pctChange": _safe_numeric(row.get("pct_change")),
+            "changeAmount": _safe_numeric(row.get("change_amount")),
+            "turnover": _safe_numeric(row.get("turnover")),
         }
-        for row in history_rows
-    ]
+        items_payload.append(item)
 
     available_indices = [
         {
@@ -7942,25 +8134,62 @@ def list_macro_ppi_api(
     )
 
 
-@app.get("/macro/pbc-rate", response_model=PbcRateListResponse)
-def list_macro_pbc_rate_api(
-    limit: int = Query(200, ge=1, le=500, description="Maximum number of rate decisions to return."),
+@app.get("/macro/lpr", response_model=LprListResponse)
+def list_macro_lpr_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of LPR rows to return."),
     offset: int = Query(0, ge=0, description="Offset for pagination."),
-) -> PbcRateListResponse:
-    result = list_macro_pbc_rate(limit=limit, offset=offset)
-    items: List[PbcRateRecord] = []
+) -> LprListResponse:
+    result = list_macro_lpr(limit=limit, offset=offset)
+    items: List[LprRecord] = []
     for entry in result.get("items", []):
         items.append(
-            PbcRateRecord(
+            LprRecord(
                 periodDate=entry.get("period_date"),
                 periodLabel=entry.get("period_label"),
-                actualValue=entry.get("actual_value"),
-                forecastValue=entry.get("forecast_value"),
-                previousValue=entry.get("previous_value"),
+                rate1Y=entry.get("rate_1y"),
+                rate5Y=entry.get("rate_5y"),
                 updatedAt=entry.get("updated_at"),
             )
         )
-    return PbcRateListResponse(
+    return LprListResponse(
+        total=int(result.get("total", 0)),
+        items=items,
+        lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
+    )
+
+
+@app.get("/macro/pbc-rate", response_model=LprListResponse)
+def legacy_macro_pbc_rate_api(
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> LprListResponse:
+    return list_macro_lpr_api(limit=limit, offset=offset)
+
+
+@app.get("/macro/shibor", response_model=ShiborListResponse)
+def list_macro_shibor_api(
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of SHIBOR rows to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+) -> ShiborListResponse:
+    result = list_macro_shibor(limit=limit, offset=offset)
+    items: List[ShiborRecord] = []
+    for entry in result.get("items", []):
+        items.append(
+            ShiborRecord(
+                periodDate=entry.get("period_date"),
+                periodLabel=entry.get("period_label"),
+                onRate=entry.get("on_rate"),
+                rate1W=entry.get("rate_1w"),
+                rate2W=entry.get("rate_2w"),
+                rate1M=entry.get("rate_1m"),
+                rate3M=entry.get("rate_3m"),
+                rate6M=entry.get("rate_6m"),
+                rate9M=entry.get("rate_9m"),
+                rate1Y=entry.get("rate_1y"),
+                updatedAt=entry.get("updated_at"),
+            )
+        )
+    return ShiborListResponse(
         total=int(result.get("total", 0)),
         items=items,
         lastSyncedAt=result.get("lastSyncedAt") or result.get("updated_at"),
@@ -7998,9 +8227,28 @@ def get_macro_insight_snapshot() -> MacroInsightResponse:
     )
 
 
+@app.get("/macro/insight/history", response_model=MacroInsightHistoryResponse)
+def list_macro_insight_history_api(
+    limit: int = Query(6, ge=1, le=20, description="Number of historical macro insight snapshots to return."),
+) -> MacroInsightHistoryResponse:
+    records = list_macro_insight_history(limit=limit)
+    items: List[MacroInsightHistoryItem] = []
+    for record in records:
+        items.append(
+            MacroInsightHistoryItem(
+                snapshotDate=record.get("snapshot_date"),
+                generatedAt=record.get("generated_at"),
+                summaryJson=record.get("summary_json"),
+                rawResponse=record.get("raw_response"),
+                model=record.get("model"),
+            )
+        )
+    return MacroInsightHistoryResponse(items=items)
+
+
 @app.get("/market/overview", response_model=MarketOverviewResponse)
 def get_market_overview() -> MarketOverviewResponse:
-    payload = build_market_overview_payload()
+    payload = _sanitize_for_json(build_market_overview_payload())
     return MarketOverviewResponse(**payload)
 
 
@@ -8141,6 +8389,68 @@ def stream_market_overview_reasoning(payload: MarketOverviewReasonRequest) -> St
             yield line + "\n"
 
     return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")
+
+
+@app.get("/journal/entries", response_model=List[InvestmentJournalEntryResponse])
+def list_investment_journal_entries_api(
+    start_date: Optional[date] = Query(
+        None,
+        alias="startDate",
+        description="Optional start date (inclusive, YYYY-MM-DD). Defaults to 30 days ago.",
+    ),
+    end_date: Optional[date] = Query(
+        None,
+        alias="endDate",
+        description="Optional end date (inclusive, YYYY-MM-DD). Defaults to today.",
+    ),
+) -> List[InvestmentJournalEntryResponse]:
+    entries = list_investment_journal_entries(start_date=start_date, end_date=end_date)
+    payload = [_journal_entry_to_payload(entry) for entry in entries if entry]
+    return [entry for entry in payload if entry]
+
+
+@app.get("/journal/entries/{entry_date}", response_model=InvestmentJournalEntryResponse)
+def get_investment_journal_entry_api(entry_date: date = Path(..., description="Entry date in YYYY-MM-DD format.")) -> InvestmentJournalEntryResponse:
+    entry = get_investment_journal_entry(entry_date)
+    payload = _journal_entry_to_payload(entry)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    return payload
+
+
+@app.put("/journal/entries/{entry_date}", response_model=InvestmentJournalEntryResponse)
+def upsert_investment_journal_entry_api(
+    entry_date: date = Path(..., description="Entry date in YYYY-MM-DD format."),
+    payload: InvestmentJournalEntryPayload = Body(...),
+) -> InvestmentJournalEntryResponse:
+    review_html = _sanitize_rich_text(payload.review_html)
+    plan_html = _sanitize_rich_text(payload.plan_html)
+    entry = upsert_investment_journal_entry(
+        entry_date,
+        review_html=review_html,
+        plan_html=plan_html,
+    )
+    return _journal_entry_to_payload(entry)
+
+
+@app.get("/journal/stock-notes", response_model=StockNoteListResponse)
+def list_recent_stock_notes_api(
+    start_date: Optional[date] = Query(
+        None,
+        alias="startDate",
+        description="Start date inclusive (YYYY-MM-DD). Defaults to 90 days ago.",
+    ),
+    end_date: Optional[date] = Query(
+        None,
+        alias="endDate",
+        description="End date inclusive (YYYY-MM-DD). Defaults to today.",
+    ),
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of notes to return."),
+) -> StockNoteListResponse:
+    records = list_recent_stock_notes(start_date=start_date, end_date=end_date, limit=limit)
+    items = [StockNoteItem(**entry) for entry in records.get("items", [])]
+    total = records.get("total", len(items)) or len(items)
+    return StockNoteListResponse(total=int(total), items=items)
 
 
 @app.get("/peripheral/insights/latest", response_model=PeripheralInsightResponse)
@@ -9186,6 +9496,8 @@ def get_market_insight(
 ) -> MarketInsightResponse:
     summary_payload: Optional[MarketInsightSummaryPayload] = None
     articles: List[MarketInsightArticleItem] = []
+    summary_age_hours: Optional[float] = None
+    should_trigger_refresh = False
 
     try:
         summary = get_latest_market_insight()
@@ -9194,10 +9506,26 @@ def get_market_insight(
         summary = None
 
     if summary:
-        payload = _build_market_insight_payload(summary)
-        summary_payload = payload["summary"]
-        articles = payload["articles"]
-    else:
+        reference_dt = _parse_datetime(summary.get("window_end")) or _parse_datetime(summary.get("generated_at"))
+        if reference_dt:
+            delta = _local_now() - reference_dt
+            summary_age_hours = max(delta.total_seconds() / 3600.0, 0.0)
+        freshness_cutoff = max(lookback_hours, DEFAULT_MARKET_INSIGHT_LOOKBACK_HOURS) + MARKET_INSIGHT_STALE_GRACE_HOURS
+        summary_is_fresh = summary_age_hours is None or summary_age_hours <= freshness_cutoff
+        if summary_is_fresh:
+            payload = _build_market_insight_payload(summary)
+            summary_payload = payload["summary"]
+            articles = payload["articles"]
+        else:
+            logger.info(
+                "Latest market insight summary is stale (age %.1fh, cutoff %.1fh); returning live headlines",
+                summary_age_hours or -1.0,
+                freshness_cutoff,
+            )
+            summary = None
+
+    if summary is None:
+        should_trigger_refresh = True
         try:
             recent_articles = collect_recent_market_headlines(
                 lookback_hours=lookback_hours,
@@ -9223,7 +9551,46 @@ def get_market_insight(
                 )
             )
 
+    if should_trigger_refresh:
+        try:
+            payload = SyncMarketInsightRequest(lookback_hours=lookback_hours, article_limit=article_limit)
+            if not _submit_scheduler_task(safe_start_market_insight_job(payload)):
+                logger.debug("Market insight refresh could not be scheduled (no available event loop).")
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Unable to schedule market insight refresh: %s", exc)
+
     return MarketInsightResponse(summary=summary_payload, articles=articles)
+
+
+@app.get("/news/market-insight/history", response_model=MarketInsightHistoryResponse)
+def get_market_insight_history(
+    limit: int = Query(6, ge=1, le=20, description="Number of historical market insight records to return."),
+) -> MarketInsightHistoryResponse:
+    try:
+        records = list_market_insights(limit=limit)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to list market insight history: %s", exc)
+        records = []
+
+    items: List[MarketInsightHistoryItem] = []
+    for record in records:
+        summary_json = record.get("summary_json")
+        if isinstance(summary_json, str):
+            try:
+                summary_json = json.loads(summary_json)
+            except json.JSONDecodeError:
+                summary_json = None
+        items.append(
+            MarketInsightHistoryItem(
+                summaryId=record.get("summary_id"),
+                generatedAt=_localize_datetime(record.get("generated_at")),
+                windowStart=_localize_datetime(record.get("window_start")),
+                windowEnd=_localize_datetime(record.get("window_end")),
+                summaryJson=summary_json,
+                modelUsed=record.get("model_used"),
+            )
+        )
+    return MarketInsightHistoryResponse(items=items)
 
 
 @app.get("/news/sector-insight", response_model=SectorInsightResponse)
@@ -9397,10 +9764,15 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect ppi_monthly stats: %s", exc)
         stats_map["ppi_monthly"] = {}
     try:
-        stats_map["pbc_rate"] = MacroPbcRateDAO(settings.postgres).stats()
+        stats_map["lpr_rate"] = MacroLprDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Failed to collect pbc_rate stats: %s", exc)
-        stats_map["pbc_rate"] = {}
+        logger.warning("Failed to collect lpr_rate stats: %s", exc)
+        stats_map["lpr_rate"] = {}
+    try:
+        stats_map["shibor_rate"] = MacroShiborDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect shibor_rate stats: %s", exc)
+        stats_map["shibor_rate"] = {}
     try:
         stats_map["industry_fund_flow"] = IndustryFundFlowDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -9708,6 +10080,18 @@ def _build_market_insight_payload(summary: Dict[str, object]) -> Dict[str, objec
     }
 
 
+def _journal_entry_to_payload(entry: Optional[Dict[str, object]]) -> Optional[InvestmentJournalEntryResponse]:
+    if entry is None:
+        return None
+    return InvestmentJournalEntryResponse(
+        entryDate=entry.get("entry_date"),
+        reviewHtml=entry.get("review_html"),
+        planHtml=entry.get("plan_html"),
+        createdAt=_localize_datetime(entry.get("created_at")),
+        updatedAt=_localize_datetime(entry.get("updated_at")),
+    )
+
+
 def _build_sector_insight_payload(summary: Dict[str, object]) -> Dict[str, object]:
     summary_json = summary.get("summary_json")
     if isinstance(summary_json, str):
@@ -9930,9 +10314,21 @@ async def control_sync_ppi(payload: SyncMacroPpiRequest) -> dict[str, str]:
     return {"status": "started"}
 
 
+@app.post("/control/sync/lpr")
+async def control_sync_lpr(payload: SyncMacroLprRequest) -> dict[str, str]:
+    await start_macro_lpr_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/pbc-rate")
-async def control_sync_pbc_rate(payload: SyncMacroPbcRateRequest) -> dict[str, str]:
-    await start_macro_pbc_rate_job(payload)
+async def control_sync_pbc_rate(payload: SyncMacroLprRequest) -> dict[str, str]:
+    await start_macro_lpr_job(payload)
+    return {"status": "started"}
+
+
+@app.post("/control/sync/shibor")
+async def control_sync_shibor(payload: SyncMacroShiborRequest) -> dict[str, str]:
+    await start_macro_shibor_job(payload)
     return {"status": "started"}
 
 

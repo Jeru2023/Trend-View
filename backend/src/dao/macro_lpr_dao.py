@@ -1,5 +1,5 @@
 """
-DAO for People's Bank of China interest rate decisions.
+DAO for Loan Prime Rate (LPR) history.
 """
 
 from __future__ import annotations
@@ -15,25 +15,29 @@ from psycopg2.extensions import connection as PGConnection
 from ..config.settings import PostgresSettings
 from .base import PostgresDAOBase
 
-SCHEMA_SQL_PATH = Path(__file__).resolve().parents[2] / "config" / "pbc_rate_schema.sql"
+SCHEMA_SQL_PATH = Path(__file__).resolve().parents[2] / "config" / "lpr_schema.sql"
 
-PBC_RATE_FIELDS: Sequence[str] = (
+LPR_FIELDS: Sequence[str] = (
     "period_date",
     "period_label",
-    "actual_value",
-    "forecast_value",
-    "previous_value",
+    "rate_1y",
+    "rate_5y",
 )
 
 
-class MacroPbcRateDAO(PostgresDAOBase):
-    """Persistence helper for PBC interest rate history."""
+class MacroLprDAO(PostgresDAOBase):
+    """Persistence helper for LPR data."""
 
     _conflict_keys: Sequence[str] = ("period_date",)
 
     def __init__(self, config: PostgresSettings, table_name: Optional[str] = None) -> None:
         super().__init__(config=config)
-        self._table_name = table_name or getattr(config, "pbc_rate_table", "macro_pbc_rate")
+        table_attr = getattr(
+            config,
+            "lpr_table",
+            getattr(config, "pbc_rate_table", "macro_pbc_rate"),
+        )
+        self._table_name = table_name or table_attr
         self._schema_sql_template = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
 
     def ensure_table(self, conn: PGConnection) -> None:
@@ -43,7 +47,25 @@ class MacroPbcRateDAO(PostgresDAOBase):
             schema=self.config.schema,
             table=self._table_name,
         )
+        required_columns = {
+            "period_label": sql.SQL("TEXT"),
+            "rate_1y": sql.SQL("DOUBLE PRECISION"),
+            "rate_5y": sql.SQL("DOUBLE PRECISION"),
+        }
+
         with conn.cursor() as cur:
+            for column_name, column_type in required_columns.items():
+                cur.execute(
+                    sql.SQL(
+                        "ALTER TABLE {schema}.{table} "
+                        "ADD COLUMN IF NOT EXISTS {column} {column_type}"
+                    ).format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self._table_name),
+                        column=sql.Identifier(column_name),
+                        column_type=column_type,
+                    )
+                )
             cur.execute(
                 sql.SQL("CREATE INDEX IF NOT EXISTS {index} ON {schema}.{table} (period_date DESC)").format(
                     index=sql.Identifier(f"{self._table_name}_period_date_idx"),
@@ -71,7 +93,7 @@ class MacroPbcRateDAO(PostgresDAOBase):
                     schema=self.config.schema,
                     table=self._table_name,
                     dataframe=dataframe,
-                    columns=PBC_RATE_FIELDS,
+                    columns=LPR_FIELDS,
                     conflict_keys=self._conflict_keys,
                     date_columns=("period_date",),
                 )
@@ -82,7 +104,7 @@ class MacroPbcRateDAO(PostgresDAOBase):
             schema=self.config.schema,
             table=self._table_name,
             dataframe=dataframe,
-            columns=PBC_RATE_FIELDS,
+            columns=LPR_FIELDS,
             conflict_keys=self._conflict_keys,
             date_columns=("period_date",),
         )
@@ -92,9 +114,8 @@ class MacroPbcRateDAO(PostgresDAOBase):
             """
             SELECT period_date,
                    period_label,
-                   actual_value,
-                   forecast_value,
-                   previous_value,
+                   rate_1y,
+                   rate_5y,
                    updated_at
             FROM {schema}.{table}
             ORDER BY period_date DESC
@@ -127,14 +148,13 @@ class MacroPbcRateDAO(PostgresDAOBase):
                 rows = cur.fetchall()
 
         items: List[Dict[str, object]] = []
-        for period_date, period_label, actual_value, forecast_value, previous_value, updated_at in rows:
+        for period_date, period_label, rate_1y, rate_5y, updated_at in rows:
             items.append(
                 {
                     "period_date": period_date,
                     "period_label": period_label,
-                    "actual_value": actual_value,
-                    "forecast_value": forecast_value,
-                    "previous_value": previous_value,
+                    "rate_1y": rate_1y,
+                    "rate_5y": rate_5y,
                     "updated_at": updated_at,
                 }
             )
@@ -159,4 +179,4 @@ class MacroPbcRateDAO(PostgresDAOBase):
         }
 
 
-__all__ = ["MacroPbcRateDAO", "PBC_RATE_FIELDS"]
+__all__ = ["MacroLprDAO", "LPR_FIELDS"]

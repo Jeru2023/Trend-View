@@ -35,7 +35,8 @@ from .macro_cpi_dao import MacroCpiDAO
 from .macro_m2_dao import MacroM2DAO
 from .macro_pmi_dao import MacroPmiDAO
 from .macro_ppi_dao import MacroPpiDAO
-from .macro_pbc_rate_dao import MacroPbcRateDAO
+from .macro_lpr_dao import MacroLprDAO
+from .macro_shibor_dao import MacroShiborDAO
 from .global_flash_dao import GlobalFlashDAO
 from .trade_calendar_dao import TradeCalendarDAO
 from .news_article_dao import NewsArticleDAO
@@ -64,6 +65,7 @@ from .stock_note_dao import StockNoteDAO
 from .intraday_volume_profile_daily_dao import IntradayVolumeProfileDailyDAO
 from .intraday_volume_profile_avg_dao import IntradayVolumeProfileAverageDAO
 from .indicator_screening_dao import IndicatorScreeningDAO
+from .investment_journal_dao import InvestmentJournalDAO
 
 __all__ = [
     "DailyIndicatorDAO",
@@ -101,7 +103,8 @@ __all__ = [
     "MacroPmiDAO",
     "MacroM2DAO",
     "MacroPpiDAO",
-    "MacroPbcRateDAO",
+    "MacroLprDAO",
+    "MacroShiborDAO",
     "GlobalFlashDAO",
     "TradeCalendarDAO",
     "NewsArticleDAO",
@@ -130,4 +133,5 @@ __all__ = [
     "IntradayVolumeProfileDailyDAO",
     "IntradayVolumeProfileAverageDAO",
     "IndicatorScreeningDAO",
+    "InvestmentJournalDAO",
 ]

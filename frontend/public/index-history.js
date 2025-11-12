@@ -72,6 +72,7 @@ const elements = {
   selector: document.getElementById("index-history-selector"),
   lastUpdated: document.getElementById("index-history-last-updated"),
   refreshButton: document.getElementById("index-history-refresh"),
+  status: document.getElementById("index-history-status"),
   tableBody: document.getElementById("index-history-tbody"),
   chartContainer: document.getElementById("index-history-chart"),
   chartEmpty: document.getElementById("index-history-chart-empty"),
@@ -120,10 +121,46 @@ function formatDate(value) {
   }
 }
 
+function formatVolumeLabel(value, digits = 1) {
+  if (value === null || value === undefined || value === "") {
+    return "--";
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+  const abs = Math.abs(numeric);
+  if (currentLang === "zh") {
+    const hundredMillion = 100000000;
+    const tenThousand = 10000;
+    if (abs >= hundredMillion) {
+      return `${(numeric / hundredMillion).toFixed(digits)}亿`;
+    }
+    if (abs >= tenThousand) {
+      return `${(numeric / tenThousand).toFixed(digits)}万`;
+    }
+  } else {
+    const billion = 1000000000;
+    const million = 1000000;
+    const thousand = 1000;
+    if (abs >= billion) {
+      return `${(numeric / billion).toFixed(digits)}B`;
+    }
+    if (abs >= million) {
+      return `${(numeric / million).toFixed(digits)}M`;
+    }
+    if (abs >= thousand) {
+      return `${(numeric / thousand).toFixed(digits)}K`;
+    }
+  }
+  return formatNumber(numeric, { maximumFractionDigits: 0 });
+}
+
 function applyTranslations() {
   const dict = getDict();
   document.documentElement.lang = currentLang;
   document.title = dict.title;
+  setStatus("");
 
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.dataset.i18n;
@@ -154,6 +191,19 @@ function setButtonLoading(isLoading) {
   elements.refreshButton.disabled = isLoading;
   elements.refreshButton.dataset.loading = isLoading ? "1" : "0";
   elements.refreshButton.textContent = isLoading ? dict.refreshing || "Refreshing…" : dict.refreshButton;
+}
+
+function setStatus(message, tone = "info") {
+  if (!elements.status) {
+    return;
+  }
+  if (!message) {
+    elements.status.textContent = "";
+    elements.status.removeAttribute("data-tone");
+    return;
+  }
+  elements.status.textContent = message;
+  elements.status.dataset.tone = tone;
 }
 
 function renderSelector() {
@@ -223,8 +273,7 @@ function renderTable(items = []) {
         formatNumber(item.low, { maximumFractionDigits: 2 }),
         formatPercent(item.pctChange ?? item.pct_change),
         formatNumber(item.changeAmount ?? item.change_amount, { maximumFractionDigits: 2 }),
-        formatPercent(item.turnover),
-        formatNumber(item.volume, { maximumFractionDigits: 0 }),
+        formatVolumeLabel(item.volume, 2),
       ];
       columns.forEach((text) => {
         const cell = document.createElement("td");
@@ -350,9 +399,7 @@ function renderChart(items = []) {
                   ? volume.data.value
                   : null);
             if (Number.isFinite(volumeValue)) {
-              lines.push(
-                `${dict.tooltipVolume || "Volume"}: ${formatNumber(volumeValue, { maximumFractionDigits: 0 })}`,
-              );
+              lines.push(`${dict.tooltipVolume || "Volume"}: ${formatVolumeLabel(volumeValue, 2)}`);
             }
             return lines.join("<br />");
           },
@@ -402,7 +449,7 @@ function renderChart(items = []) {
             gridIndex: 1,
             axisLabel: {
               formatter(value) {
-                return formatNumber(value, { maximumFractionDigits: 0 });
+                return formatVolumeLabel(value, 1);
               },
             },
             axisTick: { show: false },
@@ -476,7 +523,7 @@ function renderChart(items = []) {
     });
 }
 
-async function loadIndexHistory(code, { force = false } = {}) {
+async function loadIndexHistory(code, { force = false, skipButtonState = false } = {}) {
   const targetCode = code || selectedCode || null;
   const url = new URL(`${API_BASE}/markets/index-history`);
   if (targetCode) {
@@ -488,7 +535,10 @@ async function loadIndexHistory(code, { force = false } = {}) {
     return;
   }
 
-  setButtonLoading(true);
+  const shouldToggleButton = !skipButtonState;
+  if (shouldToggleButton) {
+    setButtonLoading(true);
+  }
   const dict = getDict();
 
   try {
@@ -504,15 +554,65 @@ async function loadIndexHistory(code, { force = false } = {}) {
     renderSelector();
     renderTable(latestItems);
     renderChart(latestItems);
+    setStatus(dict.statusSynced || "");
   } catch (error) {
     console.error("Failed to load index history:", error);
-    latestItems = [];
-    elements.lastUpdated.textContent = "--";
-    renderTable([]);
-    if (elements.chartEmpty) {
-      elements.chartEmpty.classList.remove("hidden");
-      elements.chartEmpty.textContent = dict.loadFailed || "Failed to load data.";
+    if (!latestItems.length) {
+      elements.lastUpdated.textContent = "--";
+      renderTable([]);
+      if (elements.chartEmpty) {
+        elements.chartEmpty.classList.remove("hidden");
+        elements.chartEmpty.textContent = dict.loadFailed || "Failed to load data.";
+      }
     }
+    setStatus(error?.message || dict.loadFailed || "Failed to load data.", "error");
+  } finally {
+    if (shouldToggleButton) {
+      setButtonLoading(false);
+    }
+  }
+}
+
+async function triggerManualSync() {
+  if (!elements.refreshButton || elements.refreshButton.dataset.loading === "1") {
+    return;
+  }
+  setButtonLoading(true);
+  const dict = getDict();
+  const payload = {};
+  if (selectedCode) {
+    payload.indexCodes = [selectedCode];
+  }
+  try {
+    const response = await fetch(`${API_BASE}/control/sync/index-history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      let message = response.statusText || `HTTP ${response.status}`;
+      try {
+        const details = await response.json();
+        if (details?.detail) {
+          message = details.detail;
+        }
+      } catch (parseError) {
+        /* ignore */
+      }
+      if (response.status === 409) {
+        setStatus(dict.statusRunning || message, "info");
+        await loadIndexHistory(selectedCode, { force: true, skipButtonState: true });
+        return;
+      }
+      throw new Error(message);
+    }
+    setStatus(dict.statusSyncing || "Syncing...", "info");
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await loadIndexHistory(selectedCode, { force: true, skipButtonState: true });
+  } catch (error) {
+    console.error("Index history sync failed:", error);
+    setStatus(error?.message || dict.statusFailed || dict.loadFailed || "Failed to load data.", "error");
+    await loadIndexHistory(selectedCode, { force: true, skipButtonState: true });
   } finally {
     setButtonLoading(false);
   }
@@ -530,7 +630,7 @@ function bindEvents() {
   });
 
   if (elements.refreshButton) {
-    elements.refreshButton.addEventListener("click", () => loadIndexHistory(selectedCode, { force: true }));
+    elements.refreshButton.addEventListener("click", () => triggerManualSync());
   }
 }
 

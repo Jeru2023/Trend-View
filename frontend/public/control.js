@@ -232,15 +232,25 @@ const elements = {
     button: document.getElementById("run-ppi"),
     infoButton: document.querySelector("[data-ppi-info]"),
   },
-  pbcRate: {
-    status: document.getElementById("pbc-rate-status"),
-    updated: document.getElementById("pbc-rate-updated"),
-    duration: document.getElementById("pbc-rate-duration"),
-    rows: document.getElementById("pbc-rate-rows"),
-    message: document.getElementById("pbc-rate-message"),
-    progress: document.getElementById("pbc-rate-progress"),
-    button: document.getElementById("run-pbc-rate"),
-    infoButton: document.querySelector("[data-pbc-rate-info]"),
+  lprRate: {
+    status: document.getElementById("lpr-rate-status"),
+    updated: document.getElementById("lpr-rate-updated"),
+    duration: document.getElementById("lpr-rate-duration"),
+    rows: document.getElementById("lpr-rate-rows"),
+    message: document.getElementById("lpr-rate-message"),
+    progress: document.getElementById("lpr-rate-progress"),
+    button: document.getElementById("run-lpr-rate"),
+    infoButton: document.querySelector("[data-lpr-rate-info]"),
+  },
+  shiborRate: {
+    status: document.getElementById("shibor-rate-status"),
+    updated: document.getElementById("shibor-rate-updated"),
+    duration: document.getElementById("shibor-rate-duration"),
+    rows: document.getElementById("shibor-rate-rows"),
+    message: document.getElementById("shibor-rate-message"),
+    progress: document.getElementById("shibor-rate-progress"),
+    button: document.getElementById("run-shibor-rate"),
+    infoButton: document.querySelector("[data-shibor-rate-info]"),
   },
   pmiMonthly: {
     status: document.getElementById("pmi-status"),
@@ -617,10 +627,15 @@ function applyTranslations() {
     elements.ppiMonthly.infoButton.setAttribute("title", tooltip);
     elements.ppiMonthly.infoButton.setAttribute("aria-label", tooltip || "Info");
   }
-  if (elements.pbcRate.infoButton) {
-    const tooltip = dict.pbcRateTooltip || "";
-    elements.pbcRate.infoButton.setAttribute("title", tooltip);
-    elements.pbcRate.infoButton.setAttribute("aria-label", tooltip || "Info");
+  if (elements.lprRate.infoButton) {
+    const tooltip = dict.lprRateTooltip || "";
+    elements.lprRate.infoButton.setAttribute("title", tooltip);
+    elements.lprRate.infoButton.setAttribute("aria-label", tooltip || "Info");
+  }
+  if (elements.shiborRate.infoButton) {
+    const tooltip = dict.shiborRateTooltip || "";
+    elements.shiborRate.infoButton.setAttribute("title", tooltip);
+    elements.shiborRate.infoButton.setAttribute("aria-label", tooltip || "Info");
   }
   if (elements.pmiMonthly.infoButton) {
     const tooltip = dict.pmiTooltip || "";
@@ -770,7 +785,11 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
-    const pbcRateSnapshot = jobs.pbc_rate || {
+    const lprRateSnapshot = jobs.lpr_rate || {
+      status: "idle",
+      progress: 0,
+    };
+    const shiborRateSnapshot = jobs.shibor_rate || {
       status: "idle",
       progress: 0,
     };
@@ -900,7 +919,8 @@ async function loadStatus() {
     updateJobCard(elements.socialFinancing, socialFinancingSnapshot);
     updateJobCard(elements.cpiMonthly, cpiSnapshot);
     updateJobCard(elements.ppiMonthly, ppiSnapshot);
-    updateJobCard(elements.pbcRate, pbcRateSnapshot);
+    updateJobCard(elements.lprRate, lprRateSnapshot);
+    updateJobCard(elements.shiborRate, shiborRateSnapshot);
     updateJobCard(elements.pmiMonthly, pmiSnapshot);
     updateJobCard(elements.m2Monthly, m2Snapshot);
     updateJobCard(elements.rmbMidpoint, rmbMidpointSnapshot);
@@ -961,7 +981,8 @@ async function loadStatus() {
       socialFinancingSnapshot,
       cpiSnapshot,
       ppiSnapshot,
-      pbcRateSnapshot,
+      lprRateSnapshot,
+      shiborRateSnapshot,
       pmiSnapshot,
       m2Snapshot,
       rmbMidpointSnapshot,
@@ -1325,9 +1346,14 @@ function initActions() {
       triggerJob("/control/sync/ppi", {})
     );
   }
-  if (elements.pbcRate.button) {
-    elements.pbcRate.button.addEventListener("click", () =>
-      triggerJob("/control/sync/pbc-rate", {})
+  if (elements.lprRate.button) {
+    elements.lprRate.button.addEventListener("click", () =>
+      triggerJob("/control/sync/lpr", {})
+    );
+  }
+  if (elements.shiborRate.button) {
+    elements.shiborRate.button.addEventListener("click", () =>
+      triggerJob("/control/sync/shibor", {})
     );
   }
   if (elements.pmiMonthly.button) {
@@ -1370,13 +1396,23 @@ function initActions() {
       window.alert(message);
     });
   }
-  if (elements.pbcRate.infoButton) {
-    elements.pbcRate.infoButton.addEventListener("click", () => {
+  if (elements.lprRate.infoButton) {
+    elements.lprRate.infoButton.addEventListener("click", () => {
       const dict = translations[currentLang] || translations.en;
       const message =
-        (dict && dict.pbcRateTooltip) ||
-        (translations.en && translations.en.pbcRateTooltip) ||
-        "Irregular release: trigger after the PBC publishes a new benchmark rate decision.";
+        (dict && dict.lprRateTooltip) ||
+        (translations.en && translations.en.lprRateTooltip) ||
+        "Irregular release: trigger after the PBOC publishes a new loan prime rate.";
+      window.alert(message);
+    });
+  }
+  if (elements.shiborRate.infoButton) {
+    elements.shiborRate.infoButton.addEventListener("click", () => {
+      const dict = translations[currentLang] || translations.en;
+      const message =
+        (dict && dict.shiborRateTooltip) ||
+        (translations.en && translations.en.shiborRateTooltip) ||
+        "Daily SHIBOR quotes typically refresh around 11:30 Beijing time on trading days.";
       window.alert(message);
     });
   }

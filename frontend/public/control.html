@@ -129,7 +129,7 @@
               <div class="card" id="market-overview-card">
                 <div class="card__header">
                   <div>
-                    <h3 data-i18n="marketOverviewTitle">大盘洞察</h3>
+                    <h3 data-i18n="marketOverviewTitle">大盘推理</h3>
                     <p class="card__subtitle" data-i18n="marketOverviewSubtitle">
                       Generate consolidated market overview and optional LLM summary.
                     </p>
@@ -1547,54 +1547,104 @@
                 <p class="job-message" id="ppi-message"></p>
               </div>
 
-              <div class="card" id="pbc-rate-card">
+              <div class="card" id="lpr-rate-card">
                 <div class="card__header">
                   <div>
-                    <h3 data-i18n="pbcRateTitle">PBC Interest Rate Decisions</h3>
-                    <p class="card__subtitle" data-i18n="pbcRateSubtitle">
-                      Benchmark rate updates from the People's Bank of China.
+                    <h3 data-i18n="lprRateTitle">LPR Rates</h3>
+                    <p class="card__subtitle" data-i18n="lprRateSubtitle">
+                      Sync the latest 1Y/5Y Loan Prime Rate series.
                     </p>
                   </div>
                   <div class="card__actions">
                     <button
                       class="info-icon"
                       type="button"
-                      data-pbc-rate-info
-                      aria-label="PBC decision guidance"
+                      data-lpr-rate-info
+                      aria-label="LPR update guidance"
                     >
                       ?
                     </button>
-                    <button class="primary-btn" id="run-pbc-rate" data-i18n="runNow">
+                    <button class="primary-btn" id="run-lpr-rate" data-i18n="runNow">
                       Run
                     </button>
                   </div>
                 </div>
                 <div class="progress" aria-hidden="true">
-                  <div class="progress__bar" id="pbc-rate-progress"></div>
+                  <div class="progress__bar" id="lpr-rate-progress"></div>
                 </div>
                 <div class="job-meta">
                   <div class="job-meta__row">
                     <div class="job-meta__item">
                       <span data-i18n="lastStatus">Status</span>
-                      <strong id="pbc-rate-status">&mdash;</strong>
+                      <strong id="lpr-rate-status">&mdash;</strong>
                     </div>
                     <div class="job-meta__item">
                       <span data-i18n="records">Records</span>
-                      <strong id="pbc-rate-rows">&mdash;</strong>
+                      <strong id="lpr-rate-rows">&mdash;</strong>
                     </div>
                   </div>
                   <div class="job-meta__row">
                     <div class="job-meta__item">
                       <span data-i18n="dataUpdated">Data Updated</span>
-                      <strong id="pbc-rate-updated">&mdash;</strong>
+                      <strong id="lpr-rate-updated">&mdash;</strong>
                     </div>
                     <div class="job-meta__item">
                       <span data-i18n="lastDuration">Last Duration</span>
-                      <strong id="pbc-rate-duration">&mdash;</strong>
+                      <strong id="lpr-rate-duration">&mdash;</strong>
                     </div>
                   </div>
                 </div>
-                <p class="job-message" id="pbc-rate-message"></p>
+                <p class="job-message" id="lpr-rate-message"></p>
+              </div>
+
+              <div class="card" id="shibor-rate-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="shiborRateTitle">SHIBOR Rates</h3>
+                    <p class="card__subtitle" data-i18n="shiborRateSubtitle">
+                      Sync SHIBOR ON/1W/1M/3M/1Y time series.
+                    </p>
+                  </div>
+                  <div class="card__actions">
+                    <button
+                      class="info-icon"
+                      type="button"
+                      data-shibor-rate-info
+                      aria-label="SHIBOR update guidance"
+                    >
+                      ?
+                    </button>
+                    <button class="primary-btn" id="run-shibor-rate" data-i18n="runNow">
+                      Run
+                    </button>
+                  </div>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="shibor-rate-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="shibor-rate-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="shibor-rate-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="shibor-rate-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="shibor-rate-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="shibor-rate-message"></p>
               </div>
 
               <div class="card" id="macro-insight-card">
@@ -2003,7 +2053,7 @@
               <div class="card" id="market-insight-card">
                 <div class="card__header">
                   <div>
-                    <h3 data-i18n="marketInsightTitle">大盘推理</h3>
+                    <h3 data-i18n="marketInsightTitle">大盘洞察</h3>
                     <p class="card__subtitle" data-i18n="marketInsightSubtitle">
                       Refresh DeepSeek reasoner output using 24h classified headlines.
                     </p>

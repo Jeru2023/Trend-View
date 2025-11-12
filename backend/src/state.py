@@ -90,7 +90,8 @@ class SyncMonitor:
             "pmi_monthly": JobProgress(),
             "m2_monthly": JobProgress(),
             "ppi_monthly": JobProgress(),
-            "pbc_rate": JobProgress(),
+            "lpr_rate": JobProgress(),
+            "shibor_rate": JobProgress(),
         }
         self._hydrate_from_disk()
         if not self._state_file.exists():

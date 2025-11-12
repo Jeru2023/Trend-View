@@ -56,6 +56,7 @@
         "individual_fund_flow_table": "individual_fund_flow",
         "big_deal_fund_flow_table": "big_deal_fund_flow",
         "stock_integrated_analysis_table": "stock_integrated_analysis",
+        "investment_journal_table": "investment_journal",
         "indicator_screening_table": "indicator_screening",
         "hsgt_fund_flow_table": "hsgt_fund_flow",
         "peripheral_insight_table": "peripheral_insights",
@@ -69,6 +70,7 @@
         "pmi_table": "macro_pmi",
         "m2_table": "macro_m2",
         "ppi_table": "macro_ppi",
-        "pbc_rate_table": "macro_pbc_rate"
+        "lpr_table": "macro_lpr_rate",
+        "shibor_table": "macro_shibor"
     }
 }

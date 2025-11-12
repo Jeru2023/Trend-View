@@ -1,6 +1,4 @@
-"""
-Service helpers for synchronising People's Bank of China interest rate decisions.
-"""
+"""Service helpers for SHIBOR data."""
 
 from __future__ import annotations
 
@@ -11,27 +9,37 @@ from typing import Optional
 
 import pandas as pd
 
-from ..api_clients import MACRO_PBC_RATE_COLUMN_MAP, fetch_macro_pbc_interest_rates
+from ..api_clients import SHIBOR_COLUMN_MAP, fetch_shibor_rates
 from ..config.settings import load_settings
-from ..dao import MacroPbcRateDAO
+from ..dao import MacroShiborDAO
 
 logger = logging.getLogger(__name__)
 
 
-def _prepare_macro_pbc_rate_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
+def _date_range_strings(years: int = 5) -> tuple[str, str]:
+    today = pd.Timestamp.today().normalize()
+    end_date = today.strftime("%Y%m%d")
+    start_date = (today - pd.DateOffset(years=years)).strftime("%Y%m%d")
+    return start_date, end_date
+
+
+def _prepare_shibor_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
     if dataframe is None or dataframe.empty:
-        columns = ["period_date"] + list(MACRO_PBC_RATE_COLUMN_MAP.values())
-        return pd.DataFrame(columns=columns)
+        columns = list(SHIBOR_COLUMN_MAP.values())
+        return pd.DataFrame(columns=["period_date", *columns])
 
     frame = dataframe.copy()
-
-    for column in MACRO_PBC_RATE_COLUMN_MAP.values():
+    for column in SHIBOR_COLUMN_MAP.values():
         if column not in frame.columns:
             frame[column] = None
 
-    frame["period_date"] = pd.to_datetime(frame["period_label"], errors="coerce").dt.date
+    with pd.option_context("mode.chained_assignment", None):
+        frame["period_label"] = frame["period_label"].astype(str).str.strip()
+        frame["period_date"] = (
+            pd.to_datetime(frame["period_label"], format="%Y%m%d", errors="coerce").dt.date
+        )
 
-    numeric_columns = ["actual_value", "forecast_value", "previous_value"]
+    numeric_columns = [col for col in SHIBOR_COLUMN_MAP.values() if col != "period_label"]
     for column in numeric_columns:
         if column in frame.columns:
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
@@ -46,16 +54,17 @@ def _prepare_macro_pbc_rate_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
     return prepared
 
 
-def sync_macro_pbc_rate(*, settings_path: Optional[str] = None) -> dict[str, object]:
+def sync_macro_shibor(*, settings_path: Optional[str] = None) -> dict[str, object]:
     started = time.perf_counter()
     settings = load_settings(settings_path)
-    dao = MacroPbcRateDAO(settings.postgres)
+    dao = MacroShiborDAO(settings.postgres)
+    start_date, end_date = _date_range_strings()
 
-    raw = fetch_macro_pbc_interest_rates()
-    prepared = _prepare_macro_pbc_rate_frame(raw)
+    raw = fetch_shibor_rates(token=settings.tushare.token, start_date=start_date, end_date=end_date)
+    prepared = _prepare_shibor_frame(raw)
     if prepared.empty:
         elapsed = time.perf_counter() - started
-        logger.warning("PBC rate sync skipped: no data returned.")
+        logger.warning("SHIBOR sync skipped: no data returned.")
         return {"rows": 0, "elapsedSeconds": elapsed}
 
     affected = dao.upsert(prepared)
@@ -63,14 +72,14 @@ def sync_macro_pbc_rate(*, settings_path: Optional[str] = None) -> dict[str, obj
     return {"rows": int(affected), "elapsedSeconds": elapsed}
 
 
-def list_macro_pbc_rate(
+def list_macro_shibor(
     *,
     limit: int = 200,
     offset: int = 0,
     settings_path: Optional[str] = None,
 ) -> dict[str, object]:
     settings = load_settings(settings_path)
-    dao = MacroPbcRateDAO(settings.postgres)
+    dao = MacroShiborDAO(settings.postgres)
     result = dao.list_entries(limit=limit, offset=offset)
     stats = dao.stats()
     items = []
@@ -89,4 +98,4 @@ def list_macro_pbc_rate(
     }
 
 
-__all__ = ["sync_macro_pbc_rate", "list_macro_pbc_rate", "_prepare_macro_pbc_rate_frame"]
+__all__ = ["sync_macro_shibor", "list_macro_shibor", "_prepare_shibor_frame"]

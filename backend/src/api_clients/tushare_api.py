@@ -175,6 +175,24 @@ MACRO_M2_COLUMN_MAP: Final[dict[str, str]] = {
     "m2_mom": "m2_mom",
 }
 
+LPR_COLUMN_MAP: Final[dict[str, str]] = {
+    "date": "period_label",
+    "1y": "rate_1y",
+    "5y": "rate_5y",
+}
+
+SHIBOR_COLUMN_MAP: Final[dict[str, str]] = {
+    "date": "period_label",
+    "on": "on_rate",
+    "1w": "rate_1w",
+    "2w": "rate_2w",
+    "1m": "rate_1m",
+    "3m": "rate_3m",
+    "6m": "rate_6m",
+    "9m": "rate_9m",
+    "1y": "rate_1y",
+}
+
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
     list_statuses: Sequence[str],
@@ -295,23 +313,48 @@ def get_daily_trade(
     if not code_list:
         return pd.DataFrame(columns=DAILY_TRADE_FIELDS)
 
-    code_list_str = ",".join(code_list)
-    df = pro.daily(ts_code=code_list_str, start_date=start_date, end_date=end_date)
-    if df is None or df.empty:
-        logger.warning("No daily trade data returned for codes: %s", code_list_str)
+    chunk_size = 50
+    frames: list[pd.DataFrame] = []
+    total = len(code_list)
+    for start_idx in range(0, total, chunk_size):
+        chunk = code_list[start_idx : start_idx + chunk_size]
+        codes_str = ",".join(chunk)
+        try:
+            df = pro.daily(ts_code=codes_str, start_date=start_date, end_date=end_date)
+        except Exception as exc:  # pragma: no cover - network errors
+            logger.error(
+                "Failed to fetch daily trade data for chunk %s-%s: %s",
+                start_idx + 1,
+                start_idx + len(chunk),
+                exc,
+            )
+            continue
+
+        if df is None or df.empty:
+            logger.debug(
+                "No daily trade data returned for chunk %s-%s",
+                start_idx + 1,
+                start_idx + len(chunk),
+            )
+            continue
+
+        missing_columns = [col for col in DAILY_TRADE_FIELDS if col not in df.columns]
+        for column in missing_columns:
+            if column == "is_intraday":
+                df[column] = False
+            else:
+                df[column] = None
+
+        if "is_intraday" in df.columns:
+            df["is_intraday"] = df["is_intraday"].fillna(False)
+
+        frames.append(df.loc[:, list(DAILY_TRADE_FIELDS)])
+
+    if not frames:
         return pd.DataFrame(columns=DAILY_TRADE_FIELDS)
 
-    missing_columns = [col for col in DAILY_TRADE_FIELDS if col not in df.columns]
-    for column in missing_columns:
-        if column == "is_intraday":
-            df[column] = False
-        else:
-            df[column] = None
-
-    if "is_intraday" in df.columns:
-        df["is_intraday"] = df["is_intraday"].fillna(False)
-
-    return df.loc[:, list(DAILY_TRADE_FIELDS)]
+    combined = pd.concat(frames, ignore_index=True)
+    return combined.drop_duplicates(subset=["ts_code", "trade_date"])
 
 
 def get_daily_indicator(
@@ -365,6 +408,51 @@ def fetch_macro_m2_yearly(token: str, *, start_month: str, end_month: str) -> pd
             renamed[column] = None
 
     return renamed.loc[:, list(MACRO_M2_COLUMN_MAP.values())]
+
+
+def fetch_lpr_rates(token: str, *, start_date: str, end_date: str) -> pd.DataFrame:
+    """Fetch Loan Prime Rate (LPR) data from Tushare."""
+
+    if not token:
+        raise RuntimeError("Tushare token is required to fetch LPR data.")
+
+    pro = ts.pro_api(token)
+    fields = ",".join(LPR_COLUMN_MAP.keys())
+    params = {"start_date": start_date, "end_date": end_date, "fields": fields}
+    logger.debug("Requesting shibor_lpr with params=%s", params)
+    dataframe = pro.shibor_lpr(**params)
+    if dataframe is None or dataframe.empty:
+        logger.warning("Tushare returned no LPR data for %s-%s", start_date, end_date)
+        return pd.DataFrame(columns=list(LPR_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=LPR_COLUMN_MAP)
+    for column in LPR_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(LPR_COLUMN_MAP.values())]
+
+
+def fetch_shibor_rates(token: str, *, start_date: str, end_date: str) -> pd.DataFrame:
+    """Fetch SHIBOR quotes from Tushare."""
+
+    if not token:
+        raise RuntimeError("Tushare token is required to fetch SHIBOR data.")
+
+    pro = ts.pro_api(token)
+    params = {"start_date": start_date, "end_date": end_date}
+    logger.debug("Requesting shibor with params=%s", params)
+    dataframe = pro.shibor(**params)
+    if dataframe is None or dataframe.empty:
+        logger.warning("Tushare returned no SHIBOR data for %s-%s", start_date, end_date)
+        return pd.DataFrame(columns=list(SHIBOR_COLUMN_MAP.values()))
+
+    renamed = dataframe.rename(columns=SHIBOR_COLUMN_MAP)
+    for column in SHIBOR_COLUMN_MAP.values():
+        if column not in renamed.columns:
+            renamed[column] = None
+
+    return renamed.loc[:, list(SHIBOR_COLUMN_MAP.values())]
 
 
 def get_income_statements(
@@ -581,9 +669,13 @@ __all__ = [
     "FINANCIAL_INDICATOR_FIELDS",
     "STOCK_BASIC_FIELDS",
     "MACRO_M2_COLUMN_MAP",
+    "LPR_COLUMN_MAP",
+    "SHIBOR_COLUMN_MAP",
     "fetch_stock_basic",
     "fetch_trade_calendar",
     "fetch_macro_m2_yearly",
+    "fetch_lpr_rates",
+    "fetch_shibor_rates",
     "get_daily_trade",
     "get_daily_indicator",
     "get_income_statements",

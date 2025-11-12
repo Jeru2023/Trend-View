@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections import defaultdict
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -17,19 +18,22 @@ from ..dao import MacroInsightDAO
 from .macro_cpi_service import list_macro_cpi
 from .macro_leverage_service import list_macro_leverage_ratios
 from .macro_m2_service import list_macro_m2
-from .macro_pbc_rate_service import list_macro_pbc_rate
+from .macro_lpr_service import list_macro_lpr
 from .macro_pmi_service import list_macro_pmi
 from .macro_ppi_service import list_macro_ppi
+from .macro_shibor_service import list_macro_shibor
 from .social_financing_service import list_social_financing_ratios
 
 logger = logging.getLogger(__name__)
 
 SERIES_LIMIT = 11  # latest + 10 historical entries
+DEEPSEEK_REASONER_MODEL = "deepseek-reasoner"
+MAX_REASONER_TOKENS = 2000
 
 _LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 MACRO_INSIGHT_PROMPT = """
-你是一名研究中国宏观经济与A股市场联动的策略分析师。下面提供的 JSON 数据涵盖多个宏观指标，每个指标包含最近一次公布值及过去10个历史值。请综合这些数据进行分析。
+你是一名研究中国宏观经济与A股市场联动的策略分析师。下面提供的 JSON 数据涵盖多个宏观指标，每个指标包含最近一次公布值及过去10个历史值。公布频率以月度/季度为主，存在天然滞后，请特别注意每个系列的最新日期，仅据此做趋势与节奏分析，不要过度推断实时走势。
 
 数据如下：
 {news_content}
@@ -316,30 +320,68 @@ def _collect_macro_datasets(settings_path: Optional[str] = None) -> Tuple[List[D
     else:
         warnings.append("缺少M2数据")
 
-    # PBC rate decisions
-    pbc_result = list_macro_pbc_rate(limit=SERIES_LIMIT, settings_path=settings_path)
-    pbc_series = _sanitize_records(
-        pbc_result.get("items", []),
-        columns=["actual_value", "forecast_value", "previous_value"],
+    # LPR
+    lpr_result = list_macro_lpr(limit=SERIES_LIMIT, settings_path=settings_path)
+    lpr_series = _sanitize_records(
+        lpr_result.get("items", []),
+        columns=["rate_1y", "rate_5y"],
     )
-    if pbc_series:
+    if lpr_series:
         dataset_payloads.append(
             {
-                "key": "pbc_rate",
-                "titleKey": "macroDatasetPbcRate",
+                "key": "lpr",
+                "titleKey": "macroDatasetLpr",
                 "fields": [
-                    {"key": "actual_value", "labelKey": "macroFieldActualValue", "format": "number"},
-                    {"key": "forecast_value", "labelKey": "macroFieldForecastValue", "format": "number"},
-                    {"key": "previous_value", "labelKey": "macroFieldPreviousValue", "format": "number"},
+                    {"key": "rate_1y", "labelKey": "macroFieldLpr1Y", "format": "number"},
+                    {"key": "rate_5y", "labelKey": "macroFieldLpr5Y", "format": "number"},
                 ],
-                "series": pbc_series,
-                "latest": pbc_series[0],
-                "updatedAt": _date_to_iso(pbc_result.get("lastSyncedAt")),
+                "series": lpr_series,
+                "latest": lpr_series[0],
+                "updatedAt": _date_to_iso(lpr_result.get("lastSyncedAt")),
             }
         )
-        _record_snapshot(pbc_series)
+        _record_snapshot(lpr_series)
     else:
-        warnings.append("缺少央行利率数据")
+        warnings.append("缺少LPR数据")
+
+    # SHIBOR
+    shibor_result = list_macro_shibor(limit=SERIES_LIMIT, settings_path=settings_path)
+    shibor_series = _sanitize_records(
+        shibor_result.get("items", []),
+        columns=[
+            "on_rate",
+            "rate_1w",
+            "rate_2w",
+            "rate_1m",
+            "rate_3m",
+            "rate_6m",
+            "rate_9m",
+            "rate_1y",
+        ],
+    )
+    if shibor_series:
+        dataset_payloads.append(
+            {
+                "key": "shibor",
+                "titleKey": "macroDatasetShibor",
+                "fields": [
+                    {"key": "on_rate", "labelKey": "macroFieldShiborOn", "format": "number"},
+                    {"key": "rate_1w", "labelKey": "macroFieldShibor1W", "format": "number"},
+                    {"key": "rate_2w", "labelKey": "macroFieldShibor2W", "format": "number"},
+                    {"key": "rate_1m", "labelKey": "macroFieldShibor1M", "format": "number"},
+                    {"key": "rate_3m", "labelKey": "macroFieldShibor3M", "format": "number"},
+                    {"key": "rate_6m", "labelKey": "macroFieldShibor6M", "format": "number"},
+                    {"key": "rate_9m", "labelKey": "macroFieldShibor9M", "format": "number"},
+                    {"key": "rate_1y", "labelKey": "macroFieldShibor1Y", "format": "number"},
+                ],
+                "series": shibor_series,
+                "latest": shibor_series[0],
+                "updatedAt": _date_to_iso(shibor_result.get("lastSyncedAt")),
+            }
+        )
+        _record_snapshot(shibor_series)
+    else:
+        warnings.append("缺少SHIBOR数据")
 
     snapshot_date = max(snapshot_candidates) if snapshot_candidates else None
     dataset_payloads.sort(key=lambda item: item.get("titleKey") or "")
@@ -372,24 +414,45 @@ def generate_macro_insight(
                 "warnings": warnings,
             }
             prompt_payload = json.dumps(macro_payload, ensure_ascii=False, separators=(",", ":"))
-            try:
-                llm_result = generate_finance_analysis(
+            logger.info("Generating macro insight summary with model=%s", DEEPSEEK_REASONER_MODEL)
+            started = time.perf_counter()
+            response = generate_finance_analysis(
+                prompt_payload,
+                settings=settings.deepseek,
+                prompt_template=MACRO_INSIGHT_PROMPT,
+                model_override=DEEPSEEK_REASONER_MODEL,
+                response_format={"type": "json_object"},
+                max_output_tokens=MAX_REASONER_TOKENS,
+                temperature=0.15,
+                return_usage=True,
+            )
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            logger.info("Macro insight reasoning completed in %sms", elapsed_ms)
+
+            if not isinstance(response, dict):
+                logger.info("DeepSeek reasoner returned non-JSON payload, retrying without enforced response_format")
+                response = generate_finance_analysis(
                     prompt_payload,
                     settings=settings.deepseek,
                     prompt_template=MACRO_INSIGHT_PROMPT,
-                    temperature=0.2,
+                    model_override=DEEPSEEK_REASONER_MODEL,
+                    response_format=None,
+                    max_output_tokens=MAX_REASONER_TOKENS,
+                    temperature=0.15,
+                    return_usage=True,
                 )
-            except Exception as exc:  # pragma: no cover - defensive for LLM failures
-                logger.warning("Macro insight reasoning failed: %s", exc)
-                llm_result = None
 
-            if llm_result:
-                raw_response = llm_result if isinstance(llm_result, str) else json.dumps(llm_result, ensure_ascii=False)
-                try:
-                    summary_json = json.loads(raw_response)
-                except (TypeError, json.JSONDecodeError):
-                    summary_json = None
-                model = settings.deepseek.model
+            if isinstance(response, dict):
+                raw_response = response.get("content") or ""
+                if raw_response:
+                    try:
+                        summary_json = json.loads(raw_response)
+                    except json.JSONDecodeError:
+                        logger.warning("Macro insight response is not valid JSON; storing raw content")
+                        summary_json = None
+                model = response.get("model") or DEEPSEEK_REASONER_MODEL
+            else:
+                logger.warning("DeepSeek reasoner did not return a valid response")
 
     MacroInsightDAO(settings.postgres).upsert_snapshot(
         snapshot_date=snapshot_date,
@@ -454,4 +517,33 @@ def get_latest_macro_insight(*, settings_path: Optional[str] = None) -> Optional
     return payload
 
 
-__all__ = ["generate_macro_insight", "get_latest_macro_insight"]
+def list_macro_insight_history(
+    *,
+    limit: int = 6,
+    offset: int = 0,
+    settings_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    settings = load_settings(settings_path)
+    dao = MacroInsightDAO(settings.postgres)
+    records = dao.list_snapshots(limit=max(1, min(limit, 50)), offset=max(0, offset))
+    history: List[Dict[str, Any]] = []
+    for record in records:
+        summary_json = record.get("summary_json")
+        if isinstance(summary_json, str):
+            try:
+                summary_json = json.loads(summary_json)
+            except json.JSONDecodeError:
+                summary_json = None
+        history.append(
+            {
+                "snapshot_date": record.get("snapshot_date"),
+                "generated_at": _date_to_iso(record.get("generated_at")),
+                "summary_json": summary_json,
+                "raw_response": record.get("raw_response"),
+                "model": record.get("model"),
+            }
+        )
+    return history
+
+
+__all__ = ["generate_macro_insight", "get_latest_macro_insight", "list_macro_insight_history"]

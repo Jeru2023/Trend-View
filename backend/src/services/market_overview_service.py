@@ -81,7 +81,22 @@ def build_market_overview_payload(*, settings_path: Optional[str] = None) -> Dic
     activity_dao = MarketActivityDAO(settings.postgres)
 
     realtime_rows = realtime_dao.list_entries(limit=500)["items"]
-    realtime_filtered = [row for row in realtime_rows if (row.get("turnover") or 0) > 5e11]
+    realtime_filtered: List[Dict[str, Any]] = []
+    for row in realtime_rows:
+        if (row.get("turnover") or 0) <= 5e11:
+            continue
+        entry = dict(row)
+        pct_value = entry.get("change_percent")
+        if pct_value is not None:
+            try:
+                percent = float(pct_value)
+            except (TypeError, ValueError):
+                percent = None
+            if percent is not None:
+                entry["change_percent"] = percent / 100.0
+            else:
+                entry["change_percent"] = None
+        realtime_filtered.append(entry)
 
     index_history: Dict[str, List[Dict[str, Any]]] = {}
     for code in _INDEX_CODES:

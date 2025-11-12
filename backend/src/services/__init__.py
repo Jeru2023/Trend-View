@@ -19,7 +19,8 @@ from .macro_cpi_service import list_macro_cpi, sync_macro_cpi
 from .macro_pmi_service import list_macro_pmi, sync_macro_pmi
 from .macro_m2_service import list_macro_m2, sync_macro_m2
 from .macro_ppi_service import list_macro_ppi, sync_macro_ppi
-from .macro_pbc_rate_service import list_macro_pbc_rate, sync_macro_pbc_rate
+from .macro_lpr_service import list_macro_lpr, sync_macro_lpr
+from .macro_shibor_service import list_macro_shibor, sync_macro_shibor
 from .daily_trade_service import sync_daily_trade
 from .daily_trade_metrics_service import sync_daily_trade_metrics
 from .stock_basic_service import get_stock_overview, get_stock_detail, sync_stock_basic
@@ -99,7 +100,7 @@ from .hsgt_fund_flow_service import list_hsgt_fund_flow, sync_hsgt_fund_flow
 from .stock_main_business_service import get_stock_main_business, sync_stock_main_business
 from .stock_main_composition_service import get_stock_main_composition, sync_stock_main_composition
 from .stock_news_service import list_stock_news, sync_stock_news
-from .stock_note_service import add_stock_note, list_stock_notes
+from .stock_note_service import add_stock_note, list_stock_notes, list_recent_stock_notes
 from .intraday_volume_profile_service import sync_intraday_volume_profiles
 from .global_flash_service import sync_global_flash
 from .news_classification_service import classify_relevance_batch, classify_impact_batch
@@ -116,7 +117,7 @@ from .trade_calendar_service import sync_trade_calendar, is_trading_day
 from .margin_account_service import list_margin_account_info, sync_margin_account_info
 from .market_activity_service import list_market_activity, sync_market_activity
 from .market_fund_flow_service import list_market_fund_flow, sync_market_fund_flow
-from .macro_insight_service import generate_macro_insight, get_latest_macro_insight
+from .macro_insight_service import generate_macro_insight, get_latest_macro_insight, list_macro_insight_history
 from .market_overview_service import build_market_overview_payload, generate_market_overview_reasoning
 from .market_overview_service import build_market_overview_payload
 from .sector_fund_flow_service import build_sector_fund_flow_snapshot
@@ -144,6 +145,11 @@ from .indicator_screening_service import (
     list_indicator_screenings,
     run_indicator_realtime_refresh,
 )
+from .investment_journal_service import (
+    upsert_investment_journal_entry,
+    get_investment_journal_entry,
+    list_investment_journal_entries,
+)
 
 __all__ = [
     "get_stock_overview",
@@ -165,7 +171,8 @@ __all__ = [
     "sync_macro_pmi",
     "sync_macro_m2",
     "sync_macro_ppi",
-    "sync_macro_pbc_rate",
+    "sync_macro_lpr",
+    "sync_macro_shibor",
     "sync_margin_account_info",
     "sync_market_activity",
     "sync_market_fund_flow",
@@ -194,12 +201,14 @@ __all__ = [
     "list_macro_pmi",
     "list_macro_m2",
     "list_macro_ppi",
-    "list_macro_pbc_rate",
+    "list_macro_lpr",
+    "list_macro_shibor",
     "list_margin_account_info",
     "list_market_activity",
     "list_market_fund_flow",
     "get_latest_macro_insight",
     "generate_macro_insight",
+    "list_macro_insight_history",
     "build_sector_fund_flow_snapshot",
     "build_market_overview_payload",
     "generate_market_overview_reasoning",
@@ -254,6 +263,9 @@ __all__ = [
     "list_individual_fund_flow",
     "list_hsgt_fund_flow",
     "sync_finance_breakfast",
+    "upsert_investment_journal_entry",
+    "get_investment_journal_entry",
+    "list_investment_journal_entries",
     "sync_daily_trade",
     "sync_daily_trade_metrics",
     "sync_stock_basic",
@@ -276,6 +288,7 @@ __all__ = [
     "list_stock_news",
     "add_stock_note",
     "list_stock_notes",
+    "list_recent_stock_notes",
     "sync_intraday_volume_profiles",
     "add_stock_to_favorites",
     "remove_stock_from_favorites",

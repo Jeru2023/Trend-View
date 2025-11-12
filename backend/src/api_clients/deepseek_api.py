@@ -154,11 +154,13 @@ def generate_finance_analysis(
     result_text = normalized or text
 
     if return_usage:
+        model_name = data.get("model")
         usage = data.get("usage") if isinstance(data, dict) else None
         return {
             "content": result_text,
             "usage": usage or {},
             "raw": text,
+            "model": model_name,
         }
 
     return result_text

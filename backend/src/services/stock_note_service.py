@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
 from typing import Dict, Optional
 
 from ..config.settings import load_settings
@@ -60,4 +61,21 @@ def list_stock_notes(
     )
 
 
-__all__ = ["add_stock_note", "list_stock_notes"]
+def list_recent_stock_notes(
+    *,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    limit: int = 200,
+    settings_path: Optional[str] = None,
+) -> Dict[str, object]:
+    today = datetime.now().date()
+    start = start_date or (today - timedelta(days=90))
+    end = end_date or today
+    if start > end:
+        start, end = end, start
+    settings = load_settings(settings_path)
+    dao = StockNoteDAO(settings.postgres)
+    return dao.list_recent_notes(start, end, limit=limit)
+
+
+__all__ = ["add_stock_note", "list_stock_notes", "list_recent_stock_notes"]

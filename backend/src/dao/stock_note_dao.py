@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -118,6 +119,42 @@ class StockNoteDAO(PostgresDAOBase):
             for row in rows
         ]
         return {"total": total, "items": items}
+
+    def list_recent_notes(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        limit: int,
+    ) -> Dict[str, Any]:
+        sanitized_limit = max(1, min(limit, 500))
+        query = sql.SQL(
+            """
+            SELECT id, stock_code, content, created_at, updated_at
+            FROM {schema}.{table}
+            WHERE created_at::date BETWEEN %s AND %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s
+            """
+        ).format(schema=sql.Identifier(self.config.schema), table=sql.Identifier(self._table_name))
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, (start_date, end_date, sanitized_limit))
+                rows = cur.fetchall()
+
+        items = [
+            {
+                "id": row[0],
+                "stock_code": row[1],
+                "content": row[2],
+                "created_at": row[3],
+                "updated_at": row[4],
+            }
+            for row in rows
+        ]
+        return {"total": len(items), "items": items}
 
 
 __all__ = ["StockNoteDAO"]
