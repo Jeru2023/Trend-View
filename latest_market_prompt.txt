@@ -1,0 +1,39 @@
+Multi-stage market insight prompts (updated after the 5-pass reasoning rollout)
+==================================================================
+
+The pipeline no longer relies on a single巨型 prompt. Instead it makes five
+sequential DeepSeek Reasoner calls:
+
+1. 指数态势分析 → realtimeIndices + indexHistory
+2. 资金流向分析 → marketFundFlow + marginAccount
+3. 市场情绪分析 → marketActivity + marketInsight
+4. 宏观环境分析 → macroInsight + peripheralInsight
+5. 综合策略推理 → 汇总前四次的 JSON 结果
+
+All prompt templates live in
+`backend/src/services/market_insight_service.py:96-213` and are rendered with
+live JSON data just before each call.  If you want to inspect the **exact**
+stage prompts (with当前数据填充), run the helper snippet below inside the repo:
+
+```bash
+python - <<'PY'
+from backend.src.services.market_insight_service import (
+    build_market_overview_payload,
+    STAGE_DEFINITIONS,
+    _extract_stage_payload,
+    _format_stage_prompt,
+)
+
+overview = build_market_overview_payload()
+for stage in STAGE_DEFINITIONS:
+    payload = _extract_stage_payload(stage, overview)
+    print("=" * 120)
+    print(stage.title)
+    print(_format_stage_prompt(stage, payload))
+PY
+```
+
+The final (第5次) prompt is produced via `_format_final_prompt`, which takes the
+four stage outputs (LLM JSON) as input, so它只能在前四次推理跑完之后生成。
+To capture它, dump the serialized prompts from the running backend or reuse the
+above snippet after injecting真实的 stage_results.

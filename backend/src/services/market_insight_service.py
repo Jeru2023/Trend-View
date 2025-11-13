@@ -6,14 +6,16 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from zoneinfo import ZoneInfo
 from psycopg2 import sql
+from dataclasses import dataclass
 
 from ..api_clients import generate_finance_analysis
 from ..config.settings import load_settings
 from ..dao import NewsArticleDAO, NewsInsightDAO, NewsMarketInsightDAO
+from .market_overview_service import build_market_overview_payload
 
 logger = logging.getLogger(__name__)
 
@@ -76,68 +78,356 @@ SEVERITY_WEIGHTS = {
     "low": 0.25,
 }
 
-MARKET_INSIGHT_PROMPT = """
-你是一名资深的中国A股策略分析师。请阅读以下最近24小时内与大盘直接相关的新闻摘要，并基于它们给出整体市场洞察。
+_INDEX_FACT_CODES: Tuple[Tuple[str, str], ...] = (
+    ("000001.SH", "上证指数"),
+    ("399001.SZ", "深证成指"),
+    ("399006.SZ", "创业板指"),
+)
 
-【分析要求】
-1. 全面梳理对大盘（上证指数、深证成指、沪深300等）影响显著的因素。
-2. 明确整体情绪（利多/中性/利空），并给出0-1之间的综合置信度。
-3. 总结主要驱动事件、受益/受压行业板块、潜在风险提示、重点关注指数或板块。
-4. 若新闻观点存在分歧，请客观说明并指出潜在不确定性。
-5. 对任何盘中或当日事件（如“指数翻红”“低开后回升”“资金净流入”）必须明确指出时间线：使用北京时间 24 小时制（例如“10:05 上证指数翻红”），如时间不详需写明“时间待确认”。
-6. 请保证输出信息丰富：
-   - \"market_overview\" 需不少于120字，覆盖宏观、政策、资金、情绪等维度。
-   - \"key_drivers\" 至少列出3条，每条需概括驱动逻辑。
-   - 如有风险因素与操作建议，分别不少于3条（若不足请写明原因）。
-   - \"recommended_actions\" 不得少于80字，明确短期与中期操作框架。
-   - \"detailed_notes\" 中每条 \"analysis\" 至少两句话，涵盖正面与潜在风险或不确定性。
-7. 输出必须采用JSON格式，键名使用蛇形命名法。结构如下：
-{
-  "sentiment": "bullish|neutral|bearish",
-  "confidence": 0-1 的小数,
-  "market_overview": "总体研判",
-  "key_drivers": ["驱动因素1", "驱动因素2", ...],
-  "sectors_to_watch": ["行业或板块"...],
-  "indices_to_watch": ["指数"...],
-  "risk_factors": ["风险点"...],
-  "recommended_actions": "给投资者的操作建议",
-  "detailed_notes": [
-      {
-         "title": "新闻标题",
-         "timestamp": "YYYY-MM-DD HH:MM",
-         "impact_summary": "一句话总结",
-         "analysis": "该新闻对大盘的含义",
-         "confidence": 0-1 的小数
-      }
+
+@dataclass(frozen=True)
+class StageDefinition:
+    key: str
+    title: str
+    data_keys: Tuple[str, ...]
+    prompt_template: str
+
+
+STAGE_INDEX_PROMPT = """
+你是一名A股指数策略分析师。以下JSON包含实时指数(realtimeIndices)与重点指数近20日历史(indexHistory)：
+{stage_payload}
+
+请仅依据上述数据输出结构化JSON，格式如下（严禁添加额外字段）：
+{{
+  "stage": "{stage_key}",
+  "title": "{stage_title}",
+  "analysis": "不少于150字，必须引用至少3个具体数据点（含点位/涨跌幅/成交额等），需要覆盖实时强弱、趋势判断、动量评估，并给出初步结论。",
+  "highlights": ["要点1","要点2"],
+  "bias": "bullish/neutral/bearish",
+  "confidence": 0.0,
+  "key_metrics": [
+    {{"label": "成交额", "value": "5426亿元", "insight": "量能较前一交易日缩12%，显示观望"}},
+    {{"label": "支撑阻力", "value": "3980/4050", "insight": "若跌破3980需警惕加速下行"}}
   ]
-}
-8. 若输入新闻不足以得出结论，请在 JSON 中说明原因。
-9. 引用新闻及相关时间请与输入中给出的发布时间保持一致，避免凭空创作。
+}}
 
-以下是新闻列表（按时间倒序）：
-{news_content}
+规则：
+1. 所有数值必须直接引用JSON中的原始数据，可四舍五入但不可凭空编造。
+2. 若某字段确实为空，请明确写明“realtimeIndices 数据缺失”或“indexHistory 数据缺失”，而不是笼统的“数据缺失”。
+3. bias 仅允许 bull/neutral/bearish 三种，confidence 0-1 之间的数字。
 """
+
+STAGE_FUND_PROMPT = """
+你是一名A股资金流向分析师。以下JSON包含 marketFundFlow 与 marginAccount 的最新记录：
+{stage_payload}
+
+输出结构化JSON，格式如下：
+{{
+  "stage": "{stage_key}",
+  "title": "{stage_title}",
+  "analysis": "不少于150字，必须引用主力/超大单/大单/中小单及融资数据，给出主力行为、散户情绪、杠杆态度结论。",
+  "highlights": ["要点1","要点2"],
+  "bias": "bullish/neutral/bearish",
+  "confidence": 0.0,
+  "key_metrics": [
+    {{"label": "主力净流出", "value": "-671.9亿元", "insight": "连续5日流出，机构减仓"}},
+    {{"label": "融资余额", "value": "24871亿元", "insight": "较前日+40亿元，杠杆偏稳"}}
+  ]
+}}
+
+要求同样引用真实数据，若某字段为空需指明“marketFundFlow 数据缺失”等具体项。
+"""
+
+STAGE_SENTIMENT_PROMPT = """
+你是一名A股市场情绪分析师。以下JSON包含 marketActivity 指标与上一期 marketInsight 摘要：
+{stage_payload}
+
+输出结构化JSON：
+{{
+  "stage": "{stage_key}",
+  "title": "{stage_title}",
+  "analysis": "不少于150字，综合赚钱效应、投机热度、情绪周期判断，需引用涨跌家数、涨跌停、活跃度等具体指标；若引用 marketInsight 摘要，请注明其中的关键结论。",
+  "highlights": ["要点1","要点2"],
+  "bias": "bullish/neutral/bearish",
+  "confidence": 0.0,
+  "key_metrics": [
+    {{"label": "涨跌家数", "value": "2765 / 2220", "insight": "赚钱效应偏弱"}},
+    {{"label": "涨停数量", "value": "61", "insight": "连板高度下降，投机热度降温"}}
+  ]
+}}
+
+务必引用真实数值；若上述两类数据全部缺失，需逐项说明缺失来源。
+"""
+
+STAGE_MACRO_PROMPT = """
+你是一名A股宏观策略分析师。以下JSON包含 macroInsight 与 peripheralInsight：
+{stage_payload}
+
+输出JSON：
+{{
+  "stage": "{stage_key}",
+  "title": "{stage_title}",
+  "analysis": "不少于150字，需涵盖内部政策/基本面、外部市场/汇率/地缘政治、整体风险偏好，并引用至少3个具体指标（如PMI、CPI、LPR、美元指数、外围指数涨跌等）。",
+  "highlights": ["要点1","要点2"],
+  "bias": "bullish/neutral/bearish",
+  "confidence": 0.0,
+  "key_metrics": [
+    {{"label": "PMI制造业", "value": "49.4", "insight": "低于荣枯线，制造业收缩"}},
+    {{"label": "美元指数", "value": "99.48 (-0.14%)", "insight": "美元回落利于风险偏好"}}
+  ]
+}}
+
+若某类数据缺失请明确指出是哪一个字段缺失，禁止使用笼统模板。
+"""
+
+FINAL_SUMMARY_PROMPT = """
+你是一名A股首席策略分析师。以下是四个维度的阶段性分析结果（JSON 数组）：
+{stage_results}
+
+请基于这些结论（不得忽视其中的数字与判断）输出最终的策略推理，JSON格式如下：
+{{
+  "comprehensive_conclusion": {{
+    "bias": "bullish/neutral/bearish",
+    "confidence": 0.0,
+    "summary": "不少于250字，明确四个维度之间的协同/背离、核心矛盾、多空力量对比，引用阶段结论中的关键数据。",
+    "key_signals": [
+      {{"title": "信号标题", "detail": "具体描述，包含数据", "supporting_analyses": ["index_analysis","fund_flow_analysis"]}}
+    ],
+    "position_suggestion": {{
+      "short_term": "短线策略（3-5天）",
+      "medium_term": "中线策略（2-4周）",
+      "risk_control": "风控要点"
+    }},
+    "scenario_analysis": [
+      {{"scenario": "乐观情景（概率XX%）", "conditions": "触发条件（引用数据）", "target": "对应策略"}},
+      {{"scenario": "基准情景（概率XX%）", "conditions": "...", "target": "..."}},
+      {{"scenario": "悲观情景（概率XX%）", "conditions": "...", "target": "..."}}
+    ]
+  }}
+}}
+
+要求：
+1. 必须引用前述阶段分析中的关键结论和数值，禁止重新编造数据。
+2. 概率合计需为100%。
+3. 若某阶段分析明确指出数据缺失，才可在最终总结中引用“XXX数据缺失”描述，否则禁止出现模板化“数据不足”。
+"""
+
+STAGE_DEFINITIONS: Tuple[StageDefinition, ...] = (
+    StageDefinition(
+        key="index_analysis",
+        title="指数态势分析",
+        data_keys=("realtimeIndices", "indexHistory"),
+        prompt_template=STAGE_INDEX_PROMPT,
+    ),
+    StageDefinition(
+        key="fund_flow_analysis",
+        title="资金流向分析",
+        data_keys=("marketFundFlow", "marginAccount"),
+        prompt_template=STAGE_FUND_PROMPT,
+    ),
+    StageDefinition(
+        key="sentiment_analysis",
+        title="市场情绪分析",
+        data_keys=("marketActivity", "marketInsight"),
+        prompt_template=STAGE_SENTIMENT_PROMPT,
+    ),
+    StageDefinition(
+        key="macro_analysis",
+        title="宏观环境分析",
+        data_keys=("macroInsight", "peripheralInsight"),
+        prompt_template=STAGE_MACRO_PROMPT,
+    ),
+)
+
+
+def _extract_stage_payload(stage: StageDefinition, overview: Dict[str, object]) -> Dict[str, object]:
+    return {key: overview.get(key) for key in stage.data_keys}
+
+
+def _format_stage_prompt(stage: StageDefinition, payload: Dict[str, object]) -> str:
+    return stage.prompt_template.format(
+        stage_key=stage.key,
+        stage_title=stage.title,
+        stage_payload=json.dumps(payload, ensure_ascii=False, indent=2, separators=(",", ": ")),
+    )
+
+
+def _format_final_prompt(stage_results: List[Dict[str, object]]) -> str:
+    summary_payload = [
+        {
+            "stage": item.get("stage"),
+            "title": item.get("title"),
+            "bias": item.get("bias"),
+            "confidence": item.get("confidence"),
+            "highlights": item.get("highlights"),
+            "key_metrics": item.get("key_metrics"),
+            "analysis": item.get("analysis"),
+        }
+        for item in stage_results
+    ]
+    return FINAL_SUMMARY_PROMPT.format(
+        stage_results=json.dumps(summary_payload, ensure_ascii=False, indent=2, separators=(",", ": "))
+    )
+
+
+def _invoke_reasoner(
+    prompt: str,
+    *,
+    settings,
+    response_format: Optional[Dict[str, str]] = None,
+    temperature: float = 0.2,
+) -> tuple[Dict[str, object], str, Dict[str, int]]:
+    response = generate_finance_analysis(
+        prompt,
+        settings=settings,
+        prompt_template=prompt,
+        model_override=DEEPSEEK_REASONER_MODEL,
+        response_format=response_format or {"type": "json_object"},
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+        temperature=temperature,
+        return_usage=True,
+    )
+    if not response or not isinstance(response, dict):
+        raise RuntimeError("DeepSeek reasoner did not return a valid response")
+    content = response.get("content") or ""
+    usage = response.get("usage") or {}
+    attempts = [content.strip()]
+    if attempts[0] and not attempts[0].startswith("{"):
+        candidate = "{\n" + attempts[0]
+        if not attempts[0].rstrip().endswith("}"):
+            candidate += "\n}"
+        attempts.append(candidate)
+    parsed: Optional[Dict[str, object]] = None
+    for attempt in attempts:
+        try:
+            parsed_data = json.loads(attempt)
+            if isinstance(parsed_data, dict):
+                parsed = parsed_data
+                break
+        except json.JSONDecodeError:
+            continue
+    if parsed is None:
+        raise RuntimeError("DeepSeek reasoner response is not valid JSON")
+    return parsed, content, {
+        "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+        "completion_tokens": int(usage.get("completion_tokens") or 0),
+        "total_tokens": int(usage.get("total_tokens") or 0),
+    }
 
 
 def _local_now() -> datetime:
     return datetime.now(LOCAL_TZ).replace(tzinfo=None)
 
 
-def _format_article_for_prompt(records: List[Dict[str, object]]) -> str:
-    lines: List[str] = []
-    for idx, record in enumerate(records, start=1):
-        published = record.get("published_at")
-        if isinstance(published, datetime):
-            published_str = published.strftime("%Y-%m-%d %H:%M")
-        else:
-            published_str = str(published)
-        lines.append(
-            f"[{idx}] {published_str} | {record.get('title','--')}\n"
-            f"  ImpactSummary: {record.get('impact_summary') or '--'}\n"
-            f"  ImpactAnalysis: {record.get('impact_analysis') or '--'}\n"
-            f"  Markets: {', '.join(record.get('impact_markets') or []) or '--'} | Confidence: {record.get('impact_confidence') or 'N/A'}"
-        )
-    return "\n".join(lines)
+def _coerce_float(value: object) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _looks_like_placeholder(text: Optional[str]) -> bool:
+    if text is None:
+        return True
+    value = str(text).strip()
+    if not value:
+        return True
+    markers = ["数据缺失", "数据不足", "数据不可用", "无数据", "未提供数据", "无法", "缺乏数据"]
+    for marker in markers:
+        if marker in value:
+            return True
+    return False
+
+
+def _format_index_fact_text(overview_payload: Dict[str, object]) -> Optional[str]:
+    history_map = overview_payload.get("indexHistory") or {}
+    if not isinstance(history_map, dict):
+        return None
+
+    fragments: List[str] = []
+    for code, label in _INDEX_FACT_CODES:
+        rows = history_map.get(code) or []
+        if not isinstance(rows, list) or not rows:
+            continue
+        latest = rows[0]
+        close_value = _coerce_float(latest.get("close"))
+        pct_change = _coerce_float(latest.get("pct_change"))
+        trade_date = latest.get("trade_date")
+        if close_value is None:
+            continue
+        text = f"{label}收于{close_value:.2f}点"
+        if pct_change is not None:
+            text += f"（{pct_change * 100:+.2f}%）"
+        if trade_date:
+            text += f"，数据日期{trade_date}"
+        if len(rows) > 1:
+            comparison = rows[-1]
+            ref_close = _coerce_float(comparison.get("close"))
+            if ref_close:
+                cumulative = (close_value - ref_close) / ref_close * 100.0
+                text += f"，近{len(rows)}个样本累计{cumulative:+.2f}%"
+        fragments.append(text)
+
+    if not fragments:
+        return None
+    return "；".join(fragments) + "。"
+
+
+def _format_fund_flow_fact_text(overview_payload: Dict[str, object]) -> Optional[str]:
+    flows = overview_payload.get("marketFundFlow") or []
+    if not isinstance(flows, list) or not flows:
+        return None
+    latest = flows[0]
+    trade_date = latest.get("trade_date")
+
+    def _flow_sentence(label: str, key: str) -> Optional[str]:
+        amount = _coerce_float(latest.get(key))
+        if amount is None:
+            return None
+        direction = "净流入" if amount >= 0 else "净流出"
+        return f"{label}{direction}{abs(amount) / 1e8:.1f}亿元"
+
+    parts: List[str] = []
+    for key, label in (
+        ("main_net_inflow_amount", "主力资金"),
+        ("huge_order_net_inflow_amount", "超大单"),
+        ("large_order_net_inflow_amount", "大单"),
+        ("medium_order_net_inflow_amount", "中单"),
+        ("small_order_net_inflow_amount", "小单"),
+    ):
+        sentence = _flow_sentence(label, key)
+        if sentence:
+            parts.append(sentence)
+
+    margin_section: Optional[str] = None
+    margin_rows = overview_payload.get("marginAccount") or []
+    if isinstance(margin_rows, list) and margin_rows:
+        latest_margin = margin_rows[0]
+        financing_balance = _coerce_float(latest_margin.get("financing_balance"))
+        second_entry = margin_rows[1] if len(margin_rows) > 1 else None
+        previous_balance = _coerce_float(second_entry.get("financing_balance")) if isinstance(second_entry, dict) else None
+        financing_purchase = _coerce_float(latest_margin.get("financing_purchase_amount"))
+        margin_bits: List[str] = []
+        if financing_balance is not None:
+            margin_text = f"融资余额约{financing_balance:,.0f}亿元"
+            if previous_balance is not None:
+                delta = financing_balance - previous_balance
+                margin_text += f"（较前日{delta:+.1f}亿元）"
+            margin_bits.append(margin_text)
+        if financing_purchase is not None:
+            margin_bits.append(f"当日融资买入额{financing_purchase:.1f}亿元")
+        if margin_bits:
+            margin_section = "两融数据：" + "，".join(margin_bits)
+
+    intro = f"{trade_date}两市资金流：" if trade_date else "两市资金流："
+    sentences = [intro + ("；".join(parts) if parts else "数据缺失")]
+    if margin_section:
+        sentences.append(margin_section)
+    return " ".join(sentences)
+
+
 
 
 def _decode_json_list(value: Optional[str]) -> List[str]:
@@ -276,55 +566,90 @@ def generate_market_insight_summary(
         settings_path=settings_path,
     )
 
-    if not articles:
-        raise ValueError("No market-impact headlines found in the specified window")
-
     window_end = _local_now()
     window_start = window_end - timedelta(hours=max(lookback_hours, 1))
 
-    prompt_news_block = _format_article_for_prompt(articles)
-    prompt = MARKET_INSIGHT_PROMPT.replace("{news_content}", prompt_news_block)
+    overview_payload = build_market_overview_payload(settings_path=settings_path)
 
     deepseek_settings = settings.deepseek
     if deepseek_settings is None:
         raise RuntimeError("DeepSeek configuration is required for market insight generation")
 
     logger.info(
-        "Generating market insight summary: headlines=%s lookback=%sh model=%s",
+        "Generating staged market insight summary: headlines=%s lookback=%sh model=%s",
         len(articles),
         lookback_hours,
         DEEPSEEK_REASONER_MODEL,
     )
 
+    stage_results: List[Dict[str, object]] = []
+    stage_raw_responses: Dict[str, str] = {}
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    total_tokens = 0
+
+    def _accumulate_usage(usage_map: Dict[str, int]) -> None:
+        nonlocal total_prompt_tokens, total_completion_tokens, total_tokens
+        total_prompt_tokens += usage_map.get("prompt_tokens", 0)
+        total_completion_tokens += usage_map.get("completion_tokens", 0)
+        total_tokens += usage_map.get("total_tokens", 0)
+
     started = time.perf_counter()
-    response = generate_finance_analysis(
-        prompt,
+    for stage in STAGE_DEFINITIONS:
+        stage_payload = _extract_stage_payload(stage, overview_payload)
+        stage_prompt = _format_stage_prompt(stage, stage_payload)
+        parsed, raw_content, usage_map = _invoke_reasoner(
+            stage_prompt,
+            settings=deepseek_settings,
+            response_format={"type": "json_object"},
+            temperature=0.15,
+        )
+        _accumulate_usage(usage_map)
+        analysis_text = parsed.get("analysis") or ""
+        if _looks_like_placeholder(analysis_text):
+            if stage.key == "index_analysis":
+                fallback = _format_index_fact_text(overview_payload)
+                if fallback:
+                    analysis_text = fallback
+            elif stage.key == "fund_flow_analysis":
+                fallback = _format_fund_flow_fact_text(overview_payload)
+                if fallback:
+                    analysis_text = fallback
+        stage_result = {
+            "stage": stage.key,
+            "title": stage.title,
+            "analysis": analysis_text,
+            "highlights": parsed.get("highlights") or [],
+            "bias": (parsed.get("bias") or "neutral").lower(),
+            "confidence": parsed.get("confidence"),
+            "key_metrics": parsed.get("key_metrics") or [],
+        }
+        stage_results.append(stage_result)
+        stage_raw_responses[stage.key] = raw_content
+
+    final_prompt = _format_final_prompt(stage_results)
+    final_data, final_raw, final_usage = _invoke_reasoner(
+        final_prompt,
         settings=deepseek_settings,
-        prompt_template="{news_content}",
-        model_override=DEEPSEEK_REASONER_MODEL,
         response_format={"type": "json_object"},
-        max_output_tokens=MAX_OUTPUT_TOKENS,
         temperature=0.2,
-        return_usage=True,
     )
+    _accumulate_usage(final_usage)
+
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 
-    if not response or not isinstance(response, dict):
-        raise RuntimeError("DeepSeek reasoner did not return a valid response")
+    comprehensive = final_data.get("comprehensive_conclusion")
+    if not isinstance(comprehensive, dict):
+        raise RuntimeError("Final strategy reasoning did not return comprehensive_conclusion")
+    comprehensive["generated_at"] = window_end.isoformat()
 
-    content = response.get("content") or ""
-    usage = response.get("usage") or {}
-    prompt_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None
-    completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
-    total_tokens = usage.get("total_tokens") if isinstance(usage, dict) else None
-
-    summary_json: Optional[dict] = None
-    if content:
-        try:
-            summary_json = json.loads(content)
-        except json.JSONDecodeError:
-            logger.warning("Market insight response is not valid JSON; storing raw content")
-            summary_json = None
+    intermediate_analysis = {stage["stage"]: stage.get("analysis") for stage in stage_results}
+    summary_json: Dict[str, object] = {
+        "generated_at": window_end.isoformat(),
+        "stage_results": stage_results,
+        "intermediate_analysis": intermediate_analysis,
+        "comprehensive_conclusion": comprehensive,
+    }
 
     summary_payload = {
         "summary_id": None,
@@ -332,8 +657,14 @@ def generate_market_insight_summary(
         "window_start": window_start,
         "window_end": window_end,
         "headline_count": len(articles),
-        "summary_json": json.dumps(summary_json, ensure_ascii=False) if summary_json else None,
-        "raw_response": content,
+        "summary_json": json.dumps(summary_json, ensure_ascii=False),
+        "raw_response": json.dumps(
+            {
+                "stages": stage_raw_responses,
+                "final": final_raw,
+            },
+            ensure_ascii=False,
+        ),
         "referenced_articles": json.dumps(
             [
                 {
@@ -357,11 +688,11 @@ def generate_market_insight_summary(
             ],
             ensure_ascii=False,
         ),
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
+        "prompt_tokens": total_prompt_tokens,
+        "completion_tokens": total_completion_tokens,
         "total_tokens": total_tokens,
         "elapsed_ms": elapsed_ms,
-        "model_used": DEEPSEEK_REASONER_MODEL,
+        "model_used": "deepseek-reasoner (multi-stage)",
     }
 
     summary_id = summary_dao.insert_summary(summary_payload)

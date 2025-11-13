@@ -13,7 +13,7 @@ const LANG_STORAGE_KEY = "trend-view-lang";
 
 const elements = {
   summary: document.getElementById("market-insight-summary"),
-  articles: document.getElementById("market-insight-articles"),
+  stages: document.getElementById("market-insight-stages"),
   refreshButton: document.getElementById("market-insight-refresh"),
   langButtons: document.querySelectorAll(".lang-btn"),
   status: document.getElementById("market-insight-status"),
@@ -154,21 +154,132 @@ function clearContainer(node, message) {
   }
 }
 
+function renderStageResults(stageResults) {
+  const container = elements.stages;
+  if (!container) return;
+  container.innerHTML = "";
+  if (!Array.isArray(stageResults) || !stageResults.length) {
+    container.style.display = "none";
+    return;
+  }
+  container.style.display = "";
+  const dict = getDict();
+  const heading = document.createElement("h2");
+  heading.className = "stage-list__heading";
+  heading.textContent = dict.stageSectionTitle || "Staged Reasoning";
+  container.appendChild(heading);
+
+  stageResults.forEach((stage) => {
+    if (!stage || typeof stage !== "object") return;
+    const card = document.createElement("article");
+    card.className = "stage-card";
+
+    const header = document.createElement("header");
+    header.className = "stage-card__header";
+    const title = document.createElement("h3");
+    title.className = "stage-card__title";
+    title.textContent = stage.title || stage.stage || dict.stageSectionTitle || "Stage";
+    header.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "stage-card__meta";
+    const sentimentLabelMap = {
+      bullish: dict.sentimentBullish || "Bullish",
+      bearish: dict.sentimentBearish || "Bearish",
+      neutral: dict.sentimentNeutral || "Neutral",
+    };
+    const biasValue = (stage.bias || "neutral").toLowerCase();
+    const biasChip = document.createElement("span");
+    biasChip.className = `stage-chip stage-chip--${["bullish", "bearish", "neutral"].includes(biasValue) ? biasValue : "neutral"}`;
+    biasChip.textContent = sentimentLabelMap[biasValue] || sentimentLabelMap.neutral;
+    meta.appendChild(biasChip);
+
+    if (stage.confidence !== undefined && stage.confidence !== null && Number.isFinite(Number(stage.confidence))) {
+      const confidence = document.createElement("span");
+      confidence.className = "stage-card__confidence";
+      confidence.textContent = `${dict.stageConfidenceLabel || "Confidence"}: ${formatPercent(stage.confidence, 0)}`;
+      meta.appendChild(confidence);
+    }
+
+    header.appendChild(meta);
+    card.appendChild(header);
+
+    if (stage.analysis) {
+      const analysis = document.createElement("p");
+      analysis.className = "stage-card__analysis";
+      analysis.textContent = stage.analysis;
+      card.appendChild(analysis);
+    }
+
+    const highlights = Array.isArray(stage.highlights) ? stage.highlights.filter(Boolean) : [];
+    if (highlights.length) {
+      const highlightsHeading = document.createElement("h4");
+      highlightsHeading.className = "stage-card__subheading";
+      highlightsHeading.textContent = dict.stageHighlightsLabel || "Highlights";
+      card.appendChild(highlightsHeading);
+      const list = document.createElement("ul");
+      list.className = "stage-card__list";
+      highlights.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = item;
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+    }
+
+    const metrics = Array.isArray(stage.key_metrics) ? stage.key_metrics.filter(Boolean) : [];
+    if (metrics.length) {
+      const metricsHeading = document.createElement("h4");
+      metricsHeading.className = "stage-card__subheading";
+      metricsHeading.textContent = dict.stageMetricsLabel || "Key Metrics";
+      card.appendChild(metricsHeading);
+      const metricList = document.createElement("dl");
+      metricList.className = "stage-card__metrics";
+      metrics.forEach((metric) => {
+        if (!metric || typeof metric !== "object") return;
+        const dt = document.createElement("dt");
+        dt.textContent = metric.label || "--";
+        const dd = document.createElement("dd");
+        const value = document.createElement("strong");
+        value.textContent = metric.value || "--";
+        dd.appendChild(value);
+        if (metric.insight) {
+          const insight = document.createElement("span");
+          insight.textContent = ` · ${metric.insight}`;
+          dd.appendChild(insight);
+        }
+        metricList.appendChild(dt);
+        metricList.appendChild(dd);
+      });
+      card.appendChild(metricList);
+    }
+
+    container.appendChild(card);
+  });
+}
+
 function renderSummary() {
   const dict = getDict();
   const container = elements.summary;
   if (!container) return;
 
-  const summaryData = state.data?.summary;
+  const summaryWrapper = state.data?.summary;
   container.innerHTML = "";
 
-  if (!summaryData) {
+  const llmSummary = summaryWrapper?.summary;
+  if (!summaryWrapper || !llmSummary) {
     const message = container.dataset[`empty${currentLang.toUpperCase()}`] || dict.emptySummary || "--";
     clearContainer(container, message);
+    renderStageResults([]);
     return;
   }
 
-  const summary = summaryData.summary || {};
+  const stageResults = Array.isArray(llmSummary.stage_results) ? llmSummary.stage_results : [];
+  renderStageResults(stageResults);
+
+  const comprehensive = llmSummary.comprehensive_conclusion || {};
+  const intermediate = llmSummary.intermediate_analysis || {};
+
   const card = document.createElement("article");
   card.className = "insight-card";
 
@@ -176,7 +287,7 @@ function renderSummary() {
   header.className = "insight-card__header";
   const title = document.createElement("h2");
   title.className = "insight-card__title";
-  title.textContent = dict.summaryHeader || "Market Insight";
+  title.textContent = dict.summarySectionTitle || "Market Insight";
   header.appendChild(title);
 
   const sentimentLabelMap = {
@@ -184,7 +295,7 @@ function renderSummary() {
     bearish: dict.sentimentBearish || "Bearish",
     neutral: dict.sentimentNeutral || "Neutral",
   };
-  const sentimentValueRaw = (summary.sentiment || "").toLowerCase();
+  const sentimentValueRaw = (comprehensive.bias || "").toLowerCase();
   const sentimentValue = ["bullish", "bearish", "neutral"].includes(sentimentValueRaw)
     ? sentimentValueRaw
     : "neutral";
@@ -193,9 +304,9 @@ function renderSummary() {
   sentimentChip.textContent = sentimentLabelMap[sentimentValue] || dict.sentimentUnknown || "Unknown";
 
   const tokenHintParts = [];
-  const promptTokens = summaryData.promptTokens;
-  const completionTokens = summaryData.completionTokens;
-  const totalTokens = summaryData.totalTokens;
+  const promptTokens = summaryWrapper.promptTokens;
+  const completionTokens = summaryWrapper.completionTokens;
+  const totalTokens = summaryWrapper.totalTokens;
   if (promptTokens !== null && promptTokens !== undefined) {
     tokenHintParts.push(`${dict.promptTokensLabel || "Prompt"} ${formatInteger(promptTokens)}`);
   }
@@ -219,20 +330,19 @@ function renderSummary() {
     {
       label: dict.statsConfidenceLabel || "置信度",
       value:
-        summary.confidence !== null && summary.confidence !== undefined
-          ? formatPercent(summary.confidence, 0)
+        comprehensive.confidence !== null && comprehensive.confidence !== undefined
+          ? formatPercent(comprehensive.confidence, 0)
           : "--",
     },
-    {
-      label: dict.statsHeadlineLabel || "参与新闻",
-      value: formatInteger(summaryData.headlineCount),
-    },
-    {
+  ];
+
+  if (totalTokens !== null && totalTokens !== undefined) {
+    statsItems.push({
       label: dict.statsTokenLabel || "Token",
       value: formatInteger(totalTokens),
       hint: tokenHint,
-    },
-  ];
+    });
+  }
 
   statsItems.forEach((item) => {
     const stat = document.createElement("div");
@@ -268,10 +378,14 @@ function renderSummary() {
   const meta = document.createElement("div");
   meta.className = "insight-card__meta";
   meta.innerHTML = `
-    <div>${dict.generatedAtLabel || "Generated"}: <strong>${formatDateTime(summaryData.generatedAt)}</strong></div>
-    <div>${dict.windowRangeLabel || "Window"}: ${formatDateTime(summaryData.windowStart)} - ${formatDateTime(summaryData.windowEnd)}</div>
-    <div>${dict.elapsedLabel || "Latency"}: ${summaryData.elapsedSeconds !== null && summaryData.elapsedSeconds !== undefined ? `${summaryData.elapsedSeconds.toFixed(2)}s` : "--"}</div>
-    <div>${dict.modelLabel || "Model"}: ${summaryData.modelUsed || "-"}</div>
+    <div>${dict.generatedAtLabel || "Generated"}: <strong>${formatDateTime(summaryWrapper.generatedAt)}</strong></div>
+    <div>${dict.windowRangeLabel || "Window"}: ${formatDateTime(summaryWrapper.windowStart)} - ${formatDateTime(summaryWrapper.windowEnd)}</div>
+    <div>${dict.elapsedLabel || "Latency"}: ${
+      summaryWrapper.elapsedSeconds !== null && summaryWrapper.elapsedSeconds !== undefined
+        ? `${summaryWrapper.elapsedSeconds.toFixed(2)}s`
+        : "--"
+    }</div>
+    <div>${dict.modelLabel || "Model"}: ${summaryWrapper.modelUsed || "-"}</div>
   `;
 
   header.appendChild(meta);
@@ -281,235 +395,153 @@ function renderSummary() {
   const overviewBlock = document.createElement("section");
   overviewBlock.className = "insight-card__section";
   const overviewHeading = document.createElement("h3");
-  overviewHeading.textContent = dict.marketOverviewLabel || "Overview";
+  overviewHeading.textContent =
+    dict.comprehensiveSummaryLabel || dict.marketOverviewLabel || dict.summarySectionTitle || "Overview";
   overviewBlock.appendChild(overviewHeading);
   const overviewPara = document.createElement("p");
-  overviewPara.textContent = summary.market_overview || "--";
+  overviewPara.textContent = comprehensive.summary || "--";
   overviewBlock.appendChild(overviewPara);
-
-  if (summary.recommended_actions) {
-    const actionHeading = document.createElement("h4");
-    actionHeading.className = "insight-subheading";
-    actionHeading.textContent = dict.recommendedActionsLabel || "Actions";
-    overviewBlock.appendChild(actionHeading);
-    const actionPara = document.createElement("p");
-    actionPara.className = "insight-actions";
-    actionPara.textContent = summary.recommended_actions;
-    overviewBlock.appendChild(actionPara);
-  }
-
   card.appendChild(overviewBlock);
 
-  const sectionDefs = [
-    { key: "key_drivers", label: dict.keyDriversLabel || "Key Drivers", type: "list" },
-    { key: "sectors_to_watch", label: dict.sectorsToWatchLabel || "Sectors to Watch", type: "list", horizontal: true },
-    { key: "indices_to_watch", label: dict.indicesToWatchLabel || "Indices to Watch", type: "list", horizontal: true },
-    { key: "risk_factors", label: dict.riskFactorsLabel || "Risk Factors", type: "list" },
-  ];
-
-  sectionDefs.forEach((section) => {
-    const value = summary[section.key];
-    if (!value || (Array.isArray(value) && !value.length)) {
-      return;
-    }
-    const block = document.createElement("section");
-    block.className = "insight-card__section";
+  const keySignals = Array.isArray(comprehensive.key_signals)
+    ? comprehensive.key_signals.filter((item) => item && (item.title || item.detail))
+    : [];
+  if (keySignals.length) {
+    const signalsSection = document.createElement("section");
+    signalsSection.className = "insight-card__section";
     const heading = document.createElement("h3");
-    heading.textContent = section.label;
-    block.appendChild(heading);
-    if (section.type === "list" && Array.isArray(value)) {
-      const list = document.createElement("ul");
-      list.className = section.horizontal ? "insight-card__list insight-card__list--horizontal" : "insight-card__list";
-      value.forEach((item) => {
-        if (!item) return;
-        const li = document.createElement("li");
-        li.textContent = item;
-        list.appendChild(li);
-      });
-      block.appendChild(list);
-    } else {
-      const paragraph = document.createElement("p");
-      paragraph.textContent = value;
-      block.appendChild(paragraph);
-    }
-    card.appendChild(block);
-  });
-
-  const notes = Array.isArray(summary.detailed_notes) ? summary.detailed_notes : [];
-  if (notes.length) {
-    const notesSection = document.createElement("section");
-    notesSection.className = "insight-card__section";
-    const heading = document.createElement("h3");
-    heading.textContent = dict.detailNotesLabel || "Detailed Notes";
-    notesSection.appendChild(heading);
+    heading.textContent = dict.signalsSectionTitle || "Key Signals";
+    signalsSection.appendChild(heading);
     const list = document.createElement("ul");
     list.className = "insight-card__detail-list";
-    notes.forEach((item) => {
-      if (!item || typeof item !== "object") return;
+    keySignals.forEach((signal) => {
       const li = document.createElement("li");
-      const noteTitle = document.createElement("strong");
-      noteTitle.textContent = item.title || "--";
-      li.appendChild(noteTitle);
-      if (item.impact_summary) {
-        const summaryPara = document.createElement("p");
-        summaryPara.textContent = item.impact_summary;
-        li.appendChild(summaryPara);
+      const strong = document.createElement("strong");
+      strong.textContent = signal.title || dict.signalLabel || "Signal";
+      li.appendChild(strong);
+      if (signal.detail) {
+        const detail = document.createElement("p");
+        detail.textContent = signal.detail;
+        li.appendChild(detail);
       }
-      if (item.analysis) {
-        const analysisPara = document.createElement("p");
-        analysisPara.className = "insight-card__detail-analysis";
-        analysisPara.textContent = item.analysis;
-        li.appendChild(analysisPara);
-      }
-      if (item.confidence !== undefined) {
-        const confidenceMeta = document.createElement("div");
-        confidenceMeta.className = "insight-card__detail-confidence";
-        confidenceMeta.textContent = `${dict.confidenceLabel || "Confidence"}: ${formatNumber(item.confidence, 2)}`;
-        li.appendChild(confidenceMeta);
+      if (Array.isArray(signal.supporting_analyses) && signal.supporting_analyses.length) {
+        const sources = document.createElement("div");
+        sources.className = "insight-card__detail-confidence";
+        sources.textContent = `${dict.signalSupportLabel || "Based on"}: ${signal.supporting_analyses.join(", ")}`;
+        li.appendChild(sources);
       }
       list.appendChild(li);
     });
-    notesSection.appendChild(list);
-    card.appendChild(notesSection);
+    signalsSection.appendChild(list);
+    card.appendChild(signalsSection);
+  }
+
+  const position = comprehensive.position_suggestion || {};
+  const positionItems = [
+    { label: dict.positionShortLabel || "Short term", value: position.short_term },
+    { label: dict.positionMediumLabel || "Medium term", value: position.medium_term },
+    { label: dict.positionRiskLabel || "Risk control", value: position.risk_control },
+  ].filter((item) => item.value);
+  if (positionItems.length) {
+    const positionSection = document.createElement("section");
+    positionSection.className = "insight-card__section";
+    const heading = document.createElement("h3");
+    heading.textContent = dict.positionSectionTitle || "Position Suggestion";
+    positionSection.appendChild(heading);
+    const list = document.createElement("ul");
+    list.className = "insight-card__list";
+    positionItems.forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = `${item.label}: ${item.value}`;
+      list.appendChild(li);
+    });
+    positionSection.appendChild(list);
+    card.appendChild(positionSection);
+  }
+
+  const scenarios = Array.isArray(comprehensive.scenario_analysis)
+    ? comprehensive.scenario_analysis.filter((item) => item && (item.scenario || item.conditions || item.target))
+    : [];
+  if (scenarios.length) {
+    const scenarioSection = document.createElement("section");
+    scenarioSection.className = "insight-card__section";
+    const heading = document.createElement("h3");
+    heading.textContent = dict.scenarioSectionTitle || "Scenario Analysis";
+    scenarioSection.appendChild(heading);
+    const list = document.createElement("ul");
+    list.className = "insight-card__detail-list insight-card__scenario-list";
+    scenarios.forEach((scenario) => {
+      const li = document.createElement("li");
+      if (scenario.scenario) {
+        const strong = document.createElement("strong");
+        strong.textContent = scenario.scenario;
+        li.appendChild(strong);
+      }
+      if (scenario.conditions) {
+        const conditions = document.createElement("p");
+        conditions.className = "insight-card__scenario-meta";
+        conditions.textContent = `${dict.scenarioConditionsLabel || "Conditions"}: ${scenario.conditions}`;
+        li.appendChild(conditions);
+      }
+      if (scenario.target) {
+        const target = document.createElement("p");
+        target.className = "insight-card__detail-analysis";
+        target.textContent = `${dict.scenarioTargetLabel || "Outcome"}: ${scenario.target}`;
+        li.appendChild(target);
+      }
+      list.appendChild(li);
+    });
+    scenarioSection.appendChild(list);
+    card.appendChild(scenarioSection);
+  }
+
+  const intermediateDefs = [
+    { key: "index_analysis", label: dict.indexAnalysisLabel || "Index & Trend" },
+    { key: "fund_flow_analysis", label: dict.fundFlowAnalysisLabel || "Funds & Leverage" },
+    { key: "sentiment_analysis", label: dict.sentimentAnalysisLabel || "Market Sentiment" },
+    { key: "macro_analysis", label: dict.macroAnalysisLabel || "Macro Backdrop" },
+  ];
+  const hasIntermediate = intermediateDefs.some((def) => typeof intermediate[def.key] === "string" && intermediate[def.key]);
+  if (hasIntermediate) {
+    const intermediateSection = document.createElement("section");
+    intermediateSection.className = "insight-card__section";
+    const heading = document.createElement("h3");
+    heading.textContent = dict.intermediateSectionTitle || "Detailed Analyses";
+    intermediateSection.appendChild(heading);
+    intermediateDefs.forEach((def) => {
+      const text = intermediate[def.key];
+      if (!text) return;
+      const subsection = document.createElement("div");
+      subsection.className = "insight-card__subsection";
+      const subheading = document.createElement("h4");
+      subheading.textContent = def.label;
+      subsection.appendChild(subheading);
+      const paragraph = document.createElement("p");
+      paragraph.textContent = text;
+      subsection.appendChild(paragraph);
+      intermediateSection.appendChild(subsection);
+    });
+    card.appendChild(intermediateSection);
   }
 
   container.appendChild(card);
 }
 
-function createArticleCard(article) {
-  const dict = getDict();
-  const card = document.createElement("article");
-  card.className = "news-card";
-
-  const header = document.createElement("div");
-  header.className = "news-card__header";
-  const title = document.createElement("h2");
-  title.className = "news-card__title";
-  title.textContent = article.title || "--";
-  header.appendChild(title);
-  if (article.impactConfidence !== undefined && article.impactConfidence !== null) {
-    const badge = document.createElement("span");
-    badge.className = "news-card__badge";
-    badge.textContent = `${dict.confidenceLabel || "Confidence"}: ${formatNumber(article.impactConfidence, 2)}`;
-    header.appendChild(badge);
-  }
-  card.appendChild(header);
-
-  if (article.impactSummary) {
-    const summarySection = document.createElement("div");
-    summarySection.className = "news-card__section";
-    const label = document.createElement("div");
-    label.className = "news-card__section-label";
-    label.textContent = dict.impactSummaryLabel || "Key takeaway";
-    const summary = document.createElement("p");
-    summary.className = "news-card__summary";
-    summary.textContent = article.impactSummary;
-    summarySection.appendChild(label);
-    summarySection.appendChild(summary);
-    card.appendChild(summarySection);
-  }
-
-  if (article.impactAnalysis) {
-    const analysisSection = document.createElement("div");
-    analysisSection.className = "news-card__section";
-    const label = document.createElement("div");
-    label.className = "news-card__section-label";
-    label.textContent = dict.impactAnalysisLabel || "Analysis";
-    const analysis = document.createElement("p");
-    analysis.className = "news-card__impact-analysis";
-    analysis.textContent = article.impactAnalysis;
-    analysisSection.appendChild(label);
-    analysisSection.appendChild(analysis);
-    card.appendChild(analysisSection);
-  }
-
-  if (article.markets && article.markets.length) {
-    const chipsSection = document.createElement("div");
-    chipsSection.className = "news-card__section news-card__section--chips";
-    const label = document.createElement("div");
-    label.className = "news-card__section-label";
-    label.textContent = dict.marketsLabel || "Markets";
-    const list = document.createElement("div");
-    list.className = "news-card__chip-list";
-    article.markets.forEach((market) => {
-      const chip = document.createElement("span");
-      chip.className = "news-card__chip";
-      chip.textContent = market;
-      list.appendChild(chip);
-    });
-    chipsSection.appendChild(label);
-    chipsSection.appendChild(list);
-    card.appendChild(chipsSection);
-  }
-
-  const metaParts = [];
-  if (article.source) {
-    const sourceMap = {
-      global_flash: dict.sourceGlobalFlash || "Global Flash",
-      finance_breakfast: dict.sourceFinanceBreakfast || "Daily Finance",
-    };
-    const sourceName = sourceMap[article.source] || article.source;
-    metaParts.push(sourceName);
-  }
-  metaParts.push(`${dict.publishedAt || "Published"}: ${formatDateTime(article.publishedAt)}`);
-
-  const metaRow = document.createElement("div");
-  metaRow.className = "news-card__footer";
-  const meta = document.createElement("span");
-  meta.className = "news-card__meta";
-  meta.textContent = metaParts.join(" · ");
-  metaRow.appendChild(meta);
-  if (article.url) {
-    const link = document.createElement("a");
-    link.className = "news-card__link";
-    link.href = article.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = dict.readMore || "View source";
-    metaRow.appendChild(link);
-  }
-  card.appendChild(metaRow);
-
-  return card;
-}
-
-function renderArticles() {
-  const dict = getDict();
-  const container = elements.articles;
-  if (!container) return;
-  container.innerHTML = "";
-
-  const articles = Array.isArray(state.data?.articles) ? state.data.articles : [];
-  if (!articles.length) {
-    const message = container.dataset[`empty${currentLang.toUpperCase()}`] || dict.emptyArticles || "--";
-    clearContainer(container, message);
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  articles.forEach((article) => {
-    fragment.appendChild(createArticleCard(article));
-  });
-  container.appendChild(fragment);
-}
-
 async function fetchMarketInsight() {
   const dict = getDict();
   clearContainer(elements.summary, dict.loading || "Loading...");
-  clearContainer(elements.articles, "");
+  renderStageResults([]);
   try {
-    const response = await fetch(`${API_BASE}/news/market-insight?articleLimit=${ARTICLE_LIMIT}`);
+    const response = await fetch(`${API_BASE}/market/market-insight`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     const data = await response.json();
     state.data = data;
     renderSummary();
-    renderArticles();
   } catch (error) {
     console.error("Failed to fetch market insight", error);
     clearContainer(elements.summary, error?.message || "Failed to load insight");
-    clearContainer(elements.articles, "");
     setStatus(error?.message || dict.statusFailed || dict.refreshFailed || "Request failed", "error");
   }
 }
@@ -590,12 +622,7 @@ function applyTranslations() {
     elements.summary.dataset.emptyEn = dict.emptySummary || "No insight yet.";
     elements.summary.dataset.emptyZh = dict.emptySummaryZh || "暂无推理结果。";
   }
-  if (elements.articles?.dataset) {
-    elements.articles.dataset.emptyEn = dict.emptyArticles || "No referenced headlines.";
-    elements.articles.dataset.emptyZh = dict.emptyArticlesZh || "暂无相关新闻。";
-  }
   renderSummary();
-  renderArticles();
 }
 
 function initialize() {
