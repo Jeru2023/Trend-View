@@ -905,6 +905,13 @@ body {
 .concept-history-card__notes{margin:0;font-size:.85rem;color:var(--text-muted);line-height:1.6}
 .insight-history{display:grid;gap:16px;margin-top:16px}
 .insight-history__empty{padding:20px;text-align:center;border:1px dashed var(--border-muted);border-radius:12px;color:var(--text-muted);background-color:rgba(148,163,184,.08)}
+.history-list{display:grid;gap:16px}
+.history-card{border:1px solid var(--border);border-radius:14px;padding:16px 18px;background:var(--bg-card);box-shadow:0 6px 18px rgba(15,23,42,.05);display:flex;flex-direction:column;gap:10px}
+.history-card__header{display:flex;flex-wrap:wrap;gap:10px;font-size:.85rem;color:var(--text-muted)}
+.history-card__summary{margin:0;font-size:.95rem;line-height:1.6;color:var(--text)}
+.history-card__drivers{margin:0;padding-left:18px;font-size:.85rem;color:var(--text)}
+.history-card__meta{font-size:.8rem;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap}
+.history-card details{border-top:1px dashed var(--border);padding-top:10px}
 @media (max-width:720px){.concept-card__metrics{grid-template-columns:repeat(1,minmax(0,1fr))}.concept-card__metrics-row{grid-template-columns:repeat(1,minmax(0,1fr))}}
 @media (max-width:960px){.concept-card__metrics-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .chart-container{width:100%;height:100%}
@@ -2109,6 +2116,13 @@ body {
 .primary-btn {
   background: var(--primary);
   color: #fff;
+}
+
+.primary-btn:disabled {
+  background: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .secondary-btn {

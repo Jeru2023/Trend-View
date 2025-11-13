@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from psycopg2 import sql
 from psycopg2.extensions import connection as PGConnection
@@ -153,6 +153,59 @@ class PeripheralInsightDAO(PostgresDAOBase):
                 )
                 count, last_updated = cur.fetchone()
         return {"count": count or 0, "updated_at": last_updated}
+
+    def list_snapshots(self, limit: int = 30) -> List[Dict[str, object]]:
+        limit_value = max(1, min(int(limit), 100))
+        query = sql.SQL(
+            """
+            SELECT snapshot_date,
+                   generated_at,
+                   metrics,
+                   summary,
+                   raw_response,
+                   model,
+                   created_at,
+                   updated_at
+            FROM {schema}.{table}
+            ORDER BY snapshot_date DESC, generated_at DESC
+            LIMIT %s
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, (limit_value,))
+                rows = cur.fetchall()
+
+        records: List[Dict[str, object]] = []
+        for row in rows:
+            (
+                snapshot_date,
+                generated_at,
+                metrics,
+                summary,
+                raw_response,
+                model,
+                created_at,
+                updated_at,
+            ) = row
+            records.append(
+                {
+                    "snapshot_date": snapshot_date,
+                    "generated_at": generated_at,
+                    "metrics": metrics,
+                    "summary": summary,
+                    "raw_response": raw_response,
+                    "model": model,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                }
+            )
+        return records
 
 
 __all__ = ["PeripheralInsightDAO"]

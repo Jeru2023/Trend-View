@@ -377,21 +377,6 @@ _PROFIT_FORECAST_OUTPUT_COLUMNS: Final[Tuple[str, ...]] = (
     "forecast_eps",
 )
 
-GLOBAL_INDEX_COLUMN_MAP: Final[dict[str, str]] = {
-    "序号": "seq",
-    "代码": "code",
-    "名称": "name",
-    "最新价": "latest_price",
-    "涨跌额": "change_amount",
-    "涨跌幅": "change_percent",
-    "开盘价": "open_price",
-    "最高价": "high_price",
-    "最低价": "low_price",
-    "昨收价": "prev_close",
-    "振幅": "amplitude",
-    "最新行情时间": "last_quote_time",
-}
-
 STOCK_NEWS_COLUMN_MAP: Final[dict[str, str]] = {
     "关键词": "keyword",
     "keyword": "keyword",

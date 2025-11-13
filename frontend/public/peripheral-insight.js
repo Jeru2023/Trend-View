@@ -8,7 +8,8 @@ const API_BASE =
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 
 let currentLang = getInitialLanguage();
-let pendingRefresh = null;
+const REFRESH_POLL_INTERVAL_MS = 4000;
+const REFRESH_POLL_TIMEOUT_MS = 120000;
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
@@ -21,7 +22,10 @@ const elements = {
   rmbTable: document.querySelector("#peripheral-rmb-table tbody"),
   commoditiesTable: document.querySelector("#peripheral-commodities-table tbody"),
   warnings: document.getElementById("peripheral-insight-warnings"),
+  historyList: document.getElementById("peripheral-history-list"),
 };
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function getInitialLanguage() {
   try {
@@ -160,14 +164,32 @@ function setRefreshLoading(loading) {
   elements.refreshButton.disabled = loading;
   if (loading) {
     elements.refreshButton.dataset.loading = "1";
-    elements.refreshButton.textContent = getDict().refreshing || "Refreshing";
+    elements.refreshButton.textContent = getDict().refreshing || "Reasoning...";
   } else {
     delete elements.refreshButton.dataset.loading;
-    elements.refreshButton.textContent = getDict().refreshButton || "Refresh";
+    elements.refreshButton.textContent = getDict().refreshButton || "Run reasoning";
   }
 }
 
 let latestInsightData = null;
+let historyInsightData = [];
+
+function parseSummaryPayload(summary) {
+  if (!summary) {
+    return null;
+  }
+  if (typeof summary === "object") {
+    return summary;
+  }
+  if (typeof summary === "string") {
+    try {
+      return JSON.parse(summary);
+    } catch (error) {
+      return { summary };
+    }
+  }
+  return { summary: String(summary) };
+}
 
 function renderEmptyRow(container, message) {
   if (!container) {
@@ -183,7 +205,18 @@ function renderEmptyRow(container, message) {
   container.appendChild(row);
 }
 
-function renderSummary(summary, rawResponse) {
+function resolveModelName(value) {
+  if (!value) {
+    return "deepseek-reasoner";
+  }
+  const lower = String(value).toLowerCase();
+  if (lower === "deepseek-chat") {
+    return "deepseek-reasoner";
+  }
+  return value;
+}
+
+function renderSummary(summary, rawResponse, modelValue) {
   const container = elements.summaryContainer;
   if (!container) {
     return;
@@ -199,14 +232,7 @@ function renderSummary(summary, rawResponse) {
     return;
   }
 
-  let parsed = null;
-  if (typeof summary === "string") {
-    try {
-      parsed = JSON.parse(summary);
-    } catch (error) {
-      parsed = null;
-    }
-  }
+  const parsed = parseSummaryPayload(summary);
 
   if (parsed && typeof parsed === "object") {
     if (parsed.summary) {
@@ -337,10 +363,11 @@ function renderLatestInsight(data) {
     elements.generatedAt.textContent = formatDateTime(data.generated_at || data.generatedAt);
   }
   if (elements.modelBadge) {
-    elements.modelBadge.textContent = data.model ? `${dict.modelLabel || "Model"}: ${data.model}` : "";
+    const resolvedModel = resolveModelName(data.model);
+    elements.modelBadge.textContent = data.model ? `${dict.modelLabel || "Model"}: ${resolvedModel}` : "";
   }
 
-  renderSummary(data.summary, data.raw_response || data.rawResponse);
+  renderSummary(data.summary, data.raw_response || data.rawResponse, data.model);
 
   const indicesRows = (metrics.globalIndices || []).map((item) => {
     const changeClass = Number(item.changePercent) > 0 ? "text-up" : Number(item.changePercent) < 0 ? "text-down" : "";
@@ -398,24 +425,156 @@ function renderLatestInsight(data) {
   setRefreshLoading(false);
 }
 
-async function loadInsight() {
+function renderHistory(items = []) {
+  const container = elements.historyList;
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  if (!items.length) {
+    const message =
+      container.dataset[`empty${currentLang.toUpperCase()}`] ||
+      getDict().historyEmpty ||
+      "No historical records.";
+    const empty = document.createElement("div");
+    empty.className = "insight-history__empty";
+    empty.textContent = message;
+    container.appendChild(empty);
+    return;
+  }
+
+  items.forEach((entry) => {
+    const card = document.createElement("article");
+    card.className = "history-card";
+
+    const header = document.createElement("div");
+    header.className = "history-card__header";
+    header.textContent = `${formatDateTime(entry.generated_at || entry.generatedAt)} · ${getDict().modelLabel || "Model"}: ${
+      entry.model || "--"
+    }`;
+    card.appendChild(header);
+
+    const parsed = parseSummaryPayload(entry.summary);
+    const summaryText = parsed?.summary || (typeof entry.summary === "string" ? entry.summary : "");
+    if (summaryText) {
+      const summaryEl = document.createElement("p");
+      summaryEl.className = "history-card__summary";
+      summaryEl.textContent = summaryText;
+      card.appendChild(summaryEl);
+    }
+
+    if (Array.isArray(parsed?.drivers) && parsed.drivers.length) {
+      const list = document.createElement("ul");
+      list.className = "history-card__drivers";
+      parsed.drivers.forEach((driver) => {
+        const li = document.createElement("li");
+        li.textContent = driver;
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+    }
+
+    const metaLine = document.createElement("div");
+    metaLine.className = "history-card__meta";
+    if (parsed?.a_share_bias) {
+      metaLine.appendChild(document.createTextNode(`${getDict().biasLabel || "Bias"}: ${parsed.a_share_bias}`));
+    }
+    if (parsed?.risk_level) {
+      metaLine.appendChild(document.createTextNode(`${getDict().riskLabel || "Risk"}: ${parsed.risk_level}`));
+    }
+    if (parsed?.confidence !== undefined) {
+      metaLine.appendChild(document.createTextNode(`${getDict().confidenceLabel || "Confidence"}: ${parsed.confidence}`));
+    }
+    if (metaLine.childNodes.length) {
+      card.appendChild(metaLine);
+    }
+
+    if (entry.raw_response || entry.rawResponse || entry.metrics) {
+      const details = document.createElement("details");
+      const summaryToggle = document.createElement("summary");
+      summaryToggle.textContent = getDict().historyDetailsLabel || "Details";
+      details.appendChild(summaryToggle);
+
+      if (entry.raw_response || entry.rawResponse) {
+        const rawTitle = document.createElement("strong");
+        rawTitle.textContent = getDict().rawResponseLabel || "Raw response";
+        details.appendChild(rawTitle);
+        const pre = document.createElement("pre");
+        pre.textContent = entry.raw_response || entry.rawResponse;
+        details.appendChild(pre);
+      }
+
+      if (entry.metrics) {
+        const metricsTitle = document.createElement("strong");
+        metricsTitle.textContent = getDict().historyMetricsLabel || "Metrics snapshot";
+        details.appendChild(metricsTitle);
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(entry.metrics, null, 2);
+        details.appendChild(pre);
+      }
+      card.appendChild(details);
+    }
+
+    container.appendChild(card);
+  });
+}
+
+async function fetchLatestInsightSnapshot() {
   try {
     const response = await fetch(`${API_BASE}/peripheral/insights/latest`);
     if (!response.ok) {
       throw new Error(`Request failed with status ${response.status}`);
     }
     const payload = await response.json();
-    renderLatestInsight(payload.insight || null);
+    return payload.insight || null;
   } catch (error) {
     console.error("Failed to load peripheral insight", error);
-    renderLatestInsight(null);
+    return null;
   }
+}
+
+async function loadInsight() {
+  const snapshot = await fetchLatestInsightSnapshot();
+  renderLatestInsight(snapshot);
+}
+
+async function loadHistory(limit = 10) {
+  if (!elements.historyList) {
+    return;
+  }
+  try {
+    const response = await fetch(`${API_BASE}/peripheral/insights/history?limit=${limit}`);
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    historyInsightData = payload.items || [];
+    renderHistory(historyInsightData);
+  } catch (error) {
+    console.error("Failed to load peripheral insight history", error);
+    historyInsightData = [];
+    renderHistory(historyInsightData);
+  }
+}
+
+async function pollForInsightUpdate(previousGeneratedAt) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < REFRESH_POLL_TIMEOUT_MS) {
+    const snapshot = await fetchLatestInsightSnapshot();
+    const currentGeneratedAt = snapshot?.generated_at || snapshot?.generatedAt;
+    if (currentGeneratedAt && currentGeneratedAt !== previousGeneratedAt) {
+      return true;
+    }
+    await sleep(REFRESH_POLL_INTERVAL_MS);
+  }
+  return false;
 }
 
 async function triggerRefresh() {
   if (elements.refreshButton?.disabled) {
     return;
   }
+  const previousGeneratedAt = latestInsightData?.generated_at || latestInsightData?.generatedAt || null;
   setRefreshLoading(true);
   try {
     const response = await fetch(`${API_BASE}/control/sync/peripheral-summary`, {
@@ -432,15 +591,13 @@ async function triggerRefresh() {
     return;
   }
 
-  if (pendingRefresh) {
-    clearTimeout(pendingRefresh);
+  const completed = await pollForInsightUpdate(previousGeneratedAt);
+  if (completed) {
+    window.location.reload();
+    return;
   }
-  pendingRefresh = setTimeout(() => {
-    loadInsight().finally(() => {
-      setRefreshLoading(false);
-      pendingRefresh = null;
-    });
-  }, 1500);
+  console.warn("Peripheral insight reasoning did not finish before timeout.");
+  setRefreshLoading(false);
 }
 
 function initLanguageSwitch() {
@@ -459,6 +616,7 @@ initLanguageSwitch();
 initActions();
 applyTranslations();
 loadInsight();
+loadHistory();
 
 
 window.applyTranslations = applyTranslations;

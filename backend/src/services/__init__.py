@@ -12,7 +12,7 @@ from .dollar_index_service import list_dollar_index, sync_dollar_index
 from .rmb_midpoint_service import list_rmb_midpoint_rates, sync_rmb_midpoint_rates
 from .futures_realtime_service import list_futures_realtime, sync_futures_realtime
 from .fed_statement_service import list_fed_statements, sync_fed_statements
-from .peripheral_summary_service import generate_peripheral_insight, get_latest_peripheral_insight
+from .peripheral_summary_service import generate_peripheral_insight, get_latest_peripheral_insight, list_peripheral_insight_history
 from .macro_leverage_service import list_macro_leverage_ratios, sync_macro_leverage_ratios
 from .social_financing_service import list_social_financing_ratios, sync_social_financing_ratios
 from .macro_cpi_service import list_macro_cpi, sync_macro_cpi

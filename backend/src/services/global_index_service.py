@@ -11,9 +11,9 @@ from typing import Dict, List, Optional
 import pandas as pd
 import tushare as ts
 
-from ..api_clients import GLOBAL_INDEX_COLUMN_MAP, fetch_yahoo_daily_history, fetch_yahoo_daily_history_range
+from ..api_clients import fetch_yahoo_daily_history, fetch_yahoo_daily_history_range
 from ..config.settings import AppSettings, load_settings
-from ..dao import GlobalIndexDAO, GlobalIndexHistoryDAO
+from ..dao import GlobalIndexHistoryDAO
 from ..dao.global_index_history_dao import GLOBAL_INDEX_HISTORY_FIELDS
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,12 @@ YAHOO_INDEX_SPECS: List[Dict[str, object]] = [
     {"symbol": "XIN9.FGI", "display_name": "富时中国A50指数", "seq": 6},
     {"symbol": "^STOXX50E", "display_name": "欧洲斯托克50指数", "seq": 7},
 ]
+
+
+def _resolve_settings(settings: Optional[AppSettings], settings_path: Optional[str]) -> AppSettings:
+    if settings is not None:
+        return settings
+    return load_settings(settings_path)
 
 
 def _display_name_for(symbol: str) -> Optional[str]:
@@ -260,40 +266,6 @@ def _fetch_ftse_a50_history_from_tushare(
     return normalized_df.reset_index(drop=True)
 
 
-def _prepare_global_index_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
-    if dataframe.empty:
-        return dataframe
-
-    frame = dataframe.copy()
-    numeric_columns = [
-        "latest_price",
-        "change_amount",
-        "change_percent",
-        "open_price",
-        "high_price",
-        "low_price",
-        "prev_close",
-        "amplitude",
-    ]
-    for column in numeric_columns:
-        if column in frame.columns:
-            frame[column] = pd.to_numeric(frame[column], errors="coerce")
-
-    if "seq" in frame.columns:
-        frame["seq"] = pd.to_numeric(frame["seq"], errors="coerce").astype("Int64")
-
-    if "last_quote_time" in frame.columns:
-        frame["last_quote_time"] = pd.to_datetime(frame["last_quote_time"], errors="coerce")
-
-    required_columns = list(GLOBAL_INDEX_COLUMN_MAP.values())
-    for column in required_columns:
-        if column not in frame.columns:
-            frame[column] = None
-    prepared = frame.loc[:, required_columns].copy()
-    prepared = prepared.dropna(subset=["code"])
-    return prepared.reset_index(drop=True)
-
-
 def _utc_now() -> datetime:
     return datetime.now(tz=_UTC)
 
@@ -357,6 +329,7 @@ def _build_snapshot_records(recent_rows: Dict[str, List[Dict[str, object]]]) -> 
                 "prev_close": prev_close,
                 "amplitude": amplitude,
                 "last_quote_time": last_quote_time,
+                "updated_at": last_quote_time,
             }
         )
     return records
@@ -366,7 +339,6 @@ def sync_global_indices(*, settings_path: Optional[str] = None) -> dict[str, obj
     started = time.perf_counter()
     settings = load_settings(settings_path)
     history_dao = GlobalIndexHistoryDAO(settings.postgres)
-    snapshot_dao = GlobalIndexDAO(settings.postgres)
 
     symbols = [spec["symbol"] for spec in YAHOO_INDEX_SPECS]
     latest_rows = history_dao.fetch_recent_rows(symbols, per_code=1)
@@ -439,10 +411,7 @@ def sync_global_indices(*, settings_path: Optional[str] = None) -> dict[str, obj
 
     recent_rows = history_dao.fetch_recent_rows(symbols, per_code=2)
     snapshot_records = _build_snapshot_records(recent_rows)
-    snapshot_frame = pd.DataFrame(snapshot_records)
-    prepared = _prepare_global_index_frame(snapshot_frame)
-    snapshot_dao.clear_table()
-    snapshot_rows = snapshot_dao.upsert(prepared)
+    snapshot_rows = len(snapshot_records)
 
     elapsed = time.perf_counter() - started
     codes = [record["code"] for record in snapshot_records]
@@ -471,14 +440,25 @@ def list_global_indices(
     limit: int = 200,
     offset: int = 0,
     settings_path: Optional[str] = None,
+    settings: Optional[AppSettings] = None,
 ) -> dict[str, object]:
-    settings = load_settings(settings_path)
-    dao = GlobalIndexDAO(settings.postgres)
-    result = dao.list_entries(limit=limit, offset=offset)
-    stats = dao.stats()
+    resolved_settings = _resolve_settings(settings, settings_path)
+    history_dao = GlobalIndexHistoryDAO(resolved_settings.postgres)
+    symbols = [spec["symbol"] for spec in YAHOO_INDEX_SPECS]
+    recent = history_dao.fetch_recent_rows(symbols, per_code=2)
+    snapshot_records = _build_snapshot_records(recent)
+    total = len(snapshot_records)
+    start = max(0, int(offset))
+    if start >= total:
+        items: List[Dict[str, object]] = []
+    else:
+        window = max(1, int(limit))
+        end = min(total, start + window)
+        items = snapshot_records[start:end]
+    stats = history_dao.stats()
     return {
-        "total": result.get("total", 0),
-        "items": result.get("items", []),
+        "total": total,
+        "items": items,
         "lastSyncedAt": stats.get("updated_at"),
     }
 
@@ -488,17 +468,18 @@ def list_global_index_history(
     code: str,
     limit: int = 260,
     settings_path: Optional[str] = None,
+    settings: Optional[AppSettings] = None,
 ) -> dict[str, object]:
     normalized_code = (code or "").strip()
     if not normalized_code:
         raise ValueError("code must be provided")
 
     limit_value = max(10, min(int(limit), 1000))
-    settings = load_settings(settings_path)
-    dao = GlobalIndexHistoryDAO(settings.postgres)
+    resolved_settings = _resolve_settings(settings, settings_path)
+    dao = GlobalIndexHistoryDAO(resolved_settings.postgres)
     rows = dao.list_history(normalized_code, limit=limit_value)
     if _is_ftse_symbol(normalized_code) and len(rows) <= 5:
-        ftse_df = _fetch_ftse_a50_history_from_tushare(settings, limit=limit_value)
+        ftse_df = _fetch_ftse_a50_history_from_tushare(resolved_settings, limit=limit_value)
         if not ftse_df.empty:
             dao.upsert(ftse_df)
             rows = dao.list_history(normalized_code, limit=limit_value)
@@ -518,5 +499,4 @@ __all__ = [
     "sync_global_indices",
     "list_global_indices",
     "list_global_index_history",
-    "_prepare_global_index_frame",
 ]

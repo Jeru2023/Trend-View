@@ -11,9 +11,9 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from backend.src.services.global_index_service import (  # noqa: E402
     _build_snapshot_records,
-    _prepare_global_index_frame,
     _normalize_history_rows,
     list_global_index_history,
+    list_global_indices,
 )
 
 
@@ -37,49 +37,6 @@ class GlobalIndexServiceTests(unittest.TestCase):
         self.assertAlmostEqual(latest["low_price"], 9.8)
         self.assertAlmostEqual(latest["close_price"], 11.0)
         self.assertEqual(latest["volume"], 123456.0)
-
-    def test_prepare_global_index_frame_normalizes_numeric_and_dates(self) -> None:
-        raw = pd.DataFrame(
-            [
-                {
-                    "seq": "1",
-                    "code": "DJI",
-                    "name": "道琼斯",
-                    "latest_price": "38000.12",
-                    "change_amount": "120.5",
-                    "change_percent": "0.31",
-                    "open_price": "37900",
-                    "high_price": "38100",
-                    "low_price": "37800",
-                    "prev_close": "37879.62",
-                    "amplitude": "0.76",
-                    "last_quote_time": "2025-10-31 15:30:00",
-                },
-                {
-                    "seq": "2",
-                    "code": "IXIC",
-                    "name": "纳斯达克",
-                    "latest_price": "15000.55",
-                    "change_amount": "-50.25",
-                    "change_percent": "-0.33",
-                    "open_price": "15040",
-                    "high_price": "15120",
-                    "low_price": "14980",
-                    "prev_close": "15050.80",
-                    "amplitude": "0.95",
-                    "last_quote_time": "2025-10-31 15:30:00",
-                },
-            ]
-        )
-
-        prepared = _prepare_global_index_frame(raw)
-
-        self.assertEqual(len(prepared), 2)
-        first = prepared.loc[0]
-        self.assertEqual(first["code"], "DJI")
-        self.assertAlmostEqual(first["latest_price"], 38000.12)
-        self.assertEqual(int(first["seq"]), 1)
-        self.assertIsInstance(first["last_quote_time"], (pd.Timestamp, datetime))
 
     def test_build_snapshot_records_calculates_change_fields(self) -> None:
         now = datetime(2025, 11, 12, tzinfo=timezone.utc)
@@ -140,6 +97,63 @@ class GlobalIndexServiceTests(unittest.TestCase):
         self.assertAlmostEqual(spx["change_percent"], (0.5 / expected_prev) * 100.0)
         self.assertAlmostEqual(spx["amplitude"], ((51.0 - 48.5) / expected_prev) * 100.0)
         self.assertEqual(spx["latest_price"], 50.0)
+
+    def test_list_global_indices_uses_history_rows(self) -> None:
+        first_date = datetime(2025, 11, 12)
+        second_date = datetime(2025, 11, 11)
+        rows = {
+            "^DJI": [
+                {
+                    "trade_date": first_date,
+                    "open_price": 99.0,
+                    "high_price": 101.0,
+                    "low_price": 98.5,
+                    "close_price": 100.0,
+                },
+                {
+                    "trade_date": second_date,
+                    "open_price": 97.0,
+                    "high_price": 99.0,
+                    "low_price": 96.5,
+                    "close_price": 98.0,
+                },
+            ],
+            "^GSPC": [
+                {
+                    "trade_date": first_date,
+                    "open_price": 49.0,
+                    "high_price": 50.5,
+                    "low_price": 48.8,
+                    "close_price": 50.0,
+                },
+                {
+                    "trade_date": second_date,
+                    "open_price": 48.0,
+                    "high_price": 49.1,
+                    "low_price": 47.5,
+                    "close_price": 48.5,
+                },
+            ],
+        }
+
+        with patch("backend.src.services.global_index_service.load_settings") as mock_settings, patch(
+            "backend.src.services.global_index_service.GlobalIndexHistoryDAO"
+        ) as mock_history:
+            mock_settings.return_value = SimpleNamespace(postgres=SimpleNamespace())
+            dao_instance = MagicMock()
+            dao_instance.fetch_recent_rows.return_value = rows
+            dao_instance.stats.return_value = {"count": 2, "updated_at": datetime(2025, 11, 12, tzinfo=timezone.utc)}
+            mock_history.return_value = dao_instance
+
+            result = list_global_indices(limit=1, offset=0)
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(len(result["items"]), 1)
+        first = result["items"][0]
+        self.assertEqual(first["code"], "^DJI")
+        self.assertEqual(first["latest_price"], 100.0)
+        self.assertIsNotNone(result["lastSyncedAt"])
+        dao_instance.fetch_recent_rows.assert_called_once()
 
     def test_list_global_index_history_backfills_change_values(self) -> None:
         rows = [

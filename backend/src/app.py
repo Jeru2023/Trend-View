@@ -45,7 +45,7 @@ from .dao import (
     PerformanceExpressDAO,
     PerformanceForecastDAO,
     ProfitForecastDAO,
-    GlobalIndexDAO,
+    GlobalIndexHistoryDAO,
     RealtimeIndexDAO,
     DollarIndexDAO,
     RmbMidpointDAO,
@@ -98,6 +98,7 @@ from .services import (
     list_futures_realtime,
     list_fed_statements,
     get_latest_peripheral_insight,
+    list_peripheral_insight_history,
     get_latest_macro_insight,
     list_macro_leverage_ratios,
     sync_macro_leverage_ratios,
@@ -2530,6 +2531,10 @@ class PeripheralInsightResponse(BaseModel):
     insight: Optional[PeripheralInsightRecord]
 
 
+class PeripheralInsightHistoryResponse(BaseModel):
+    items: List[PeripheralInsightRecord]
+
+
 class MacroInsightDatasetField(BaseModel):
     key: str
     label_key: str = Field(..., alias="labelKey")
@@ -4370,7 +4375,7 @@ async def _run_global_index_job(request: SyncGlobalIndexRequest) -> None:  # noq
         monitor.update("global_index", message="Syncing global index snapshot", progress=0.0)
         try:
             result = sync_global_indices()
-            stats = GlobalIndexDAO(load_settings().postgres).stats()
+            stats = GlobalIndexHistoryDAO(load_settings().postgres).stats()
             elapsed = time.perf_counter() - started
             total_rows = stats.get("count") if isinstance(stats, dict) else None
             if total_rows is None:
@@ -4923,6 +4928,11 @@ async def _run_peripheral_insight_job(request: SyncPeripheralInsightRequest) -> 
                 message="Peripheral insight snapshot generated",
                 finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
                 last_duration=elapsed,
+            )
+            logger.info(
+                "Peripheral insight reasoning completed in %.2fs (run_llm=%s)",
+                elapsed,
+                run_llm,
             )
         except Exception as exc:  # pragma: no cover - defensive
             elapsed = time.perf_counter() - started
@@ -8521,6 +8531,27 @@ def get_latest_peripheral_insight_api() -> PeripheralInsightResponse:
     return PeripheralInsightResponse(insight=payload)
 
 
+@app.get("/peripheral/insights/history", response_model=PeripheralInsightHistoryResponse)
+def list_peripheral_insight_history_api(
+    limit: int = Query(10, ge=1, le=100, description="Number of historical peripheral insight entries to return."),
+) -> PeripheralInsightHistoryResponse:
+    records = list_peripheral_insight_history(limit=limit)
+    items = [
+        PeripheralInsightRecord(
+            snapshotDate=entry.get("snapshot_date"),
+            generatedAt=entry.get("generated_at"),
+            metrics=entry.get("metrics") or {},
+            summary=entry.get("summary"),
+            rawResponse=entry.get("raw_response"),
+            model=entry.get("model"),
+            createdAt=entry.get("created_at"),
+            updatedAt=entry.get("updated_at"),
+        )
+        for entry in records
+    ]
+    return PeripheralInsightHistoryResponse(items=items)
+
+
 @app.get("/fund-flow/industry", response_model=IndustryFundFlowListResponse)
 def list_industry_fund_flow_entries(
     symbol: Optional[str] = Query(
@@ -9731,7 +9762,7 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect profit_forecast stats: %s", exc)
         stats_map["profit_forecast"] = {}
     try:
-        stats_map["global_index"] = GlobalIndexDAO(settings.postgres).stats()
+        stats_map["global_index"] = GlobalIndexHistoryDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect global_index stats: %s", exc)
         stats_map["global_index"] = {}

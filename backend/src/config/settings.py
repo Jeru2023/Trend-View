@@ -71,7 +71,6 @@ class PostgresSettings:
     performance_express_table: str
     performance_forecast_table: str
     profit_forecast_table: str
-    global_index_table: str
     global_index_history_table: str
     realtime_index_table: str
     industry_fund_flow_table: str
@@ -273,17 +272,14 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             performance_forecast_table=str(
                 postgres_config.get("performance_forecast_table", "performance_forecast")
             ),
-            global_index_table=str(
-                postgres_config.get("global_index_table", "global_indices")
+            profit_forecast_table=str(
+                postgres_config.get("profit_forecast_table", "profit_forecast")
             ),
             global_index_history_table=str(
                 postgres_config.get("global_index_history_table", "global_index_history")
             ),
             realtime_index_table=str(
                 postgres_config.get("realtime_index_table", "realtime_indices")
-            ),
-            profit_forecast_table=str(
-                postgres_config.get("profit_forecast_table", "profit_forecast")
             ),
             industry_fund_flow_table=str(
                 postgres_config.get("industry_fund_flow_table", "industry_fund_flow")

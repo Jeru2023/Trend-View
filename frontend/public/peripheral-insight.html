@@ -49,7 +49,7 @@
         <section class="page">
           <div class="peripheral-meta">
             <button class="primary-btn" id="peripheral-insight-refresh" data-i18n="refreshButton">
-              Refresh
+              Run reasoning
             </button>
             <span data-i18n="lastGeneratedLabel">Last generated</span>
             <strong id="peripheral-insight-generated">--</strong>
@@ -127,6 +127,23 @@
           </div>
 
           <div class="insight-warnings" id="peripheral-insight-warnings"></div>
+
+          <section class="insight-section">
+            <div class="insight-section__header">
+              <div>
+                <h2 class="insight-section__title" data-i18n="historyTitle">Recent Reasoning</h2>
+                <p class="insight-section__subtitle" data-i18n="historySubtitle">
+                  Review the latest LLM reasoning records for comparison and auditing.
+                </p>
+              </div>
+            </div>
+            <div
+              class="history-list"
+              id="peripheral-history-list"
+              data-empty-en="No historical records."
+              data-empty-zh="暂无历史推理记录。"
+            ></div>
+          </section>
         </section>
       </main>
     </div>

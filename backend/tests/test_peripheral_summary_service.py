@@ -37,33 +37,28 @@ def sample_settings():
 def patch_data_access(monkeypatch, sample_settings):
     now = datetime.now() - timedelta(minutes=5)
 
-    class DummyGlobalDAO:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def list_entries(self, limit=200):  # noqa: D401
-            items = []
-            for idx, spec in enumerate(peripheral_summary_service.GLOBAL_INDEX_TARGETS.values(), start=1):
-                direction = 1 if idx % 2 else -1
-                items.append(
-                    {
-                        "code": spec["codes"][0],
-                        "name": spec["display_name"],
-                        "latest_price": 1000.0 + idx * 100,
-                        "change_amount": direction * 10.0,
-                        "change_percent": direction * 0.5,
-                        "high_price": 1010.0 + idx * 100,
-                        "low_price": 990.0 + idx * 100,
-                        "last_quote_time": now - timedelta(minutes=idx),
-                    }
-                )
-            return {"items": items}
+    snapshot_items = []
+    for idx, spec in enumerate(peripheral_summary_service.GLOBAL_INDEX_TARGETS.values(), start=1):
+        direction = 1 if idx % 2 else -1
+        snapshot_items.append(
+            {
+                "code": spec["codes"][0],
+                "name": spec["display_name"],
+                "seq": idx,
+                "latest_price": 1000.0 + idx * 100,
+                "change_amount": direction * 10.0,
+                "change_percent": direction * 0.5,
+                "high_price": 1010.0 + idx * 100,
+                "low_price": 990.0 + idx * 100,
+                "last_quote_time": now - timedelta(minutes=idx),
+            }
+        )
 
     class DummyDollarDAO:
         def __init__(self, *_args, **_kwargs):
             pass
 
-        def list_entries(self, limit=2):
+        def list_entries(self, limit=10):
             return {
                 "items": [
                     {
@@ -88,7 +83,7 @@ def patch_data_access(monkeypatch, sample_settings):
         def __init__(self, *_args, **_kwargs):
             pass
 
-        def list_entries(self, limit=1):
+        def list_entries(self, limit=10):
             return {
                 "items": [
                     {
@@ -142,18 +137,48 @@ def patch_data_access(monkeypatch, sample_settings):
                 ]
             }
 
+    class DummyFedDAO:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def list_entries(self, limit=3):
+            return {
+                "items": [
+                    {
+                        "title": "FOMC statement",
+                        "url": "https://fed.test/stmt",
+                        "statement_date": date.today(),
+                        "content": "Policy unchanged",
+                        "raw_text": "Policy unchanged",
+                        "updated_at": now,
+                    }
+                ]
+            }
+
     dummy_dao = DummyInsightDAO()
 
     monkeypatch.setattr(peripheral_summary_service, "load_settings", lambda *_args, **_kwargs: sample_settings)
-    monkeypatch.setattr(peripheral_summary_service, "GlobalIndexDAO", DummyGlobalDAO)
+    monkeypatch.setattr(
+        peripheral_summary_service,
+        "list_global_indices",
+        lambda limit=200, offset=0, settings=None: {
+            "total": len(snapshot_items),
+            "items": snapshot_items[:limit],
+            "lastSyncedAt": now,
+        },
+    )
     monkeypatch.setattr(peripheral_summary_service, "DollarIndexDAO", DummyDollarDAO)
     monkeypatch.setattr(peripheral_summary_service, "RmbMidpointDAO", DummyRmbDAO)
     monkeypatch.setattr(peripheral_summary_service, "FuturesRealtimeDAO", DummyFuturesDAO)
+    monkeypatch.setattr(peripheral_summary_service, "FedStatementDAO", DummyFedDAO)
     monkeypatch.setattr(peripheral_summary_service, "PeripheralInsightDAO", lambda *_args, **_kwargs: dummy_dao)
     monkeypatch.setattr(
         peripheral_summary_service,
         "list_global_index_history",
-        lambda code, limit=10: {"code": code, "items": [{"trade_date": date.today(), "close_price": 100.0}]},
+        lambda code, limit=10, settings=None: {
+            "code": code,
+            "items": [{"trade_date": date.today(), "close_price": 100.0}],
+        },
     )
 
     return dummy_dao
@@ -163,12 +188,17 @@ def test_generate_peripheral_insight_without_llm(patch_data_access):
     result = peripheral_summary_service.generate_peripheral_insight(run_llm=False)
 
     assert result["summary"] is None
-    assert result["metrics"]["globalIndices"]
+    metrics = result["metrics"]
+    assert metrics["globalIndices"]
     assert patch_data_access.last_payload is not None
     payload = patch_data_access.last_payload
     assert payload["summary"] is None
-    assert payload["metrics"]["dollarIndex"]["close"] == 105.5
-    assert payload["metrics"]["rmbMidpoint"]["rates"]["USD"]
-    assert len(payload["metrics"]["globalIndices"]) == len(peripheral_summary_service.GLOBAL_INDEX_TARGETS)
-    assert payload["metrics"]["globalIndicesHistory"]
-    assert not payload["metrics"]["warnings"]
+    assert metrics["dollarIndex"]["close"] == 105.5
+    assert metrics["dollarIndexSeries"]
+    assert metrics["rmbMidpoint"]["rates"]["USD"]
+    assert metrics["rmbMidpointSeries"]
+    assert metrics["fedStatements"]
+    assert metrics["globalIndicesLatestTimestamp"]
+    assert len(metrics["globalIndices"]) == len(peripheral_summary_service.GLOBAL_INDEX_TARGETS)
+    assert metrics["globalIndicesHistory"]
+    assert not metrics["warnings"]

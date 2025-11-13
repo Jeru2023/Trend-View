@@ -5,7 +5,7 @@ Helpers for fetching Federal Reserve Board press releases.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Dict, List, Optional
 
 import requests
@@ -85,6 +85,50 @@ def _parse_press_release_listing(html: str, *, limit: int = 5) -> List[Dict[str,
     return results
 
 
+def _parse_fomc_press_release_listing(year: int, *, limit: int = 10) -> List[Dict[str, str]]:
+    """
+    Parse the yearly FOMC press release archive for monetary policy statements.
+    """
+
+    url = f"{FED_BASE_URL}/newsevents/pressreleases/{year}-press-fomc.htm"
+    html = _request_html(url)
+    if not html:
+        return []
+
+    soup = BeautifulSoup(html, "html.parser")
+    container = soup.find("div", class_="col-md-8")
+    if not container:
+        return []
+
+    rows = container.find_all("div", class_="row")
+    results: List[Dict[str, str]] = []
+    for row in rows:
+        time_tag = row.find("time")
+        link_tag = row.find("a")
+        if not link_tag:
+            continue
+
+        href = (link_tag.get("href") or "").strip()
+        url_value = _absolute_url(href) if href else ""
+        if not url_value:
+            continue
+
+        published = time_tag.get_text(strip=True) if time_tag else ""
+        title = link_tag.get_text(strip=True)
+
+        results.append(
+            {
+                "title": title,
+                "url": url_value,
+                "publishedText": published,
+            }
+        )
+        if len(results) >= limit:
+            break
+
+    return results
+
+
 def _is_within_share_menu(node: Optional[Tag]) -> bool:
     while node is not None:
         classes = node.get("class") or []
@@ -138,19 +182,41 @@ def _parse_published_date(text: str) -> Optional[date]:
 
 def fetch_fed_press_releases(limit: int = 5) -> List[Dict[str, object]]:
     """
-    Fetch the latest Federal Reserve press releases and extract their content.
+    Fetch the latest Federal Reserve and FOMC press releases with full content.
     """
-    listing_html = _request_html(FED_NEWS_URL)
-    if not listing_html:
+    if limit <= 0:
         return []
 
-    entries = _parse_press_release_listing(listing_html, limit=limit)
-    if not entries:
-        logger.warning("Fed press release listing returned no entries.")
-        return []
+    listing_html = _request_html(FED_NEWS_URL)
+    general_entries: List[Dict[str, str]] = []
+    if listing_html:
+        general_entries = _parse_press_release_listing(listing_html, limit=max(limit, 10))
+    else:
+        logger.warning("Fed press release listing fetch returned no HTML.")
+
+    now = datetime.now()
+    fomc_entries: List[Dict[str, str]] = []
+    for year in (now.year, now.year - 1):
+        fomc_entries.extend(_parse_fomc_press_release_listing(year, limit=max(limit, 10)))
+        if len(fomc_entries) >= max(limit, 10):
+            break
+
+    combined: Dict[str, Dict[str, str]] = {}
+    for item in general_entries + fomc_entries:
+        url = (item.get("url") or "").strip()
+        if not url or url in combined:
+            continue
+        combined[url] = item
+
+    def sort_key(entry: Dict[str, str]) -> tuple[date, str]:
+        parsed = _parse_published_date(entry.get("publishedText", ""))
+        return (parsed or date.min, entry.get("url", ""))
+
+    ordered = sorted(combined.values(), key=sort_key, reverse=True)
+    selected = ordered[:limit]
 
     results: List[Dict[str, object]] = []
-    for position, item in enumerate(entries, start=1):
+    for position, item in enumerate(selected, start=1):
         url = item.get("url")
         detail_html = _request_html(url) if url else None
         detail: Dict[str, str] = {}
