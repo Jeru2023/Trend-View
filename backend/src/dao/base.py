@@ -7,9 +7,10 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, Iterator, Sequence
+from typing import Iterable, Iterator, Sequence, Optional
 
 import math
+import re
 
 import pandas as pd
 import psycopg2
@@ -20,6 +21,10 @@ from ..config.settings import PostgresSettings
 
 DEFAULT_CONNECT_TIMEOUT = 3
 DEFAULT_APPLICATION_NAME = "trend_view_backend"
+_ADD_COLUMN_PATTERN = re.compile(
+    r"ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+\"?([A-Za-z0-9_]+)\"?",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,18 @@ class PostgresDAOBase:
                 )
             )
 
+        def _load_existing_columns() -> set[str]:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = %s AND table_name = %s
+                    """,
+                    (schema_name, table_name),
+                )
+                return {row[0].lower() for row in cur.fetchall()}
+
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -135,19 +152,33 @@ class PostgresDAOBase:
             )
             table_exists = cur.fetchone() is not None
 
+        existing_columns: set[str] = _load_existing_columns() if table_exists else set()
+
         rendered_sql = table_sql.as_string(conn)
         statements = [stmt.strip() for stmt in rendered_sql.split(";") if stmt.strip()]
 
         for statement in statements:
-            upper_stmt = statement.lstrip().upper()
+            stripped_statement = statement.lstrip()
+            upper_stmt = stripped_statement.upper()
             if table_exists and upper_stmt.startswith("CREATE TABLE"):
                 continue
+
+            pending_column_update: Optional[str] = None
+            if table_exists and upper_stmt.startswith("ALTER TABLE"):
+                match = _ADD_COLUMN_PATTERN.search(statement)
+                if match:
+                    column_name = match.group(1).strip('"').lower()
+                    if column_name in existing_columns:
+                        continue
+                    pending_column_update = column_name
+
             try:
                 with conn.cursor() as cur:
                     cur.execute(statement)
             except (errors.UniqueViolation, errors.DuplicateTable, errors.DuplicateObject):
                 conn.rollback()
                 table_exists = True
+                existing_columns = _load_existing_columns()
                 continue
             except Exception:
                 conn.rollback()
@@ -155,6 +186,9 @@ class PostgresDAOBase:
             else:
                 if upper_stmt.startswith("CREATE TABLE"):
                     table_exists = True
+                    existing_columns = _load_existing_columns()
+                elif pending_column_update:
+                    existing_columns.add(pending_column_update)
 
     @staticmethod
     def _upsert_dataframe(

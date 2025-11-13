@@ -67,7 +67,6 @@ class SyncMonitor:
             "peripheral_insight": JobProgress(),
             "macro_aggregate": JobProgress(),
             "fund_flow_aggregate": JobProgress(),
-            "market_overview": JobProgress(),
             "market_insight": JobProgress(),
             "sector_insight": JobProgress(),
             "industry_fund_flow": JobProgress(),
@@ -247,7 +246,14 @@ class SyncMonitor:
         with self._lock:
             state = self._get(job)
             state.status = "success" if success else "failed"
-            completed_at = finished_at or _local_now()
+            completed_at_value = finished_at or _local_now()
+            if isinstance(completed_at_value, str):
+                try:
+                    completed_at = datetime.fromisoformat(completed_at_value)
+                except ValueError:
+                    completed_at = _local_now()
+            else:
+                completed_at = completed_at_value
             if completed_at.tzinfo is not None:
                 completed_at = completed_at.astimezone(LOCAL_TZ).replace(tzinfo=None)
             state.finished_at = completed_at

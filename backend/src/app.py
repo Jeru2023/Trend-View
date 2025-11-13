@@ -11,6 +11,8 @@ import math
 import logging
 import time
 import re
+import secrets
+import threading
 from datetime import date, datetime, timedelta
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union, Set
 
@@ -36,7 +38,7 @@ from .dao import (
     DailyTradeMetricsDAO,
     FinancialIndicatorDAO,
     NewsArticleDAO,
-    NewsMarketInsightDAO,
+    MarketInsightDAO,
     NewsSectorInsightDAO,
     IndexHistoryDAO,
     TradeCalendarDAO,
@@ -77,7 +79,6 @@ from .dao import (
     StockBasicDAO,
     StockMainBusinessDAO,
     StockMainCompositionDAO,
-    MarketOverviewInsightDAO,
 )
 from .services import (
     get_stock_detail,
@@ -162,6 +163,8 @@ from .services import (
     collect_recent_market_headlines,
     get_latest_market_insight,
     list_market_insights,
+    MARKET_INSIGHT_STAGE_ORDER,
+    MARKET_INSIGHT_STAGE_TITLES,
     collect_recent_sector_headlines,
     build_sector_group_snapshot,
     generate_sector_insight_summary,
@@ -220,7 +223,6 @@ from .services import (
     list_macro_insight_history,
     generate_macro_insight,
     build_market_overview_payload,
-    generate_market_overview_reasoning,
     list_investment_journal_entries,
     get_investment_journal_entry,
     upsert_investment_journal_entry,
@@ -240,6 +242,33 @@ INTEGRATED_TRADE_DAYS_DEFAULT = 10
 
 scheduler = AsyncIOScheduler(timezone=LOCAL_TZ)
 scheduler_loop: Optional[asyncio.AbstractEventLoop] = None
+
+_active_job_tokens: Dict[str, str] = {}
+_job_token_lock = threading.Lock()
+MARKET_INSIGHT_STAGE_COLUMN_MAP = {
+    "index_analysis": "index_stage",
+    "fund_flow_analysis": "fund_stage",
+    "sentiment_analysis": "sentiment_stage",
+    "macro_analysis": "macro_stage",
+    "news_analysis": "news_stage",
+}
+
+
+def _assign_job_token(job: str) -> str:
+    token = secrets.token_hex(16)
+    with _job_token_lock:
+        _active_job_tokens[job] = token
+    return token
+
+
+def _clear_job_token(job: str) -> None:
+    with _job_token_lock:
+        _active_job_tokens.pop(job, None)
+
+
+def _job_token_matches(job: str, token: str) -> bool:
+    with _job_token_lock:
+        return _active_job_tokens.get(job) == token
 
 
 def _parse_time_string(value: str) -> Tuple[int, int]:
@@ -1030,11 +1059,8 @@ class SyncSectorInsightRequest(BaseModel):
         allow_population_by_field_name = True
 
 
-class SyncMarketOverviewRequest(BaseModel):
-    run_llm: bool = Field(True, alias="runLLM")
-
-    class Config:
-        allow_population_by_field_name = True
+class ResetJobRequest(BaseModel):
+    job: str = Field(..., description="Job key to reset (e.g., market_insight)")
 
 
 class SyncIndexHistoryRequest(BaseModel):
@@ -1071,6 +1097,7 @@ class MarketInsightSummaryPayload(BaseModel):
     window_end: datetime = Field(..., alias="windowEnd")
     headline_count: int = Field(..., alias="headlineCount")
     summary: Optional[Dict[str, Any]] = None
+    stages: List["MarketInsightStagePayload"] = Field(default_factory=list)
     raw_response: Optional[str] = Field(None, alias="rawResponse")
     prompt_tokens: Optional[int] = Field(None, alias="promptTokens")
     completion_tokens: Optional[int] = Field(None, alias="completionTokens")
@@ -1088,6 +1115,28 @@ class MarketInsightResponse(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+
+
+class MarketInsightStagePayload(BaseModel):
+    stage: str
+    title: Optional[str] = None
+    status: str
+    started_at: Optional[datetime] = Field(None, alias="startedAt")
+    finished_at: Optional[datetime] = Field(None, alias="finishedAt")
+    analysis: Optional[str] = None
+    highlights: Optional[List[str]] = None
+    bias: Optional[str] = None
+    confidence: Optional[float] = None
+    key_metrics: Optional[List[Dict[str, Any]]] = Field(None, alias="keyMetrics")
+    error: Optional[str] = None
+    usage: Optional[Dict[str, Any]] = None
+    order: Optional[int] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+MarketInsightSummaryPayload.update_forward_refs(MarketInsightStagePayload=MarketInsightStagePayload)
 
 
 class SectorInsightGroupArticle(BaseModel):
@@ -2627,13 +2676,6 @@ class MarketOverviewResponse(BaseModel):
         allow_population_by_field_name = True
 
 
-class MarketOverviewReasonRequest(BaseModel):
-    run_llm: bool = Field(True, alias="runLLM")
-
-    class Config:
-        allow_population_by_field_name = True
-
-
 class InvestmentJournalEntryPayload(BaseModel):
     review_html: Optional[str] = Field(None, alias="reviewHtml")
     plan_html: Optional[str] = Field(None, alias="planHtml")
@@ -3956,92 +3998,83 @@ async def _run_finance_breakfast_job(request: SyncFinanceBreakfastRequest) -> No
             logger.error("Finance breakfast sync failed: %s", error_message)
 
     await loop.run_in_executor(None, job)
-async def _run_market_overview_job(request: SyncMarketOverviewRequest) -> None:
+class JobCancelledError(RuntimeError):
+    """Raised when a long-running job is cancelled by the user."""
+
+
+async def _run_market_insight_job(request: SyncMarketInsightRequest, run_token: str) -> None:
     loop = asyncio.get_running_loop()
 
     def job() -> None:
         started = time.perf_counter()
-        monitor.update(
-            "market_overview",
-            progress=0.2,
-            message="Building market overview snapshot",
+        logger.info(
+            "Market insight job started (lookback=%sh, article_limit=%s)",
+            request.lookback_hours,
+            request.article_limit,
         )
-        try:
-            result = generate_market_overview_reasoning(run_llm=request.run_llm)
-            elapsed = time.perf_counter() - started
-            generated_at = result.get("generatedAt")
-            finished_at = _parse_datetime(generated_at) or _local_now()
-            llm_flag = " with LLM" if request.run_llm else ""
-            monitor.update(
-                "market_overview",
-                progress=1.0,
-                message=f"Market overview refreshed{llm_flag}",
-            )
-            monitor.finish(
-                "market_overview",
-                success=True,
-                total_rows=1,
-                message=f"Market overview refreshed{llm_flag}",
-                finished_at=finished_at,
-                last_duration=elapsed,
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            elapsed = time.perf_counter() - started
-            error_message = str(exc)
-            monitor.finish(
-                "market_overview",
-                success=False,
-                message=error_message,
-                error=error_message,
-                last_duration=elapsed,
-            )
-            logger.error("Market overview generation failed: %s", error_message)
-
-    await loop.run_in_executor(None, job)
-
-
-async def _run_market_insight_job(request: SyncMarketInsightRequest) -> None:
-    loop = asyncio.get_running_loop()
-
-    def job() -> None:
-        started = time.perf_counter()
         monitor.update(
             "market_insight",
             progress=0.1,
             message="Collecting market-impact headlines",
         )
+
+        def _ensure_active() -> None:
+            if not _job_token_matches("market_insight", run_token):
+                raise JobCancelledError("Market insight job cancelled")
+
+        def _progress_callback(progress: float, message: str) -> None:
+            _ensure_active()
+            monitor.update("market_insight", progress=progress, message=message)
+
         try:
+            _ensure_active()
             result = generate_market_insight_summary(
                 lookback_hours=request.lookback_hours,
                 limit=request.article_limit,
+                progress_callback=_progress_callback,
             )
             elapsed = time.perf_counter() - started
             headline_count = int(result.get("headline_count", 0) or 0)
             generated_at = result.get("generated_at")
-            monitor.update(
-                "market_insight",
-                progress=1.0,
-                message=f"Generated summary from {headline_count} headlines",
-            )
-            monitor.finish(
-                "market_insight",
-                success=True,
-                total_rows=headline_count,
-                message=f"Generated summary from {headline_count} headlines",
-                finished_at=generated_at,
-                last_duration=elapsed,
-            )
+            if _job_token_matches("market_insight", run_token):
+                monitor.update(
+                    "market_insight",
+                    progress=1.0,
+                    message=f"Generated summary from {headline_count} headlines",
+                )
+                monitor.finish(
+                    "market_insight",
+                    success=True,
+                    total_rows=headline_count,
+                    message=f"Generated summary from {headline_count} headlines",
+                    finished_at=generated_at,
+                    last_duration=elapsed,
+                )
+                logger.info(
+                    "Market insight job finished in %.2fs (summary_id=%s, headlines=%s)",
+                    elapsed,
+                    result.get("summary_id"),
+                    headline_count,
+                )
+            else:
+                logger.info("Market insight job result discarded because it was cancelled")
+        except JobCancelledError:
+            elapsed = time.perf_counter() - started
+            logger.warning("Market insight job cancelled after %.2fs", elapsed)
         except Exception as exc:  # pragma: no cover - defensive
             elapsed = time.perf_counter() - started
             error_message = str(exc)
-            monitor.finish(
-                "market_insight",
-                success=False,
-                message=error_message,
-                error=error_message,
-                last_duration=elapsed,
-            )
+            if _job_token_matches("market_insight", run_token):
+                monitor.finish(
+                    "market_insight",
+                    success=False,
+                    message=error_message,
+                    error=error_message,
+                    last_duration=elapsed,
+                )
             logger.error("Market insight generation failed: %s", error_message)
+        finally:
+            _clear_job_token("market_insight")
 
     await loop.run_in_executor(None, job)
 
@@ -5869,6 +5902,7 @@ def _job_running(job: str) -> bool:
         elapsed = (datetime.now(LOCAL_TZ).replace(tzinfo=None) - started_at).total_seconds()
         if elapsed > 300:  # auto-reset after 5 minutes
             logger.warning("Job %s marked stale after %.0f seconds; resetting status", job, elapsed)
+            _clear_job_token(job)
             monitor.finish(
                 job,
                 success=False,
@@ -5879,6 +5913,7 @@ def _job_running(job: str) -> bool:
             return False
     else:
         logger.warning("Job %s marked stale (missing start timestamp); resetting status", job)
+        _clear_job_token(job)
         monitor.finish(
             job,
             success=False,
@@ -5973,20 +6008,13 @@ async def start_performance_forecast_job(payload: SyncPerformanceForecastRequest
     asyncio.create_task(_run_performance_forecast_job(payload))
 
 
-async def start_market_overview_job(payload: SyncMarketOverviewRequest) -> None:
-    if _job_running("market_overview"):
-        raise HTTPException(status_code=409, detail="Market overview job already running")
-    monitor.start("market_overview", message="Generating market overview insight")
-    monitor.update("market_overview", progress=0.0)
-    asyncio.create_task(_run_market_overview_job(payload))
-
-
 async def start_market_insight_job(payload: SyncMarketInsightRequest) -> None:
     if _job_running("market_insight"):
         raise HTTPException(status_code=409, detail="Market insight job already running")
     monitor.start("market_insight", message="Generating market insight summary")
     monitor.update("market_insight", progress=0.0)
-    asyncio.create_task(_run_market_insight_job(payload))
+    run_token = _assign_job_token("market_insight")
+    asyncio.create_task(_run_market_insight_job(payload, run_token))
 
 
 async def start_sector_insight_job(payload: SyncSectorInsightRequest) -> None:
@@ -6799,13 +6827,6 @@ async def safe_start_global_flash_job(payload: SyncGlobalFlashRequest) -> None:
         await start_global_flash_job(payload)
     except HTTPException as exc:
         logger.info("Global flash sync skipped: %s", exc.detail)
-
-
-async def safe_start_market_overview_job(payload: SyncMarketOverviewRequest) -> None:
-    try:
-        await start_market_overview_job(payload)
-    except HTTPException as exc:
-        logger.info("Market overview job skipped: %s", exc.detail)
 
 
 async def safe_start_market_insight_job(payload: SyncMarketInsightRequest) -> None:
@@ -8311,145 +8332,6 @@ def get_market_overview() -> MarketOverviewResponse:
     return MarketOverviewResponse(**payload)
 
 
-@app.post("/market/overview/reason")
-def stream_market_overview_reasoning(payload: MarketOverviewReasonRequest) -> StreamingResponse:
-    bias_map = {
-        "bullish": "偏多",
-        "neutral": "中性",
-        "bearish": "偏空",
-    }
-
-    def format_summary(summary_payload: Any, raw_text: Optional[str]) -> List[str]:
-        parsed_summary: Optional[Dict[str, Any]] = None
-        if isinstance(summary_payload, dict):
-            parsed_summary = summary_payload
-        elif isinstance(summary_payload, str) and summary_payload.strip():
-            try:
-                parsed_summary = json.loads(summary_payload)
-            except (TypeError, json.JSONDecodeError):
-                parsed_summary = None
-        elif raw_text and raw_text.strip():
-            try:
-                parsed_summary = json.loads(raw_text)
-            except (TypeError, json.JSONDecodeError):
-                parsed_summary = None
-
-        lines: List[str] = []
-
-        def _stringify_point(value: Any) -> str:
-            if isinstance(value, dict):
-                title = value.get("title") or value.get("name")
-                detail = value.get("detail") or value.get("description") or value.get("value")
-                if title and detail:
-                    return f"{title} - {detail}"
-                if detail:
-                    return str(detail)
-                if title:
-                    return str(title)
-                try:
-                    return json.dumps(value, ensure_ascii=False)
-                except TypeError:
-                    return str(value)
-            if isinstance(value, (list, tuple)):
-                joined = "；".join(str(item) for item in value if item is not None)
-                return joined or "--"
-            return str(value)
-
-        if parsed_summary:
-            bias = parsed_summary.get("bias")
-            confidence = parsed_summary.get("confidence")
-            if bias or confidence is not None:
-                confidence_display = ""
-                if confidence is not None:
-                    try:
-                        confidence_value = float(confidence)
-                        if 0 <= confidence_value <= 1.2:
-                            confidence_display = f"{confidence_value * 100:.0f}%"
-                        else:
-                            confidence_display = f"{confidence_value:.0f}%"
-                    except (TypeError, ValueError):
-                        confidence_display = str(confidence)
-                bias_label = bias_map.get(bias, str(bias or "--"))
-                if confidence_display:
-                    lines.append(f"【倾向】{bias_label} · 置信度 {confidence_display}")
-                else:
-                    lines.append(f"【倾向】{bias_label}")
-                lines.append("")
-
-            overview = parsed_summary.get("summary")
-            if overview:
-                lines.append("【总结】")
-                if isinstance(overview, (list, tuple)):
-                    for item in overview:
-                        lines.append(str(item))
-                else:
-                    lines.extend(str(overview).splitlines())
-                lines.append("")
-
-            signals = parsed_summary.get("key_signals") or []
-            if signals:
-                lines.append("【关键信号】")
-                for idx, item in enumerate(signals, start=1):
-                    if isinstance(item, dict):
-                        title = item.get("title") or item.get("name") or f"信号{idx}"
-                        detail = item.get("detail") or item.get("description") or item.get("value") or ""
-                        detail_text = detail.strip() if isinstance(detail, str) else str(detail)
-                        if detail_text:
-                            lines.append(f"{idx}. {title} - {detail_text}")
-                        else:
-                            lines.append(f"{idx}. {title}")
-                    else:
-                        lines.append(f"{idx}. {_stringify_point(item)}")
-                lines.append("")
-
-            suggestion = parsed_summary.get("position_suggestion")
-            if suggestion:
-                lines.append("【仓位建议】")
-                if isinstance(suggestion, (list, tuple)):
-                    for item in suggestion:
-                        lines.append(str(item))
-                else:
-                    lines.extend(str(suggestion).splitlines())
-                lines.append("")
-
-            risks = parsed_summary.get("risks") or []
-            if risks:
-                lines.append("【风险提示】")
-                for risk in risks:
-                    lines.append(f"- {_stringify_point(risk)}")
-                lines.append("")
-
-        if not lines:
-            fallback = raw_text or (summary_payload if isinstance(summary_payload, str) else "")
-            fallback_text = str(fallback or "").strip()
-            if fallback_text:
-                lines = fallback_text.splitlines()
-            else:
-                lines = ["暂无推理输出。"]
-
-        return lines
-
-    def stream_generator():
-        result = generate_market_overview_reasoning(run_llm=payload.run_llm)
-        model_name = result.get("model")
-        summary_payload = result.get("summary")
-        raw_text = result.get("rawText")
-        generated_at = result.get("generatedAt")
-
-        header_lines: List[str] = []
-        if model_name:
-            header_lines.append(f"模型: {model_name}")
-        if generated_at:
-            header_lines.append(f"推理时间: {generated_at}")
-        if header_lines:
-            yield " · ".join(header_lines) + "\n\n"
-
-        for line in format_summary(summary_payload, raw_text):
-            yield line + "\n"
-
-    return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")
-
-
 @app.get("/journal/entries", response_model=List[InvestmentJournalEntryResponse])
 def list_investment_journal_entries_api(
     start_date: Optional[date] = Query(
@@ -9953,16 +9835,7 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect trade_calendar stats: %s", exc)
         stats_map["trade_calendar"] = {}
     try:
-        stats_map["market_overview"] = MarketOverviewInsightDAO(settings.postgres).stats()
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Failed to collect market_overview stats: %s", exc)
-        stats_map["market_overview"] = {}
-    else:
-        stats = stats_map["market_overview"]
-        if isinstance(stats, dict) and "latest" in stats and "updated_at" not in stats:
-            stats["updated_at"] = stats.get("latest")
-    try:
-        stats_map["market_insight"] = NewsMarketInsightDAO(settings.postgres).stats()
+        stats_map["market_insight"] = MarketInsightDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect market_insight stats: %s", exc)
         stats_map["market_insight"] = {}
@@ -10132,6 +10005,17 @@ def _build_market_insight_payload(summary: Dict[str, object]) -> Dict[str, objec
     if isinstance(elapsed_ms, (int, float)):
         elapsed_seconds = float(elapsed_ms) / 1000.0
 
+    stage_payloads: List[MarketInsightStagePayload] = []
+    for order, stage_key in enumerate(MARKET_INSIGHT_STAGE_ORDER):
+        column = MARKET_INSIGHT_STAGE_COLUMN_MAP.get(stage_key)
+        stage_payloads.append(
+            _build_market_insight_stage_payload(
+                stage_key,
+                summary.get(column),
+                order,
+            )
+        )
+
     summary_payload = MarketInsightSummaryPayload(
         summaryId=str(summary.get("summary_id")),
         generatedAt=generated_at or _local_now(),
@@ -10139,6 +10023,7 @@ def _build_market_insight_payload(summary: Dict[str, object]) -> Dict[str, objec
         windowEnd=window_end or generated_at or _local_now(),
         headlineCount=int(summary.get("headline_count") or 0),
         summary=summary_json,
+        stages=stage_payloads,
         rawResponse=summary.get("raw_response"),
         promptTokens=summary.get("prompt_tokens"),
         completionTokens=summary.get("completion_tokens"),
@@ -10151,6 +10036,43 @@ def _build_market_insight_payload(summary: Dict[str, object]) -> Dict[str, objec
         "summary": summary_payload,
         "articles": articles,
     }
+
+
+def _build_market_insight_stage_payload(
+    stage_key: str,
+    raw_stage: Optional[object],
+    order: int,
+) -> MarketInsightStagePayload:
+    stage_title = MARKET_INSIGHT_STAGE_TITLES.get(stage_key)
+    stage_data = raw_stage
+    if isinstance(stage_data, str):
+        try:
+            stage_data = json.loads(stage_data)
+        except json.JSONDecodeError:
+            stage_data = None
+    if isinstance(stage_data, dict):
+        result_block = stage_data.get("result") or {}
+        return MarketInsightStagePayload(
+            stage=stage_data.get("stage") or stage_key,
+            title=stage_data.get("title") or stage_title,
+            status=stage_data.get("status") or "pending",
+            startedAt=_localize_datetime(stage_data.get("started_at")),
+            finishedAt=_localize_datetime(stage_data.get("finished_at")),
+            analysis=result_block.get("analysis"),
+            highlights=result_block.get("highlights") or None,
+            bias=result_block.get("bias"),
+            confidence=result_block.get("confidence"),
+            keyMetrics=result_block.get("key_metrics") or None,
+            error=stage_data.get("error"),
+            usage=stage_data.get("usage"),
+            order=order,
+        )
+    return MarketInsightStagePayload(
+        stage=stage_key,
+        title=stage_title,
+        status="pending",
+        order=order,
+    )
 
 
 def _journal_entry_to_payload(entry: Optional[Dict[str, object]]) -> Optional[InvestmentJournalEntryResponse]:
@@ -10249,18 +10171,27 @@ def _build_sector_insight_response(
 
     return SectorInsightResponse(summary=summary_payload, snapshot=snapshot_payload)
 
-
-
-@app.post("/control/sync/market-overview")
-async def control_sync_market_overview(payload: SyncMarketOverviewRequest) -> dict[str, str]:
-    await start_market_overview_job(payload)
-    return {"status": "started"}
-
-
 @app.post("/control/sync/market-insight")
 async def control_sync_market_insight(payload: SyncMarketInsightRequest) -> dict[str, str]:
     await start_market_insight_job(payload)
     return {"status": "started"}
+
+
+@app.post("/control/reset-job")
+async def control_reset_job(payload: ResetJobRequest) -> dict[str, str]:
+    job = payload.job
+    if job != "market_insight":
+        raise HTTPException(status_code=400, detail="Unsupported job reset target.")
+    _clear_job_token(job)
+    monitor.finish(
+        job,
+        success=False,
+        message="Job reset by user",
+        error="job reset by user",
+        last_duration=0.0,
+    )
+    logger.warning("Job %s manually reset by user request", job)
+    return {"status": "reset"}
 
 
 @app.post("/control/sync/sector-insight")
@@ -10587,7 +10518,7 @@ def control_debug_stats() -> dict[str, object]:
             "fundamental_metrics": FundamentalMetricsDAO(settings.postgres).stats(),
             "stock_main_business": StockMainBusinessDAO(settings.postgres).stats(),
             "stock_main_composition": StockMainCompositionDAO(settings.postgres).stats(),
-            "market_insight": NewsMarketInsightDAO(settings.postgres).stats(),
+            "market_insight": MarketInsightDAO(settings.postgres).stats(),
             "sector_insight": NewsSectorInsightDAO(settings.postgres).stats(),
         },
         "monitor": monitor.snapshot(),

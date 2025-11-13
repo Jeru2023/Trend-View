@@ -17,11 +17,28 @@ const elements = {
   refreshButton: document.getElementById("market-insight-refresh"),
   langButtons: document.querySelectorAll(".lang-btn"),
   status: document.getElementById("market-insight-status"),
+  metaUpdated: document.getElementById("market-insight-updated"),
+  metaElapsed: document.getElementById("market-insight-elapsed"),
+  resetButton: document.getElementById("market-insight-reset"),
+  exportImageButton: document.getElementById("market-insight-export-image"),
+  exportPdfButton: document.getElementById("market-insight-export-pdf"),
 };
 
 const state = {
   data: null,
 };
+
+const JOB_STATUS_INTERVAL = 5000;
+const SUMMARY_POLL_INTERVAL = 4000;
+let jobStatusTimer = null;
+let summaryPollTimer = null;
+let lastJobStatusValue = null;
+let latestJobSnapshot = null;
+let manualSyncPending = false;
+let resettingJob = false;
+let summaryPollingActive = false;
+const EXPORT_SCALE = window.devicePixelRatio > 1 ? 2 : 1.5;
+let exportInProgress = false;
 
 function getInitialLanguage() {
   try {
@@ -143,6 +160,213 @@ function setStatus(message, tone) {
   }
 }
 
+async function fetchJobStatusOnce() {
+  try {
+    const response = await fetch(`${API_BASE}/control/status`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    applyJobStatus(data?.jobs?.market_insight);
+  } catch (error) {
+    console.error("Failed to fetch job status", error);
+  }
+}
+
+function scheduleJobStatusPolling() {
+  if (jobStatusTimer !== null) {
+    clearTimeout(jobStatusTimer);
+  }
+  const tick = async () => {
+    await fetchJobStatusOnce();
+    jobStatusTimer = window.setTimeout(tick, JOB_STATUS_INTERVAL);
+  };
+  tick();
+}
+
+function startSummaryPolling() {
+  if (summaryPollingActive) {
+    return;
+  }
+  summaryPollingActive = true;
+  const tick = async () => {
+    if (!summaryPollingActive) {
+      return;
+    }
+    await fetchMarketInsight({ preserve: true, silent: true });
+    if (!summaryPollingActive) {
+      return;
+    }
+    summaryPollTimer = window.setTimeout(tick, SUMMARY_POLL_INTERVAL);
+  };
+  tick();
+}
+
+function stopSummaryPolling() {
+  summaryPollingActive = false;
+  if (summaryPollTimer !== null) {
+    clearTimeout(summaryPollTimer);
+    summaryPollTimer = null;
+  }
+}
+
+function applyJobStatus(job) {
+  latestJobSnapshot = job || null;
+  if (!job) {
+    if (!manualSyncPending) {
+      setRefreshLoading(false);
+    }
+    return;
+  }
+  const statusValue = job.status || "idle";
+  const previousStatus = lastJobStatusValue;
+  lastJobStatusValue = statusValue;
+  if (statusValue === "idle") {
+    if (!manualSyncPending) {
+      setRefreshLoading(false);
+    }
+    return;
+  }
+  const dict = getDict();
+  const progressValue =
+    typeof job.progress === "number" && Number.isFinite(job.progress) ? Math.round(job.progress * 100) : null;
+  let message = job.message || "";
+  if (statusValue === "failed" && job.error) {
+    message = job.error;
+  }
+  if (!message) {
+    if (statusValue === "running") {
+      message = dict.statusRunning || dict.statusGenerating || "Running...";
+    } else if (statusValue === "success") {
+      message = dict.statusGenerated || "Completed.";
+    } else if (statusValue === "failed") {
+      message = dict.statusFailed || "Failed.";
+    }
+  }
+  if (statusValue === "running" && progressValue !== null) {
+    message = `${message} · ${progressValue}%`;
+  }
+  let tone = "";
+  if (statusValue === "running") {
+    tone = "info";
+    manualSyncPending = false;
+    setRefreshLoading(true);
+    startSummaryPolling();
+  } else if (statusValue === "failed") {
+    tone = "error";
+    manualSyncPending = false;
+    setRefreshLoading(false);
+    stopSummaryPolling();
+  } else if (statusValue === "success") {
+    tone = "success";
+    manualSyncPending = false;
+    setRefreshLoading(false);
+    stopSummaryPolling();
+  }
+  if (elements.resetButton) {
+    elements.resetButton.hidden = statusValue !== "running";
+    elements.resetButton.disabled = resettingJob;
+  }
+  setStatus(message, tone);
+  if (previousStatus === "running" && statusValue !== "running") {
+    fetchMarketInsight();
+  }
+}
+
+function updateToolbarMeta(meta) {
+  const normalize = (value) => {
+    if (value === null || value === undefined) return "--";
+    const text = String(value).trim();
+    return text ? text : "--";
+  };
+  if (elements.metaUpdated) {
+    elements.metaUpdated.textContent = normalize(meta?.updated);
+  }
+  if (elements.metaElapsed) {
+    elements.metaElapsed.textContent = normalize(meta?.elapsed);
+  }
+}
+
+function getExportBaseFilename() {
+  const generatedAt = state.data?.summary?.generatedAt;
+  let timestamp = "latest";
+  if (generatedAt) {
+    const dateValue = new Date(generatedAt);
+    if (!Number.isNaN(dateValue.getTime())) {
+      const iso = dateValue.toISOString().replace(/[-:]/g, "").split(".")[0];
+      timestamp = iso;
+    }
+  }
+  return `market-insight-${timestamp}`;
+}
+
+async function exportInsight(format) {
+  if (exportInProgress) {
+    return;
+  }
+  const dict = getDict();
+  if (!window.html2canvas) {
+    setStatus("html2canvas missing", "error");
+    return;
+  }
+  if (format === "pdf" && !(window.jspdf && window.jspdf.jsPDF)) {
+    setStatus("jsPDF missing", "error");
+    return;
+  }
+  const target = document.getElementById("market-insight-root");
+  if (!target) {
+    setStatus(dict.exportFailed || "Export failed", "error");
+    return;
+  }
+  exportInProgress = true;
+  setStatus(dict.exporting || "Preparing export...", "info");
+  try {
+    const canvas = await window.html2canvas(target, {
+      scale: EXPORT_SCALE,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      scrollY: -window.scrollY,
+    });
+    if (format === "image") {
+      const dataUrl = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `${getExportBaseFilename()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF("p", "pt", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/png");
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`${getExportBaseFilename()}.pdf`);
+    }
+    setStatus(dict.exportReady || "Export ready.", "success");
+  } catch (error) {
+    console.error("Export failed", error);
+    setStatus(error?.message || dict.exportFailed || "Export failed", "error");
+  } finally {
+    exportInProgress = false;
+  }
+}
+
 function clearContainer(node, message) {
   if (!node) return;
   node.innerHTML = "";
@@ -154,11 +378,17 @@ function clearContainer(node, message) {
   }
 }
 
-function renderStageResults(stageResults) {
+function renderStageResults(stageEntries) {
   const container = elements.stages;
   if (!container) return;
   container.innerHTML = "";
-  if (!Array.isArray(stageResults) || !stageResults.length) {
+  const stages = Array.isArray(stageEntries) ? [...stageEntries] : [];
+  stages.sort((a, b) => {
+    const orderA = typeof a?.order === "number" ? a.order : 0;
+    const orderB = typeof b?.order === "number" ? b.order : 0;
+    return orderA - orderB;
+  });
+  if (!stages.length) {
     container.style.display = "none";
     return;
   }
@@ -169,10 +399,18 @@ function renderStageResults(stageResults) {
   heading.textContent = dict.stageSectionTitle || "Staged Reasoning";
   container.appendChild(heading);
 
-  stageResults.forEach((stage) => {
+  const statusLabels = {
+    success: dict.stageStatusSuccess || "Ready",
+    running: dict.stageStatusRunning || "Running",
+    pending: dict.stageStatusPending || "Pending",
+    failed: dict.stageStatusFailed || "Failed",
+  };
+
+  stages.forEach((stage) => {
     if (!stage || typeof stage !== "object") return;
     const card = document.createElement("article");
-    card.className = "stage-card";
+    const statusValue = (stage.status || "pending").toLowerCase();
+    card.className = `stage-card stage-card--${statusValue}`;
 
     const header = document.createElement("header");
     header.className = "stage-card__header";
@@ -183,75 +421,107 @@ function renderStageResults(stageResults) {
 
     const meta = document.createElement("div");
     meta.className = "stage-card__meta";
+    const statusChip = document.createElement("span");
+    statusChip.className = `stage-card__status-chip stage-card__status-chip--${statusValue}`;
+    statusChip.textContent = statusLabels[statusValue] || statusValue;
+    meta.appendChild(statusChip);
+
+    header.appendChild(meta);
+    card.appendChild(header);
+
     const sentimentLabelMap = {
       bullish: dict.sentimentBullish || "Bullish",
       bearish: dict.sentimentBearish || "Bearish",
       neutral: dict.sentimentNeutral || "Neutral",
     };
-    const biasValue = (stage.bias || "neutral").toLowerCase();
-    const biasChip = document.createElement("span");
-    biasChip.className = `stage-chip stage-chip--${["bullish", "bearish", "neutral"].includes(biasValue) ? biasValue : "neutral"}`;
-    biasChip.textContent = sentimentLabelMap[biasValue] || sentimentLabelMap.neutral;
-    meta.appendChild(biasChip);
 
-    if (stage.confidence !== undefined && stage.confidence !== null && Number.isFinite(Number(stage.confidence))) {
-      const confidence = document.createElement("span");
-      confidence.className = "stage-card__confidence";
-      confidence.textContent = `${dict.stageConfidenceLabel || "Confidence"}: ${formatPercent(stage.confidence, 0)}`;
-      meta.appendChild(confidence);
-    }
+    if (statusValue === "success") {
+      const biasValue = (stage.bias || "neutral").toLowerCase();
+      const biasChip = document.createElement("span");
+      biasChip.className = `stage-chip stage-chip--${["bullish", "bearish", "neutral"].includes(biasValue) ? biasValue : "neutral"}`;
+      biasChip.textContent = sentimentLabelMap[biasValue] || sentimentLabelMap.neutral;
+      meta.appendChild(biasChip);
 
-    header.appendChild(meta);
-    card.appendChild(header);
+      if (stage.confidence !== undefined && stage.confidence !== null && Number.isFinite(Number(stage.confidence))) {
+        const confidence = document.createElement("span");
+        confidence.className = "stage-card__confidence";
+        confidence.textContent = `${dict.stageConfidenceLabel || "Confidence"}: ${formatPercent(stage.confidence, 0)}`;
+        meta.appendChild(confidence);
+      }
 
-    if (stage.analysis) {
-      const analysis = document.createElement("p");
-      analysis.className = "stage-card__analysis";
-      analysis.textContent = stage.analysis;
-      card.appendChild(analysis);
-    }
+      if (stage.analysis) {
+        const analysis = document.createElement("p");
+        analysis.className = "stage-card__analysis";
+        analysis.textContent = stage.analysis;
+        card.appendChild(analysis);
+      }
 
-    const highlights = Array.isArray(stage.highlights) ? stage.highlights.filter(Boolean) : [];
-    if (highlights.length) {
-      const highlightsHeading = document.createElement("h4");
-      highlightsHeading.className = "stage-card__subheading";
-      highlightsHeading.textContent = dict.stageHighlightsLabel || "Highlights";
-      card.appendChild(highlightsHeading);
-      const list = document.createElement("ul");
-      list.className = "stage-card__list";
-      highlights.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = item;
-        list.appendChild(li);
-      });
-      card.appendChild(list);
-    }
+      const highlights = Array.isArray(stage.highlights) ? stage.highlights.filter(Boolean) : [];
+      if (highlights.length) {
+        const highlightsHeading = document.createElement("h4");
+        highlightsHeading.className = "stage-card__subheading";
+        highlightsHeading.textContent = dict.stageHighlightsLabel || "Highlights";
+        card.appendChild(highlightsHeading);
+        const list = document.createElement("ul");
+        list.className = "stage-card__list";
+        highlights.forEach((item) => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          list.appendChild(li);
+        });
+        card.appendChild(list);
+      }
 
-    const metrics = Array.isArray(stage.key_metrics) ? stage.key_metrics.filter(Boolean) : [];
-    if (metrics.length) {
-      const metricsHeading = document.createElement("h4");
-      metricsHeading.className = "stage-card__subheading";
-      metricsHeading.textContent = dict.stageMetricsLabel || "Key Metrics";
-      card.appendChild(metricsHeading);
-      const metricList = document.createElement("dl");
-      metricList.className = "stage-card__metrics";
-      metrics.forEach((metric) => {
-        if (!metric || typeof metric !== "object") return;
-        const dt = document.createElement("dt");
-        dt.textContent = metric.label || "--";
-        const dd = document.createElement("dd");
-        const value = document.createElement("strong");
-        value.textContent = metric.value || "--";
-        dd.appendChild(value);
-        if (metric.insight) {
-          const insight = document.createElement("span");
-          insight.textContent = ` · ${metric.insight}`;
-          dd.appendChild(insight);
-        }
-        metricList.appendChild(dt);
-        metricList.appendChild(dd);
-      });
-      card.appendChild(metricList);
+      const metrics = Array.isArray(stage.keyMetrics || stage.key_metrics)
+        ? (stage.keyMetrics || stage.key_metrics).filter(Boolean)
+        : [];
+      if (metrics.length) {
+        const metricsHeading = document.createElement("h4");
+        metricsHeading.className = "stage-card__subheading";
+        metricsHeading.textContent = dict.stageMetricsLabel || "Key Metrics";
+        card.appendChild(metricsHeading);
+        const metricList = document.createElement("div");
+        metricList.className = "stage-card__metrics";
+        metrics.forEach((metric) => {
+          if (!metric || typeof metric !== "object") return;
+          const row = document.createElement("div");
+          row.className = "stage-card__metric-row";
+
+          const headerRow = document.createElement("div");
+          headerRow.className = "stage-card__metric-header";
+
+          const label = document.createElement("span");
+          label.className = "stage-card__metric-label";
+          label.textContent = metric.label || dict.metricLabel || "Metric";
+          headerRow.appendChild(label);
+
+          const value = document.createElement("strong");
+          value.className = "stage-card__metric-value";
+          value.textContent = metric.value || "--";
+          headerRow.appendChild(value);
+
+          row.appendChild(headerRow);
+
+          if (metric.insight) {
+            const insight = document.createElement("span");
+            insight.className = "stage-card__metric-insight";
+            insight.textContent = metric.insight;
+            row.appendChild(insight);
+          }
+
+          metricList.appendChild(row);
+        });
+        card.appendChild(metricList);
+      }
+    } else {
+      const statusMessage = document.createElement("p");
+      statusMessage.className = "stage-card__status-message";
+      if (statusValue === "failed") {
+        statusMessage.textContent = stage.error || dict.stageFailedDefault || "Stage failed.";
+      } else {
+        statusMessage.textContent = dict.stagePendingMessage || "Reasoning in progress…";
+      }
+      card.appendChild(statusMessage);
     }
 
     container.appendChild(card);
@@ -265,20 +535,35 @@ function renderSummary() {
 
   const summaryWrapper = state.data?.summary;
   container.innerHTML = "";
+  const stageList = Array.isArray(summaryWrapper?.stages) ? summaryWrapper.stages : [];
+  renderStageResults(stageList);
 
-  const llmSummary = summaryWrapper?.summary;
-  if (!summaryWrapper || !llmSummary) {
+  if (summaryWrapper) {
+    const elapsedValue = Number(summaryWrapper.elapsedSeconds);
+    updateToolbarMeta({
+      updated: formatDateTime(summaryWrapper.generatedAt),
+      elapsed: Number.isFinite(elapsedValue) ? `${elapsedValue.toFixed(2)}s` : "--",
+    });
+  } else {
+    updateToolbarMeta();
+  }
+
+  if (!summaryWrapper) {
     const message = container.dataset[`empty${currentLang.toUpperCase()}`] || dict.emptySummary || "--";
     clearContainer(container, message);
-    renderStageResults([]);
     return;
   }
 
-  const stageResults = Array.isArray(llmSummary.stage_results) ? llmSummary.stage_results : [];
-  renderStageResults(stageResults);
+  const llmSummary = summaryWrapper?.summary;
+  if (!llmSummary) {
+    const placeholder = document.createElement("article");
+    placeholder.className = "insight-card insight-card--placeholder";
+    placeholder.textContent = dict.summaryPending || "Comprehensive reasoning is still running...";
+    container.appendChild(placeholder);
+    return;
+  }
 
   const comprehensive = llmSummary.comprehensive_conclusion || {};
-  const intermediate = llmSummary.intermediate_analysis || {};
 
   const card = document.createElement("article");
   card.className = "insight-card";
@@ -495,42 +780,18 @@ function renderSummary() {
     card.appendChild(scenarioSection);
   }
 
-  const intermediateDefs = [
-    { key: "index_analysis", label: dict.indexAnalysisLabel || "Index & Trend" },
-    { key: "fund_flow_analysis", label: dict.fundFlowAnalysisLabel || "Funds & Leverage" },
-    { key: "sentiment_analysis", label: dict.sentimentAnalysisLabel || "Market Sentiment" },
-    { key: "macro_analysis", label: dict.macroAnalysisLabel || "Macro Backdrop" },
-  ];
-  const hasIntermediate = intermediateDefs.some((def) => typeof intermediate[def.key] === "string" && intermediate[def.key]);
-  if (hasIntermediate) {
-    const intermediateSection = document.createElement("section");
-    intermediateSection.className = "insight-card__section";
-    const heading = document.createElement("h3");
-    heading.textContent = dict.intermediateSectionTitle || "Detailed Analyses";
-    intermediateSection.appendChild(heading);
-    intermediateDefs.forEach((def) => {
-      const text = intermediate[def.key];
-      if (!text) return;
-      const subsection = document.createElement("div");
-      subsection.className = "insight-card__subsection";
-      const subheading = document.createElement("h4");
-      subheading.textContent = def.label;
-      subsection.appendChild(subheading);
-      const paragraph = document.createElement("p");
-      paragraph.textContent = text;
-      subsection.appendChild(paragraph);
-      intermediateSection.appendChild(subsection);
-    });
-    card.appendChild(intermediateSection);
-  }
 
   container.appendChild(card);
 }
 
-async function fetchMarketInsight() {
+async function fetchMarketInsight(options = {}) {
+  const { preserve = false, silent = false } = options;
   const dict = getDict();
-  clearContainer(elements.summary, dict.loading || "Loading...");
-  renderStageResults([]);
+  if (!preserve) {
+    clearContainer(elements.summary, dict.loading || "Loading...");
+    renderStageResults([]);
+    updateToolbarMeta();
+  }
   try {
     const response = await fetch(`${API_BASE}/market/market-insight`);
     if (!response.ok) {
@@ -541,8 +802,10 @@ async function fetchMarketInsight() {
     renderSummary();
   } catch (error) {
     console.error("Failed to fetch market insight", error);
-    clearContainer(elements.summary, error?.message || "Failed to load insight");
-    setStatus(error?.message || dict.statusFailed || dict.refreshFailed || "Request failed", "error");
+    if (!silent) {
+      clearContainer(elements.summary, error?.message || "Failed to load insight");
+      setStatus(error?.message || dict.statusFailed || dict.refreshFailed || "Request failed", "error");
+    }
   }
 }
 
@@ -550,9 +813,10 @@ async function triggerManualSync() {
   if (elements.refreshButton?.dataset.loading === "1") {
     return;
   }
-  setRefreshLoading(true);
   const dict = getDict();
+  setRefreshLoading(true);
   setStatus(dict.statusGenerating || "Generating...", "info");
+  let jobAccepted = false;
   try {
     const response = await fetch(`${API_BASE}/control/sync/market-insight`, {
       method: "POST",
@@ -570,18 +834,67 @@ async function triggerManualSync() {
         /* ignore */
       }
       if (response.status === 409) {
+        jobAccepted = true;
+        manualSyncPending = true;
         setStatus(dict.statusRunning || message, "warn");
         return;
       }
       throw new Error(message);
     }
-    await fetchMarketInsight();
-    setStatus(dict.statusGenerated || "Insight updated.", "success");
+    jobAccepted = true;
+    manualSyncPending = true;
+    startSummaryPolling();
   } catch (error) {
     console.error("Manual market insight generation failed", error);
+    manualSyncPending = false;
     setStatus(error?.message || dict.statusFailed || dict.refreshFailed || "Request failed", "error");
   } finally {
-    setRefreshLoading(false);
+    if (!jobAccepted) {
+      manualSyncPending = false;
+      setRefreshLoading(false);
+    }
+  }
+}
+
+async function resetMarketInsightJob() {
+  if (resettingJob) {
+    return;
+  }
+  resettingJob = true;
+  if (elements.resetButton) {
+    elements.resetButton.disabled = true;
+  }
+  const dict = getDict();
+  setStatus(dict.statusResetting || "Resetting job...", "warn");
+  try {
+    const response = await fetch(`${API_BASE}/control/reset-job`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: "market_insight" }),
+    });
+    if (!response.ok) {
+      let message = response.statusText || `HTTP ${response.status}`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          message = payload.detail;
+        }
+      } catch (parseError) {
+        /* ignore */
+      }
+      throw new Error(message);
+    }
+    manualSyncPending = false;
+    await fetchJobStatusOnce();
+    setStatus(dict.statusResetOk || "Job reset.", "warn");
+  } catch (error) {
+    console.error("Failed to reset market insight job", error);
+    setStatus(error?.message || dict.statusResetFailed || "Reset failed", "error");
+  } finally {
+    resettingJob = false;
+    if (elements.resetButton) {
+      elements.resetButton.disabled = false;
+    }
   }
 }
 
@@ -623,14 +936,27 @@ function applyTranslations() {
     elements.summary.dataset.emptyZh = dict.emptySummaryZh || "暂无推理结果。";
   }
   renderSummary();
+  if (latestJobSnapshot) {
+    applyJobStatus(latestJobSnapshot);
+  }
 }
 
 function initialize() {
   setStatus("", "");
   bindLanguageButtons();
   applyTranslations();
+  scheduleJobStatusPolling();
   if (elements.refreshButton) {
     elements.refreshButton.addEventListener("click", () => triggerManualSync());
+  }
+  if (elements.resetButton) {
+    elements.resetButton.addEventListener("click", () => resetMarketInsightJob());
+  }
+  if (elements.exportImageButton) {
+    elements.exportImageButton.addEventListener("click", () => exportInsight("image"));
+  }
+  if (elements.exportPdfButton) {
+    elements.exportPdfButton.addEventListener("click", () => exportInsight("pdf"));
   }
   fetchMarketInsight();
 }

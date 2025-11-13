@@ -465,15 +465,6 @@ const elements = {
     progress: document.getElementById("concept-directory-progress"),
     button: document.getElementById("run-concept-directory"),
   },
-  marketOverview: {
-    status: document.getElementById("market-overview-status"),
-    updated: document.getElementById("market-overview-updated"),
-    duration: document.getElementById("market-overview-duration"),
-    rows: document.getElementById("market-overview-rows"),
-    message: document.getElementById("market-overview-message"),
-    progress: document.getElementById("market-overview-progress"),
-    button: document.getElementById("run-market-overview"),
-  },
   marketInsight: {
     status: document.getElementById("market-insight-status"),
     updated: document.getElementById("market-insight-updated"),
@@ -806,10 +797,6 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
-    const marketOverviewSnapshot = jobs.market_overview || {
-      status: "idle",
-      progress: 0,
-    };
     const marketInsightSnapshot = jobs.market_insight || {
       status: "idle",
       progress: 0,
@@ -916,7 +903,6 @@ async function loadStatus() {
     updateJobCard(elements.realtimeIndex, realtimeSnapshot);
     updateJobCard(elements.macroLeverage, leverageSnapshot);
     updateJobCard(elements.macroInsight, macroInsightSnapshot);
-    updateJobCard(elements.marketOverview, marketOverviewSnapshot);
     updateJobCard(elements.socialFinancing, socialFinancingSnapshot);
     updateJobCard(elements.cpiMonthly, cpiSnapshot);
     updateJobCard(elements.ppiMonthly, ppiSnapshot);
@@ -977,7 +963,6 @@ async function loadStatus() {
       realtimeSnapshot,
       leverageSnapshot,
       macroInsightSnapshot,
-      marketOverviewSnapshot,
       marketInsightSnapshot,
       socialFinancingSnapshot,
       cpiSnapshot,
@@ -1324,11 +1309,6 @@ function initActions() {
   if (elements.macroInsight.button) {
     elements.macroInsight.button.addEventListener("click", () =>
       triggerJob("/control/sync/macro-insight", { runLLM: true })
-    );
-  }
-  if (elements.marketOverview.button) {
-    elements.marketOverview.button.addEventListener("click", () =>
-      triggerJob("/control/sync/market-overview", { runLLM: true })
     );
   }
   if (elements.marketInsight.button) {

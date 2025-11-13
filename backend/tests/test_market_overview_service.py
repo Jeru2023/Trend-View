@@ -1,9 +1,6 @@
 import unittest
 
-from backend.src.services.market_overview_service import (
-    build_market_overview_payload,
-    generate_market_overview_reasoning,
-)
+from backend.src.services.market_overview_service import build_market_overview_payload
 
 
 class MarketOverviewServiceTests(unittest.TestCase):
@@ -28,13 +25,6 @@ class MarketOverviewServiceTests(unittest.TestCase):
         self.assertIn("macroInsight", payload)
         self.assertIn("peripheralInsight", payload)
         self.assertIn("marketActivity", payload)
-
-    def test_generate_market_overview_reasoning_without_llm(self) -> None:
-        result = generate_market_overview_reasoning(run_llm=False)
-        self.assertIn("overview", result)
-        self.assertIn("summary", result)
-        self.assertIsInstance(result["summary"], str)
-
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

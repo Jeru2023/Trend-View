@@ -33,7 +33,7 @@
         "trade_calendar_table": "trade_calendar",
         "news_articles_table": "news_articles",
         "news_insights_table": "news_insights",
-        "news_market_insight_table": "news_market_insights",
+        "market_insight_table": "market_insights",
         "news_sector_insight_table": "news_sector_insights",
         "index_history_table": "index_history",
         "fundamental_metrics_table": "fundamental_metrics",

@@ -61,7 +61,7 @@ class PostgresSettings:
     trade_calendar_table: str
     news_articles_table: str
     news_insights_table: str
-    news_market_insight_table: str
+    market_insight_table: str
     news_sector_insight_table: str
     index_history_table: str
     fundamental_metrics_table: str
@@ -245,8 +245,11 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             news_insights_table=str(
                 postgres_config.get("news_insights_table", "news_insights")
             ),
-            news_market_insight_table=str(
-                postgres_config.get("news_market_insight_table", "news_market_insights")
+            market_insight_table=str(
+                postgres_config.get(
+                    "market_insight_table",
+                    postgres_config.get("news_market_insight_table", "market_insights"),
+                )
             ),
             news_sector_insight_table=str(
                 postgres_config.get("news_sector_insight_table", "news_sector_insights")

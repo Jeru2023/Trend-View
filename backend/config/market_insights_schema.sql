@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS {schema}.{table} (
     total_tokens INTEGER,
     elapsed_ms INTEGER,
     model_used TEXT,
+    index_stage TEXT,
+    fund_stage TEXT,
+    sentiment_stage TEXT,
+    macro_stage TEXT,
+    news_stage TEXT,
+    comprehensive_stage TEXT,
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -21,3 +27,21 @@ CREATE INDEX IF NOT EXISTS {table_generated_idx}
 
 ALTER TABLE {schema}.{table}
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE {schema}.{table}
+    ADD COLUMN IF NOT EXISTS index_stage TEXT;
+
+ALTER TABLE {schema}.{table}
+    ADD COLUMN IF NOT EXISTS fund_stage TEXT;
+
+ALTER TABLE {schema}.{table}
+    ADD COLUMN IF NOT EXISTS sentiment_stage TEXT;
+
+ALTER TABLE {schema}.{table}
+    ADD COLUMN IF NOT EXISTS macro_stage TEXT;
+
+ALTER TABLE {schema}.{table}
+    ADD COLUMN IF NOT EXISTS news_stage TEXT;
+
+ALTER TABLE {schema}.{table}
+    ADD COLUMN IF NOT EXISTS comprehensive_stage TEXT;

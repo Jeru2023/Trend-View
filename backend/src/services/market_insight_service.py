@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+import threading
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from zoneinfo import ZoneInfo
 from psycopg2 import sql
@@ -14,7 +17,7 @@ from dataclasses import dataclass
 
 from ..api_clients import generate_finance_analysis
 from ..config.settings import load_settings
-from ..dao import NewsArticleDAO, NewsInsightDAO, NewsMarketInsightDAO
+from ..dao import MarketInsightDAO, NewsArticleDAO, NewsInsightDAO
 from .market_overview_service import build_market_overview_payload
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,11 @@ DEEPSEEK_REASONER_MODEL = "deepseek-reasoner"
 MAX_OUTPUT_TOKENS = 32000
 MAX_CANDIDATE_LIMIT = 150
 _CANDIDATE_MULTIPLIER = 3
+MAX_STAGE_HEADLINES = 12
+STAGE_TIMEOUT_SECONDS = 180
+STAGE_STATUS_RUNNING = "running"
+STAGE_STATUS_SUCCESS = "success"
+STAGE_STATUS_FAILED = "failed"
 
 ALLOWED_EVENT_TYPES = {
     "monetary_policy",
@@ -180,8 +188,32 @@ STAGE_MACRO_PROMPT = """
 若某类数据缺失请明确指出是哪一个字段缺失，禁止使用笼统模板。
 """
 
+STAGE_NEWS_PROMPT = """
+你是一名A股财经新闻研究员。以下JSON包含最近24小时筛选出的高权重宏观/大盘类新闻（marketHeadlines）：
+{stage_payload}
+
+请仅基于这些新闻输出结构化JSON：
+{{
+  "stage": "{stage_key}",
+  "title": "{stage_title}",
+  "analysis": "不少于180字，必须引用至少3条不同新闻中的关键信息（时间、来源、事件内容、影响对象或数值），并说明它们对大盘的合力影响或分歧。",
+  "highlights": ["要点1","要点2","要点3"],
+  "bias": "bullish/neutral/bearish",
+  "confidence": 0.0,
+  "key_metrics": [
+    {{"label": "政策/事件", "value": "事件简称 + 时间", "insight": "对指数/行业的潜在影响"}},
+    {{"label": "影响范围", "value": "受影响市场/板块", "insight": "与市场当前情绪的联动"}}
+  ]
+}}
+
+要求：
+1. 必须指明每个要点来自哪条新闻（引用标题或来源+时间），不得凭空杜撰。
+2. 若新闻相互矛盾，需要解释矛盾点及更可信的方向。
+3. 若筛选结果少于3条新闻，需逐条说明缺失原因（如“仅1条新闻符合条件”），但仍需输出结构化JSON。
+"""
+
 FINAL_SUMMARY_PROMPT = """
-你是一名A股首席策略分析师。以下是四个维度的阶段性分析结果（JSON 数组）：
+你是一名A股首席策略分析师。以下是五个维度（指数、资金、情绪、宏观、财经新闻）的阶段性分析结果（JSON 数组）：
 {stage_results}
 
 请基于这些结论（不得忽视其中的数字与判断）输出最终的策略推理，JSON格式如下：
@@ -189,7 +221,7 @@ FINAL_SUMMARY_PROMPT = """
   "comprehensive_conclusion": {{
     "bias": "bullish/neutral/bearish",
     "confidence": 0.0,
-    "summary": "不少于250字，明确四个维度之间的协同/背离、核心矛盾、多空力量对比，引用阶段结论中的关键数据。",
+    "summary": "不少于250字，明确五个维度之间的协同/背离、核心矛盾、多空力量对比，引用阶段结论中的关键数据（含新闻维度）。",
     "key_signals": [
       {{"title": "信号标题", "detail": "具体描述，包含数据", "supporting_analyses": ["index_analysis","fund_flow_analysis"]}}
     ],
@@ -237,7 +269,15 @@ STAGE_DEFINITIONS: Tuple[StageDefinition, ...] = (
         data_keys=("macroInsight", "peripheralInsight"),
         prompt_template=STAGE_MACRO_PROMPT,
     ),
+    StageDefinition(
+        key="news_analysis",
+        title="财经新闻解读",
+        data_keys=("marketHeadlines",),
+        prompt_template=STAGE_NEWS_PROMPT,
+    ),
 )
+STAGE_TITLE_MAP = {stage.key: stage.title for stage in STAGE_DEFINITIONS}
+STAGE_ORDER = tuple(stage.key for stage in STAGE_DEFINITIONS)
 
 
 def _extract_stage_payload(stage: StageDefinition, overview: Dict[str, object]) -> Dict[str, object]:
@@ -250,6 +290,42 @@ def _format_stage_prompt(stage: StageDefinition, payload: Dict[str, object]) -> 
         stage_title=stage.title,
         stage_payload=json.dumps(payload, ensure_ascii=False, indent=2, separators=(",", ": ")),
     )
+
+
+def _execute_stage_reasoning(
+    stage: StageDefinition,
+    stage_payload: Dict[str, object],
+    overview_payload: Dict[str, object],
+    *,
+    settings,
+) -> Tuple[Dict[str, object], str, Dict[str, int]]:
+    stage_prompt = _format_stage_prompt(stage, stage_payload)
+    parsed, raw_content, usage_map = _invoke_reasoner(
+        stage_prompt,
+        settings=settings,
+        response_format={"type": "json_object"},
+        temperature=0.15,
+    )
+    analysis_text = parsed.get("analysis") or ""
+    if _looks_like_placeholder(analysis_text):
+        if stage.key == "index_analysis":
+            fallback = _format_index_fact_text(overview_payload)
+            if fallback:
+                analysis_text = fallback
+        elif stage.key == "fund_flow_analysis":
+            fallback = _format_fund_flow_fact_text(overview_payload)
+            if fallback:
+                analysis_text = fallback
+    stage_result = {
+        "stage": stage.key,
+        "title": stage.title,
+        "analysis": analysis_text,
+        "highlights": parsed.get("highlights") or [],
+        "bias": (parsed.get("bias") or "neutral").lower(),
+        "confidence": parsed.get("confidence"),
+        "key_metrics": parsed.get("key_metrics") or [],
+    }
+    return stage_result, raw_content, usage_map
 
 
 def _format_final_prompt(stage_results: List[Dict[str, object]]) -> str:
@@ -442,6 +518,81 @@ def _decode_json_list(value: Optional[str]) -> List[str]:
     return [part.strip() for part in str(value).split(",") if part.strip()]
 
 
+def _normalise_article_timestamp(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=LOCAL_TZ)
+        else:
+            value = value.astimezone(LOCAL_TZ)
+        return value.isoformat()
+    try:
+        parsed = datetime.fromisoformat(str(value).replace(" ", "T"))
+    except ValueError:
+        return str(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=LOCAL_TZ)
+    else:
+        parsed = parsed.astimezone(LOCAL_TZ)
+    return parsed.isoformat()
+
+
+def _ensure_str_list(value: object) -> List[str]:
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value not in (None, ""):
+        return [str(value).strip()]
+    return []
+
+
+def _build_stage_headlines_payload(
+    articles: List[Dict[str, object]],
+    *,
+    limit: int = MAX_STAGE_HEADLINES,
+) -> List[Dict[str, object]]:
+    payload: List[Dict[str, object]] = []
+    for article in articles[:limit]:
+        entry = {
+            "article_id": article.get("article_id"),
+            "source": article.get("source"),
+            "title": article.get("title"),
+            "summary": article.get("summary"),
+            "impact_summary": article.get("impact_summary"),
+            "impact_analysis": article.get("impact_analysis"),
+            "impact_confidence": article.get("impact_confidence"),
+            "macro_score": _coerce_float(article.get("macro_score")),
+            "severity_score": _coerce_float(article.get("severity_score")),
+            "impact_severity": article.get("impact_severity"),
+            "event_type": article.get("event_type"),
+            "subject_level": article.get("subject_level"),
+            "macro_tags": _ensure_str_list(article.get("macro_tags")),
+            "impact_markets": _ensure_str_list(article.get("impact_markets")),
+            "impact_industries": _ensure_str_list(article.get("impact_industries")),
+            "impact_themes": _ensure_str_list(article.get("impact_themes")),
+            "impact_stocks": _ensure_str_list(article.get("impact_stocks")),
+            "published_at": _normalise_article_timestamp(article.get("published_at")),
+            "url": article.get("url"),
+        }
+        payload.append(entry)
+    return payload
+
+
+def _describe_stage_payload(payload: Dict[str, object]) -> str:
+    if not payload:
+        return "empty payload"
+    summary: List[str] = []
+    for key, value in payload.items():
+        if isinstance(value, list):
+            summary.append(f"{key}[{len(value)}]")
+        elif isinstance(value, dict):
+            summary.append(f"{key}{{{len(value)}}}")
+        elif value is None:
+            summary.append(f"{key}=None")
+        else:
+            summary.append(f"{key}({type(value).__name__})")
+    return ", ".join(summary)
+
 def collect_recent_market_headlines(
     *,
     lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
@@ -556,20 +707,80 @@ def generate_market_insight_summary(
     lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
     limit: int = DEFAULT_ARTICLE_LIMIT,
     settings_path: Optional[str] = None,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> Dict[str, object]:
-    settings = load_settings(settings_path)
-    summary_dao = NewsMarketInsightDAO(settings.postgres)
+    def _notify(progress: float, message: str) -> None:
+        if progress_callback is None:
+            return
+        try:
+            progress_callback(max(0.0, min(progress, 1.0)), message)
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("market insight progress callback failed", exc_info=True)
 
-    articles = collect_recent_market_headlines(
-        lookback_hours=lookback_hours,
-        limit=limit,
-        settings_path=settings_path,
+    settings = load_settings(settings_path)
+    summary_dao = MarketInsightDAO(settings.postgres)
+
+    articles: List[Dict[str, object]] = []
+    article_error: Optional[BaseException] = None
+    headlines_done = threading.Event()
+
+    def _collect_headlines() -> None:
+        start_ts = time.perf_counter()
+        logger.info(
+            "Collecting market-impact headlines (lookback=%sh, limit=%s)",
+            lookback_hours,
+            limit,
+        )
+        nonlocal articles, article_error
+        try:
+            articles = collect_recent_market_headlines(
+                lookback_hours=lookback_hours,
+                limit=limit,
+                settings_path=settings_path,
+            )
+            logger.info(
+                "Collected %s qualifying headlines in %.2fs",
+                len(articles),
+                time.perf_counter() - start_ts,
+            )
+        except BaseException as exc:  # pragma: no cover - defensive
+            logger.exception("Collecting market-impact headlines failed")
+            article_error = exc
+        finally:
+            headlines_done.set()
+
+    collector_thread = threading.Thread(
+        target=_collect_headlines,
+        name="market_insight_headlines",
+        daemon=True,
     )
+    collector_thread.start()
+
+    heartbeat_seconds = 0
+    _notify(0.08, "开始筛选大盘相关新闻")
+    heartbeat_progress_start = 0.08
+    heartbeat_progress_end = 0.18
+    while not headlines_done.wait(timeout=5):
+        heartbeat_seconds += 5
+        progress_delta = min(heartbeat_seconds / 60.0, 1.0)
+        current_progress = heartbeat_progress_start + (heartbeat_progress_end - heartbeat_progress_start - 0.01) * progress_delta
+        _notify(
+            current_progress,
+            f"正在筛选大盘相关新闻（耗时约 {heartbeat_seconds}s）",
+        )
+
+    collector_thread.join()
+    if article_error:
+        raise article_error
+
+    _notify(heartbeat_progress_end, f"已筛选 {len(articles)} 条大盘相关新闻")
 
     window_end = _local_now()
     window_start = window_end - timedelta(hours=max(lookback_hours, 1))
 
     overview_payload = build_market_overview_payload(settings_path=settings_path)
+    overview_payload["marketHeadlines"] = _build_stage_headlines_payload(articles)
+    _notify(0.18, "完成市场概览与参考数据整理")
 
     deepseek_settings = settings.deepseek
     if deepseek_settings is None:
@@ -582,11 +793,53 @@ def generate_market_insight_summary(
         DEEPSEEK_REASONER_MODEL,
     )
 
-    stage_results: List[Dict[str, object]] = []
-    stage_raw_responses: Dict[str, str] = {}
     total_prompt_tokens = 0
     total_completion_tokens = 0
     total_tokens = 0
+    stage_total = len(STAGE_DEFINITIONS)
+    stage_weight = 0.55 / stage_total if stage_total else 0.0
+    stage_base_progress = 0.2
+    stage_success_results: List[Dict[str, object]] = []
+    stage_raw_responses: Dict[str, str] = {}
+    stage_records: Dict[str, Dict[str, object]] = {}
+    summary_id = uuid.uuid4().hex
+    referenced_articles_payload = [
+        {
+            "article_id": item.get("article_id"),
+            "source": item.get("source"),
+            "title": item.get("title"),
+            "impact_summary": item.get("impact_summary"),
+            "impact_analysis": item.get("impact_analysis"),
+            "impact_confidence": item.get("impact_confidence"),
+            "markets": item.get("impact_markets"),
+            "published_at": item.get("published_at").isoformat() if isinstance(item.get("published_at"), datetime) else item.get("published_at"),
+            "url": item.get("url"),
+            "impact_severity": item.get("impact_severity"),
+            "severity_score": item.get("severity_score"),
+            "macro_score": item.get("macro_score"),
+            "event_type": item.get("event_type"),
+            "subject_level": item.get("subject_level"),
+            "macro_tags": item.get("macro_tags"),
+        }
+        for item in articles
+    ]
+    summary_dao.insert_summary(
+        {
+            "summary_id": summary_id,
+            "generated_at": window_end,
+            "window_start": window_start,
+            "window_end": window_end,
+            "headline_count": len(articles),
+            "summary_json": None,
+            "raw_response": None,
+            "referenced_articles": json.dumps(referenced_articles_payload, ensure_ascii=False),
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "elapsed_ms": None,
+            "model_used": DEEPSEEK_REASONER_MODEL,
+        }
+    )
 
     def _accumulate_usage(usage_map: Dict[str, int]) -> None:
         nonlocal total_prompt_tokens, total_completion_tokens, total_tokens
@@ -595,44 +848,120 @@ def generate_market_insight_summary(
         total_tokens += usage_map.get("total_tokens", 0)
 
     started = time.perf_counter()
-    for stage in STAGE_DEFINITIONS:
+    for index, stage in enumerate(STAGE_DEFINITIONS):
+        stage_progress = stage_base_progress + stage_weight * index
+        _notify(stage_progress, f"[{index + 1}/{stage_total}] 正在推理「{stage.title}」")
         stage_payload = _extract_stage_payload(stage, overview_payload)
-        stage_prompt = _format_stage_prompt(stage, stage_payload)
-        parsed, raw_content, usage_map = _invoke_reasoner(
-            stage_prompt,
-            settings=deepseek_settings,
-            response_format={"type": "json_object"},
-            temperature=0.15,
+        stage_started = time.perf_counter()
+        logger.info(
+            "Stage '%s' reasoning started with payload: %s",
+            stage.key,
+            _describe_stage_payload(stage_payload),
         )
-        _accumulate_usage(usage_map)
-        analysis_text = parsed.get("analysis") or ""
-        if _looks_like_placeholder(analysis_text):
-            if stage.key == "index_analysis":
-                fallback = _format_index_fact_text(overview_payload)
-                if fallback:
-                    analysis_text = fallback
-            elif stage.key == "fund_flow_analysis":
-                fallback = _format_fund_flow_fact_text(overview_payload)
-                if fallback:
-                    analysis_text = fallback
-        stage_result = {
+        stage_record = {
             "stage": stage.key,
             "title": stage.title,
-            "analysis": analysis_text,
-            "highlights": parsed.get("highlights") or [],
-            "bias": (parsed.get("bias") or "neutral").lower(),
-            "confidence": parsed.get("confidence"),
-            "key_metrics": parsed.get("key_metrics") or [],
+            "status": STAGE_STATUS_RUNNING,
+            "started_at": _local_now().isoformat(),
         }
-        stage_results.append(stage_result)
-        stage_raw_responses[stage.key] = raw_content
+        stage_records[stage.key] = stage_record
+        summary_dao.update_stage(summary_id, stage.key, stage_record)
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    _execute_stage_reasoning,
+                    stage,
+                    stage_payload,
+                    overview_payload,
+                    settings=deepseek_settings,
+                )
+                stage_result, raw_content, usage_map = future.result(timeout=STAGE_TIMEOUT_SECONDS)
+        except FuturesTimeoutError:
+            error_message = f"{stage.title} 推理超时（>{STAGE_TIMEOUT_SECONDS}s）"
+            logger.warning("Stage '%s' timed out after %ss", stage.key, STAGE_TIMEOUT_SECONDS)
+            stage_record.update(
+                {
+                    "status": STAGE_STATUS_FAILED,
+                    "finished_at": _local_now().isoformat(),
+                    "error": error_message,
+                }
+            )
+            summary_dao.update_stage(summary_id, stage.key, stage_record)
+            _notify(stage_progress, error_message)
+            continue
+        except Exception as exc:
+            logger.exception("Stage '%s' reasoning failed", stage.key)
+            stage_record.update(
+                {
+                    "status": STAGE_STATUS_FAILED,
+                    "finished_at": _local_now().isoformat(),
+                    "error": str(exc),
+                }
+            )
+            summary_dao.update_stage(summary_id, stage.key, stage_record)
+            _notify(stage_progress, f"{stage.title} 失败：{exc}")
+            continue
 
-    final_prompt = _format_final_prompt(stage_results)
-    final_data, final_raw, final_usage = _invoke_reasoner(
-        final_prompt,
-        settings=deepseek_settings,
-        response_format={"type": "json_object"},
-        temperature=0.2,
+        _accumulate_usage(usage_map)
+        stage_success_results.append(stage_result)
+        stage_raw_responses[stage.key] = raw_content
+        stage_record.update(
+            {
+                "status": STAGE_STATUS_SUCCESS,
+                "finished_at": _local_now().isoformat(),
+                "result": stage_result,
+                "usage": usage_map,
+            }
+        )
+        summary_dao.update_stage(summary_id, stage.key, stage_record)
+        _notify(
+            min(stage_progress + stage_weight * 0.85, 0.88),
+            f"[{index + 1}/{stage_total}] 「{stage.title}」推理完成",
+        )
+        logger.info(
+            "Stage '%s' reasoning finished in %.2fs (bias=%s, confidence=%s, prompt_tokens=%s, completion_tokens=%s)",
+            stage.key,
+            time.perf_counter() - stage_started,
+            stage_result["bias"],
+            stage_result["confidence"],
+            usage_map.get("prompt_tokens"),
+            usage_map.get("completion_tokens"),
+        )
+
+    if not stage_success_results:
+        raise RuntimeError("All reasoning stages failed; unable to generate market insight summary")
+
+    final_prompt = _format_final_prompt(stage_success_results)
+    _notify(0.9, "整合阶段结论，生成综合推理")
+    final_started = time.perf_counter()
+    logger.info(
+        "Comprehensive reasoning started with %s stage results",
+        len(stage_success_results),
+    )
+    _notify(0.96, "写入推理结果")
+    try:
+        final_data, final_raw, final_usage = _invoke_reasoner(
+            final_prompt,
+            settings=deepseek_settings,
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+    except Exception as exc:
+        summary_dao.update_comprehensive(
+            summary_id,
+            {
+                "status": STAGE_STATUS_FAILED,
+                "finished_at": _local_now().isoformat(),
+                "error": str(exc),
+            },
+        )
+        logger.exception("Comprehensive reasoning failed")
+        raise
+    logger.info(
+        "Comprehensive reasoning finished in %.2fs (prompt_tokens=%s, completion_tokens=%s)",
+        time.perf_counter() - final_started,
+        final_usage.get("prompt_tokens"),
+        final_usage.get("completion_tokens"),
     )
     _accumulate_usage(final_usage)
 
@@ -643,51 +972,51 @@ def generate_market_insight_summary(
         raise RuntimeError("Final strategy reasoning did not return comprehensive_conclusion")
     comprehensive["generated_at"] = window_end.isoformat()
 
-    intermediate_analysis = {stage["stage"]: stage.get("analysis") for stage in stage_results}
+    intermediate_analysis = {stage["stage"]: stage.get("analysis") for stage in stage_success_results}
     summary_json: Dict[str, object] = {
         "generated_at": window_end.isoformat(),
-        "stage_results": stage_results,
+        "stage_results": stage_success_results,
         "intermediate_analysis": intermediate_analysis,
         "comprehensive_conclusion": comprehensive,
     }
 
-    summary_payload = {
-        "summary_id": None,
+    summary_dao.update_comprehensive(
+        summary_id,
+        {
+            "status": "success",
+            "finished_at": _local_now().isoformat(),
+            "result": comprehensive,
+        },
+    )
+    summary_dao.update_columns(
+        summary_id,
+        summary_json=json.dumps(summary_json, ensure_ascii=False),
+        raw_response=json.dumps({"stages": stage_raw_responses, "final": final_raw}, ensure_ascii=False),
+        prompt_tokens=total_prompt_tokens,
+        completion_tokens=total_completion_tokens,
+        total_tokens=total_tokens,
+        elapsed_ms=elapsed_ms,
+        model_used="deepseek-reasoner (multi-stage)",
+    )
+
+    logger.info(
+        "Market insight summary stored (id=%s, stages=%s, headlines=%s, elapsed=%.2fs, total_tokens=%s)",
+        summary_id,
+        len(stage_success_results),
+        len(articles),
+        elapsed_ms / 1000.0,
+        total_tokens,
+    )
+
+    return {
+        "summary_id": summary_id,
         "generated_at": window_end,
         "window_start": window_start,
         "window_end": window_end,
         "headline_count": len(articles),
-        "summary_json": json.dumps(summary_json, ensure_ascii=False),
-        "raw_response": json.dumps(
-            {
-                "stages": stage_raw_responses,
-                "final": final_raw,
-            },
-            ensure_ascii=False,
-        ),
-        "referenced_articles": json.dumps(
-            [
-                {
-                    "article_id": item.get("article_id"),
-                    "source": item.get("source"),
-                    "title": item.get("title"),
-                    "impact_summary": item.get("impact_summary"),
-                    "impact_analysis": item.get("impact_analysis"),
-                    "impact_confidence": item.get("impact_confidence"),
-                    "markets": item.get("impact_markets"),
-                    "published_at": item.get("published_at").isoformat() if isinstance(item.get("published_at"), datetime) else item.get("published_at"),
-                    "url": item.get("url"),
-                    "impact_severity": (item.get("impact_severity") or (item.get("extra_metadata") or {}).get("impact_severity")),
-                    "severity_score": item.get("severity_score") or (item.get("extra_metadata") or {}).get("severity_score"),
-                    "macro_score": item.get("macro_score") or (item.get("extra_metadata") or {}).get("macro_score"),
-                    "event_type": item.get("event_type") or (item.get("extra_metadata") or {}).get("event_type"),
-                    "subject_level": item.get("subject_level") or (item.get("extra_metadata") or {}).get("subject_level"),
-                    "macro_tags": item.get("macro_tags") or (item.get("extra_metadata") or {}).get("macro_tags"),
-                }
-                for item in articles
-            ],
-            ensure_ascii=False,
-        ),
+        "summary_json": summary_json,
+        "referenced_articles": referenced_articles_payload,
+        "stage_records": stage_records,
         "prompt_tokens": total_prompt_tokens,
         "completion_tokens": total_completion_tokens,
         "total_tokens": total_tokens,
@@ -695,17 +1024,10 @@ def generate_market_insight_summary(
         "model_used": "deepseek-reasoner (multi-stage)",
     }
 
-    summary_id = summary_dao.insert_summary(summary_payload)
-    summary_payload["summary_id"] = summary_id
-    summary_payload["summary_json"] = summary_json
-    summary_payload["referenced_articles"] = json.loads(summary_payload["referenced_articles"])
-
-    return summary_payload
-
 
 def get_latest_market_insight(*, settings_path: Optional[str] = None) -> Optional[Dict[str, object]]:
     settings = load_settings(settings_path)
-    summary_dao = NewsMarketInsightDAO(settings.postgres)
+    summary_dao = MarketInsightDAO(settings.postgres)
     record = summary_dao.latest_summary()
     if not record:
         return None
@@ -727,7 +1049,7 @@ def get_latest_market_insight(*, settings_path: Optional[str] = None) -> Optiona
 
 def list_market_insights(*, limit: int = 10, settings_path: Optional[str] = None) -> List[Dict[str, object]]:
     settings = load_settings(settings_path)
-    summary_dao = NewsMarketInsightDAO(settings.postgres)
+    summary_dao = MarketInsightDAO(settings.postgres)
     return summary_dao.list_summaries(limit=limit)
 
 

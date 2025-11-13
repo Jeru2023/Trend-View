@@ -271,11 +271,10 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 
 ### API & Frontend
 - Endpoint `/macro/insight` returns the latest snapshot (`MacroInsightResponse`) containing summary JSON, model name, dataset array, and warnings for missing feeds.
-- New pages `frontend/public/macro-insight.html/js` and `frontend/public/market-overview.html/js` render:
+- New page `frontend/public/macro-insight.html/js` renders:
   - LLM summary with bias badge, overview、policy outlook、risk/watch lists。
   - Highlight cards derived from key indicators。
   - Dataset grids showing the retained 11 rows per indicator with translated headers。
-  - Market overview page also displays realtime indices、fund-flow tables、market activity、and includes a streaming DeepSeek reasoning panel triggered via `/market/overview/reason`.
 - Sidebar highlights the new entries under the Market/Macro sections; control panel button triggers `/control/sync/macro-insight` (runLLM default true).
 
 ### Operational Notes
@@ -287,7 +286,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 
 ### Summary
 - Provides a unified payload that combines realtime index snapshots, recent index history, existing market/macro/peripheral insights, and the latest fund-flow/market-activity metrics.
-- Exposed via `/market/overview` for downstream DeepSeek reasoning (no LLM step yet).
+- Exposed via `/market/overview` purely as a structured snapshot (no built-in LLM step).
 
 ### Backend Flow
 1. `build_market_overview_payload` pulls:
@@ -300,14 +299,14 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 3. FastAPI endpoint `/market/overview` returns the structured payload (`MarketOverviewResponse`).
 
 ### Operational Notes
-- Designed as a read-only API; reasoning endpoint `/market/overview/reason` returns a plain-text stream for incremental UI updates.
+- Designed as a read-only API; callers that need reasoning can stitch their own prompts using the payload.
 - Unit test `test_market_overview_service.py` ensures each slice is capped at 10 entries and required sections exist.
 
 ## Market Insight Reasoner (2025-11-04)
 
 ### Summary
 - DeepSeek Reasoner 现在一次性消化“大盘聚合数据 + 结构化新闻信号”，输出 24 小时大盘洞察；新闻只作为 `newsSignals` JSON 参与提示，不再直接传原文。
-- 结果仍存入 `news_market_insights`（`backend/config/news_market_insights_schema.sql`），记录 prompt/response usage、结构化 summary、newsSignals。
+- 结果仍存入 `market_insights`（`backend/config/market_insights_schema.sql`），记录 prompt/response usage、结构化 summary、newsSignals。
 - 触发方式不变：`/control/sync/market-insight`；控制卡展示耗时、token、Asia/Shanghai 时间戳。
 - 新闻 intake 仍优先 40 条高置信事件，后台抓更大候选集并去重后写入 `newsSignals`，控制 prompt 体积。
 
@@ -315,7 +314,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 1. `build_market_overview_payload` 聚合实时指数/指数历史/基金流/两融/宏观/外围/活跃度等数据。
 2. `collect_recent_market_headlines` 抓取市场级快讯，将摘要、分析、confidence、markets 等字段压缩成 `newsSignals`。
 3. `generate_market_insight_summary` 将 overview + newsSignals 拼接成统一 prompt，调用 DeepSeek Reasoner（`model_override="deepseek-reasoner"`）并收集 usage。
-4. 解析到的 JSON 与原始响应一起写入 `news_market_insights`，DAO 仍做幂等 upsert；若返回不合法 JSON 会保留 raw text 以便排查。
+4. 解析到的 JSON 与原始响应一起写入 `market_insights`，DAO 仍做幂等 upsert；若返回不合法 JSON 会保留 raw text 以便排查。
 
 ### API & Frontend
 - `/market/market-insight`（旧 `/news/...` 仅保留兼容）返回最新 summary；若无 summary 则退回临时 headlines 提示“待生成”。

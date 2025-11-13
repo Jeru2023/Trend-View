@@ -41,7 +41,7 @@ from .global_flash_dao import GlobalFlashDAO
 from .trade_calendar_dao import TradeCalendarDAO
 from .news_article_dao import NewsArticleDAO
 from .news_insight_dao import NewsInsightDAO
-from .news_market_insight_dao import NewsMarketInsightDAO
+from .market_insight_dao import MarketInsightDAO
 from .news_sector_insight_dao import NewsSectorInsightDAO
 from .index_history_dao import IndexHistoryDAO
 from .realtime_index_dao import RealtimeIndexDAO
@@ -49,7 +49,6 @@ from .margin_account_dao import MarginAccountDAO
 from .market_activity_dao import MarketActivityDAO
 from .market_fund_flow_dao import MarketFundFlowDAO
 from .macro_insight_dao import MacroInsightDAO
-from .market_overview_insight_dao import MarketOverviewInsightDAO
 from .concept_watchlist_dao import ConceptWatchlistDAO
 from .concept_constituent_dao import ConceptConstituentDAO
 from .concept_directory_dao import ConceptDirectoryDAO
@@ -109,7 +108,7 @@ __all__ = [
     "TradeCalendarDAO",
     "NewsArticleDAO",
     "NewsInsightDAO",
-    "NewsMarketInsightDAO",
+    "MarketInsightDAO",
     "NewsSectorInsightDAO",
     "IndexHistoryDAO",
     "RealtimeIndexDAO",
@@ -117,7 +116,6 @@ __all__ = [
     "MarketActivityDAO",
     "MarketFundFlowDAO",
     "MacroInsightDAO",
-    "MarketOverviewInsightDAO",
     "ConceptWatchlistDAO",
     "ConceptConstituentDAO",
     "ConceptDirectoryDAO",
