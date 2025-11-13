@@ -334,6 +334,7 @@ const elements = {
     message: document.getElementById("hsgt-fund-flow-message"),
     progress: document.getElementById("hsgt-fund-flow-progress"),
     button: document.getElementById("run-hsgt-fund-flow"),
+    fullRefreshToggle: document.getElementById("hsgt-full-refresh"),
   },
   marginAccount: {
     status: document.getElementById("margin-account-status"),
@@ -1267,9 +1268,13 @@ function initActions() {
     );
   }
   if (elements.hsgtFundFlow.button) {
-    elements.hsgtFundFlow.button.addEventListener("click", () =>
-      triggerJob("/control/sync/hsgt-fund-flow", {})
-    );
+    elements.hsgtFundFlow.button.addEventListener("click", () => {
+      const payload = {};
+      if (elements.hsgtFundFlow.fullRefreshToggle) {
+        payload.fullRefresh = Boolean(elements.hsgtFundFlow.fullRefreshToggle.checked);
+      }
+      triggerJob("/control/sync/hsgt-fund-flow", payload);
+    });
   }
   if (elements.marginAccount.button) {
     elements.marginAccount.button.addEventListener("click", () =>

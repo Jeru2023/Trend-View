@@ -1,6 +1,4 @@
-"""
-DAO for real-time global index snapshots sourced from AkShare.
-"""
+"""DAO for real-time global index snapshots sourced from Yahoo Finance."""
 
 from __future__ import annotations
 
@@ -34,7 +32,7 @@ GLOBAL_INDEX_FIELDS: Sequence[str] = (
 
 
 class GlobalIndexDAO(PostgresDAOBase):
-    """Persistence helper for AkShare global index spot data."""
+    """Persistence helper for Yahoo Finance global index spot data."""
 
     _conflict_keys: Sequence[str] = ("code",)
 

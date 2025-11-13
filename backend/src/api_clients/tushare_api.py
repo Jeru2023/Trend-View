@@ -193,6 +193,16 @@ SHIBOR_COLUMN_MAP: Final[dict[str, str]] = {
     "1y": "rate_1y",
 }
 
+HSGT_MONEYFLOW_FIELDS: Sequence[str] = (
+    "trade_date",
+    "ggt_ss",
+    "ggt_sz",
+    "hgt",
+    "sgt",
+    "north_money",
+    "south_money",
+)
+
 def _fetch_stock_basic_frames(
     pro: ts.pro_api,
     list_statuses: Sequence[str],
@@ -355,6 +365,32 @@ def get_daily_trade(
 
     combined = pd.concat(frames, ignore_index=True)
     return combined.drop_duplicates(subset=["ts_code", "trade_date"])
+
+
+def fetch_moneyflow_hsgt(
+    pro: ts.pro_api,
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Fetch Shanghai/Shenzhen-Hong Kong connect money flow statistics.
+    """
+    params: dict[str, str] = {}
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
+
+    frame = pro.moneyflow_hsgt(**params)
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=HSGT_MONEYFLOW_FIELDS)
+
+    missing = [col for col in HSGT_MONEYFLOW_FIELDS if col not in frame.columns]
+    for column in missing:
+        frame[column] = None
+
+    return frame.loc[:, list(HSGT_MONEYFLOW_FIELDS)]
 
 
 def get_daily_indicator(

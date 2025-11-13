@@ -1,4 +1,5 @@
 const translations = getTranslations("hsgtFundFlow");
+const ECHARTS_CDN = "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js";
 const LANG_STORAGE_KEY = "trend-view-lang";
 const PAGE_SIZE_STORAGE_KEY = "hsgt-fund-flow-page-size";
 const PAGE_SIZE_OPTIONS = [100, 200, 500];
@@ -8,6 +9,8 @@ const API_BASE =
   (window.location.hostname === "localhost"
     ? "http://localhost:8000"
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
+let echartsLoader = null;
+let chartInstance = null;
 
 function getInitialLanguage() {
   try {
@@ -62,6 +65,8 @@ const state = {
   pageSize: getInitialPageSize(),
   total: 0,
   availableYears: [],
+  lastSyncedAt: null,
+  syncing: false,
 };
 
 const elements = {
@@ -73,6 +78,10 @@ const elements = {
   paginationPrev: document.getElementById("hsgt-prev"),
   paginationNext: document.getElementById("hsgt-next"),
   pageInfo: document.getElementById("hsgt-page-info"),
+  syncButton: document.getElementById("hsgt-sync-button"),
+  lastUpdatedValue: document.getElementById("hsgt-last-updated"),
+  chartContainer: document.getElementById("hsgt-chart"),
+  chartEmpty: document.getElementById("hsgt-chart-empty"),
 };
 
 function persistLanguage(lang) {
@@ -114,21 +123,6 @@ function formatNumber(value, options = {}) {
   return new Intl.NumberFormat(locale, options).format(numeric);
 }
 
-function formatPercent(value) {
-  if (value === null || value === undefined || value === "") {
-    return "--";
-  }
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return "--";
-  }
-  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
-  return new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(numeric);
-}
-
 function extractYear(value) {
   if (!value) {
     return "";
@@ -165,6 +159,228 @@ function formatDate(value) {
   return String(value);
 }
 
+function loadEcharts() {
+  if (window.echarts) {
+    return Promise.resolve();
+  }
+  if (echartsLoader) {
+    return echartsLoader;
+  }
+  echartsLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = ECHARTS_CDN;
+    script.async = true;
+    script.onload = () => {
+      resolve();
+    };
+    script.onerror = (event) => {
+      console.error("Failed to load ECharts", event);
+      echartsLoader = null;
+      reject(new Error("Failed to load ECharts"));
+    };
+    document.body.appendChild(script);
+  });
+  return echartsLoader;
+}
+
+function disposeChart() {
+  if (chartInstance) {
+    chartInstance.dispose();
+    chartInstance = null;
+  }
+}
+
+function showChartEmpty(message) {
+  if (elements.chartEmpty) {
+    elements.chartEmpty.textContent = message;
+    elements.chartEmpty.hidden = false;
+  }
+  if (elements.chartContainer) {
+    elements.chartContainer.classList.add("hidden");
+  }
+  disposeChart();
+}
+
+function hideChartEmpty() {
+  if (elements.chartEmpty) {
+    elements.chartEmpty.hidden = true;
+  }
+  if (elements.chartContainer) {
+    elements.chartContainer.classList.remove("hidden");
+  }
+}
+
+async function renderChart() {
+  if (!elements.chartContainer) {
+    return;
+  }
+  const dict = getDict();
+  const dataset = (Array.isArray(currentItems) ? currentItems : [])
+    .map((item) => {
+      const tradeDate = getField(item, "tradeDate");
+      if (!tradeDate) {
+        return null;
+      }
+      const dateObj = new Date(tradeDate);
+      if (Number.isNaN(dateObj.getTime())) {
+        return null;
+      }
+      const label = dateObj.toISOString().slice(0, 10);
+      const netBuyRaw = Number(getField(item, "netBuyAmount"));
+      const fundInflowRaw = Number(getField(item, "fundInflow"));
+      const netBuy = Number.isFinite(netBuyRaw) ? Number(netBuyRaw.toFixed(2)) : null;
+      const fundInflow = Number.isFinite(fundInflowRaw) ? Number(fundInflowRaw.toFixed(2)) : null;
+      return {
+        dateObj,
+        label,
+        netBuy,
+        fundInflow,
+      };
+    })
+    .filter((point) => point);
+
+  const sorted = dataset.sort((a, b) => a.dateObj - b.dateObj);
+  const recent = sorted.slice(-120);
+  const hasSeries = recent.some((point) => point.netBuy !== null || point.fundInflow !== null);
+
+  if (!recent.length || !hasSeries) {
+    showChartEmpty(dict.chartEmpty || "Not enough data to render the chart.");
+    return;
+  }
+
+  hideChartEmpty();
+  await loadEcharts();
+  if (!window.echarts) {
+    showChartEmpty(dict.chartEmpty || "Not enough data to render the chart.");
+    return;
+  }
+
+  if (!chartInstance) {
+    chartInstance = window.echarts.init(elements.chartContainer);
+  }
+
+  const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+  const numberFormatter = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const legendNetBuy = dict.legendNetBuy || "Net buy (CNY 100M)";
+  const legendFundInflow = dict.legendFundInflow || "Fund inflow (CNY 100M)";
+  const labels = recent.map((point) => point.label);
+  const seriesDefs = [
+    {
+      name: legendNetBuy,
+      data: recent.map((point) => point.netBuy),
+      color: "#2563eb",
+    },
+    {
+      name: legendFundInflow,
+      data: recent.map((point) => point.fundInflow),
+      color: "#f97316",
+    },
+  ];
+
+  const option = {
+    color: seriesDefs.map((s) => s.color),
+    tooltip: {
+      trigger: "axis",
+      valueFormatter: (value) =>
+        typeof value === "number" ? `${numberFormatter.format(value)} 亿` : "--",
+    },
+    legend: {
+      top: 0,
+      data: seriesDefs.map((item) => item.name),
+      textStyle: { color: "#4b5563" },
+    },
+    grid: {
+      left: "4%",
+      right: "3%",
+      top: 48,
+      bottom: 36,
+    },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: labels,
+      axisLabel: {
+        formatter: (value) => value.slice(5),
+        color: "#6b7280",
+      },
+      axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.4)" } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: {
+        formatter: (value) => numberFormatter.format(value),
+        color: "#6b7280",
+      },
+      splitLine: {
+        lineStyle: {
+          type: "dashed",
+          color: "rgba(148, 163, 184, 0.35)",
+        },
+      },
+    },
+    series: seriesDefs.map((config) => ({
+      name: config.name,
+      type: "line",
+      smooth: true,
+      showSymbol: false,
+      emphasis: { focus: "series" },
+      lineStyle: { width: 2 },
+      data: config.data,
+      areaStyle: {
+        opacity: 0.12,
+        color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: config.color },
+          { offset: 1, color: "rgba(37, 99, 235, 0.03)" },
+        ]),
+      },
+    })),
+  };
+
+  chartInstance.setOption(option, true);
+}
+
+function formatTimestamp(value) {
+  const dict = getDict();
+  if (!value) {
+    return dict.lastUpdatedUnknown || "--";
+  }
+  try {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Invalid date");
+    }
+    const locale = currentLang === "zh" ? "zh-CN" : "en-US";
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+  } catch (error) {
+    return dict.lastUpdatedUnknown || "--";
+  }
+}
+
+function updateLastUpdatedDisplay() {
+  if (!elements.lastUpdatedValue) {
+    return;
+  }
+  elements.lastUpdatedValue.textContent = formatTimestamp(state.lastSyncedAt);
+}
+
+function updateSyncButton() {
+  if (!elements.syncButton) {
+    return;
+  }
+  const dict = getDict();
+  elements.syncButton.disabled = Boolean(state.syncing);
+  elements.syncButton.textContent = state.syncing
+    ? dict.syncing || "Syncing..."
+    : dict.syncButton || "Update now";
+}
+
 function applyFilters(items) {
   return items.filter((item) => {
     if (state.year !== "all") {
@@ -184,7 +400,7 @@ function renderEmptyRow(message) {
   }
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 12;
+  cell.colSpan = 5;
   cell.className = "table-empty";
   cell.textContent = message;
   row.appendChild(cell);
@@ -214,40 +430,18 @@ function renderTable(items = currentItems) {
   const fragment = document.createDocumentFragment();
   rows.forEach((item) => {
     const row = document.createElement("tr");
+    const symbol = getField(item, "symbol");
     const tradeDate = getField(item, "tradeDate");
     const netBuy = getField(item, "netBuyAmount");
-    const buyAmount = getField(item, "buyAmount");
-    const sellAmount = getField(item, "sellAmount");
     const cumulative = getField(item, "netBuyAmountCumulative");
     const fundInflow = getField(item, "fundInflow");
-    const balance = getField(item, "balance");
-    const marketValue = getField(item, "marketValue");
-    const leadingStock = getField(item, "leadingStock");
-    const leadingStockCode = getField(item, "leadingStockCode");
-    const leadingChange = getField(item, "leadingStockChangePercent");
-    const hs300 = getField(item, "hs300Index");
-    const hs300Change = getField(item, "hs300ChangePercent");
-
-    const combinedLeading = [leadingStock, leadingStockCode]
-      .filter((part) => part && String(part).trim())
-      .join(" / ") || "--";
-
-    const leadingChangeText = formatPercent(leadingChange);
-    const hs300ChangeText = formatPercent(hs300Change);
 
     const cells = [
+      symbol || "--",
       formatDate(tradeDate),
       formatNumber(netBuy, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      formatNumber(buyAmount, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      formatNumber(sellAmount, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      formatNumber(cumulative, { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
       formatNumber(fundInflow, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      formatNumber(balance, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      formatNumber(marketValue, { notation: "compact", maximumFractionDigits: 2 }),
-      combinedLeading,
-      leadingChangeText !== "--" ? `${leadingChangeText}%` : "--",
-      formatNumber(hs300, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      hs300ChangeText !== "--" ? `${hs300ChangeText}%` : "--",
+      formatNumber(cumulative, { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
     ];
 
     cells.forEach((text) => {
@@ -365,10 +559,15 @@ function applyTranslations() {
     }
   });
 
+  updateSyncButton();
+  updateLastUpdatedDisplay();
   populateFilters();
   populatePageSizeSelect();
   updatePagination();
   renderTable(currentItems);
+  renderChart().catch((error) => {
+    console.error("Failed to render HSGT chart", error);
+  });
 }
 
 function onFilterChange() {
@@ -415,6 +614,8 @@ async function loadHsgtFundFlow() {
     if (Array.isArray(payload.availableYears)) {
       state.availableYears = payload.availableYears.map((year) => String(year));
     }
+    const lastSyncedAt = payload.lastSyncedAt || payload.last_synced_at;
+    state.lastSyncedAt = lastSyncedAt || null;
 
     const totalPages = state.total > 0 ? Math.ceil(state.total / state.pageSize) : 0;
     if (state.total > 0 && state.page >= totalPages) {
@@ -427,6 +628,8 @@ async function loadHsgtFundFlow() {
     populatePageSizeSelect();
     renderTable(currentItems);
     updatePagination();
+    updateLastUpdatedDisplay();
+    await renderChart();
   } catch (error) {
     console.error("Failed to load HSGT fund flow data", error);
     currentItems = [];
@@ -434,6 +637,37 @@ async function loadHsgtFundFlow() {
     populatePageSizeSelect();
     renderTable([]);
     updatePagination();
+    updateLastUpdatedDisplay();
+    await renderChart();
+  }
+}
+
+async function triggerSync() {
+  if (state.syncing) {
+    return;
+  }
+  state.syncing = true;
+  updateSyncButton();
+  try {
+    const response = await fetch(`${API_BASE}/control/sync/hsgt-fund-flow`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      throw new Error(`Sync request failed with status ${response.status}`);
+    }
+    await response.json().catch(() => ({}));
+  } catch (error) {
+    console.error("Failed to trigger HSGT sync", error);
+  } finally {
+    state.syncing = false;
+    updateSyncButton();
+    setTimeout(() => {
+      loadHsgtFundFlow();
+    }, 4000);
   }
 }
 
@@ -492,10 +726,19 @@ function bindEvents() {
       }
     });
   }
+
+  if (elements.syncButton) {
+    elements.syncButton.addEventListener("click", triggerSync);
+  }
 }
 
 function initialize() {
   bindEvents();
+  window.addEventListener("resize", () => {
+    if (chartInstance) {
+      chartInstance.resize();
+    }
+  });
   applyTranslations();
   loadHsgtFundFlow();
 }

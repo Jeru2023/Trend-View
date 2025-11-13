@@ -21,6 +21,8 @@ from .tushare_api import (
     get_financial_indicators,
     get_realtime_quotes,
     TRADE_CALENDAR_FIELDS,
+    HSGT_MONEYFLOW_FIELDS,
+    fetch_moneyflow_hsgt,
 )
 from .akshare_api import (
     FINANCE_BREAKFAST_COLUMNS,
@@ -53,7 +55,6 @@ from .akshare_api import (
     fetch_performance_express_em,
     fetch_performance_forecast_em,
     fetch_profit_forecast_em,
-    fetch_global_indices,
     fetch_industry_fund_flow,
     fetch_concept_fund_flow,
     fetch_individual_fund_flow,
@@ -80,6 +81,7 @@ from .akshare_api import (
     fetch_global_flash_news,
     fetch_stock_news,
 )
+from .yahoo_finance_api import fetch_yahoo_daily_history, fetch_yahoo_daily_history_range
 from .eastmoney_news import EastmoneyNewsDetail, fetch_eastmoney_detail
 from .deepseek_api import generate_finance_analysis
 from .coze_api import run_coze_agent
@@ -100,6 +102,7 @@ __all__ = [
     "get_financial_indicators",
     "get_realtime_quotes",
     "TRADE_CALENDAR_FIELDS",
+    "HSGT_MONEYFLOW_FIELDS",
     "PERFORMANCE_EXPRESS_COLUMN_MAP",
     "PERFORMANCE_FORECAST_COLUMN_MAP",
     "INDUSTRY_FUND_FLOW_COLUMN_MAP",
@@ -132,7 +135,6 @@ __all__ = [
     "fetch_performance_express_em",
     "fetch_performance_forecast_em",
     "fetch_profit_forecast_em",
-    "fetch_global_indices",
     "fetch_industry_fund_flow",
     "fetch_concept_fund_flow",
     "fetch_individual_fund_flow",
@@ -162,9 +164,12 @@ __all__ = [
     "fetch_global_flash_news",
     "fetch_stock_news",
     "fetch_market_activity_legu",
+    "fetch_moneyflow_hsgt",
     "EastmoneyNewsDetail",
     "fetch_eastmoney_detail",
     "generate_finance_analysis",
     "run_coze_agent",
     "fetch_fed_press_releases",
+    "fetch_yahoo_daily_history",
+    "fetch_yahoo_daily_history_range",
 ]

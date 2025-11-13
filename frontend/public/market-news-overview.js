@@ -627,8 +627,8 @@ async function fetchMarketInsight() {
   }
   try {
     const [insightResp, historyResp] = await Promise.all([
-      fetch(`${API_BASE}/news/market-insight?articleLimit=${ARTICLE_LIMIT}`),
-      fetch(`${API_BASE}/news/market-insight/history?limit=6`),
+      fetch(`${API_BASE}/market/market-insight`),
+      fetch(`${API_BASE}/market/market-insight/history?limit=6`),
     ]);
     if (!insightResp.ok) {
       throw new Error(`HTTP ${insightResp.status}`);

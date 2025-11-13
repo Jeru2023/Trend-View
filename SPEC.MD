@@ -47,8 +47,15 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-11-13 (FEATURE frontend-132): Added a reasoning tab to the Industry Market page that reuses the latest `/market/industry-insight` snapshot, showing AI stance, fund-flow chips, stage metrics, and related news for the selected industry alongside the existing chart tab.
 - 2025-11-13 (FEATURE backend/frontend-133): Implemented industry Wyckoff volume-price reasoning with new DAO/service/schema, `/industries/volume-price-analysis` APIs (latest/history/stream), and added the “量价分析”与“行业资讯” tabs on Industry Market to mirror the concept workflow (AI streaming + history + news feed).
 - 2025-11-13 (FEATURE backend/frontend-134): Introduced concept-level news APIs plus a Concept Market “资讯” tab so each concept surfaces tagged headlines alongside the existing chart/constituent/volume analysis.
+- 2025-11-14 (CHANGE backend/frontend-177): Unified Market Insight reasoning with the market overview prompt—aggregated指数/资金/宏观数据与新闻一并输送给 DeepSeek，Market Insight 页面不再展示新闻原文，仅保留AI推理结果，后台也将新闻清洗成 `newsSignals` JSON 参与推理；接口路径迁移到 `/market/market-insight*`（旧 `/news/...` 仍兼容，但前端已改用新路由）。
+- 2025-11-13 (FEATURE frontend-173): Added a manual HSGT sync button with an inline “last updated” timestamp on the fund-flow page so operators can trigger `/control/sync/hsgt-fund-flow` and verify AkShare refreshes without leaving the view.
+- 2025-11-13 (FIX frontend-174): HSGT fund-flow table now mirrors the database schema one-to-one (Symbol, trade date, net buy, buy/sell, cumulative, inflow, balance, market value, leading stock + code, HS300 metrics) so analysts can compare UI rows with raw records directly.
+- 2025-11-13 (FIX backend-172): Stopped deleting/null-filtering HSGT rows without net buy data and prevented cumulative values from carrying forward on empty rows so AkShare’s partial snapshots still surface without showing misleading “stuck” totals.
+- 2025-11-13 (CHANGE backend/frontend-175): Reverted the HSGT pipeline back to Tushare `moneyflow_hsgt`, trimmed the DB schema/UI down to the fields that feed that API (symbol, trade date, net buy, fund inflow, cumulative), refreshed the copy to mention Tushare, and tweaked DAO legacy detection so AkShare-era tables get dropped once during migration.
+- 2025-11-13 (FEATURE frontend-176): Added an ECharts-powered net-buy/fund-inflow trend card to the HSGT page that auto-loads the latest rows and refreshes alongside manual syncs.
 - 2025-11-09 (FEATURE backend/frontend-062): Introduced fund-flow based sector hotlist service (top industries/concepts across multi-period rankings), `/fund-flow/sector-hotlist` API, fund navigation placement, refreshed sector insight page, and supporting unit tests.
 - 2025-11-10 (UPDATE backend-063): Patched HSGT fund flow sync to enrich the latest records via `stock_hsgt_fund_flow_summary_em`, ensuring north/southbound metrics stay current despite historical endpoint gaps, with new unit coverage for the summary merge.
+- 2025-11-13 (FIX backend-171): Finalised the AkShare migration for the HSGT fund-flow pipeline by purging legacy Tushare rows automatically, switching the sync to `stock_hsgt_hist_em`, and merging the summary snapshot when the historical feed lags so control-panel refreshes always surface the latest trading day.
 - 2025-11-06 (FEATURE backend/frontend-046): Added margin account statistics ingestion via AkShare `stock_margin_account_info`, introduced schema/DAO/service wiring, control panel sync card, and dashboard with financing balance trend chart plus date-range filters.
 - 2025-11-07 (FEATURE backend/frontend-047): Integrated LeGu market activity snapshot (`stock_market_activity_legu`) with new persistence, control panel card, localized summary grid, and translation set.
 - 2025-11-07 (FEATURE backend-061): Added `concept_constituent_service.list_concept_constituents`, which generates Tonghuashun `hexin-v` tokens via `py-mini-racer`, retries paginated scraping with automatic token rotation, and normalizes numeric columns for downstream consumers.
@@ -297,37 +304,30 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 ## Market Insight Reasoner (2025-11-04)
 
 ### Summary
-- DeepSeek Reasoner aggregates the latest high-impact news into a 24-hour market narrative aimed at A-share index interpretation.
-- Results persist in `news_market_insights` (`backend/config/news_market_insights_schema.sql`) with prompt/response usage metrics, JSON summary, and referenced headline metadata.
-- Manual trigger only: `/control/sync/market-insight` enqueues the job; control card reports elapsed time, token usage, and Asia/Shanghai timestamps.
-- Headline intake now prioritises up to 40 items by confidence、影响层级、主题覆盖和时效性；后台会抓取更大的候选集并做去重，以扩大资讯覆盖面且控制上下文长度。
-- 单条新闻的摘要/分析文本在入模前做了截断，默认能把 token 规模稳定在 40 条以内；如需更多样本可在触发请求里把 `articleLimit` 调大（上限 50）。
-- 控制面板新增“宏观聚合”任务，一键串行运行杠杆率、社融、CPI、PPI、PMI、M2、央行利率等宏观数据同步，便于每日集中刷新。
+- DeepSeek Reasoner 现在一次性消化“大盘聚合数据 + 结构化新闻信号”，输出 24 小时大盘洞察；新闻只作为 `newsSignals` JSON 参与提示，不再直接传原文。
+- 结果仍存入 `news_market_insights`（`backend/config/news_market_insights_schema.sql`），记录 prompt/response usage、结构化 summary、newsSignals。
+- 触发方式不变：`/control/sync/market-insight`；控制卡展示耗时、token、Asia/Shanghai 时间戳。
+- 新闻 intake 仍优先 40 条高置信事件，后台抓更大候选集并去重后写入 `newsSignals`，控制 prompt 体积。
 
 ### Backend Flow
-1. `collect_recent_market_headlines` joins `news_articles` + `news_insights` for completed rows tagged with market-level impact or explicit market scopes.
-2. Headlines are formatted for the prompt block with publish timestamps normalised to local time.
-3. `generate_market_insight_summary` calls `generate_finance_analysis(..., model_override="deepseek-reasoner", return_usage=True)` to request structured JSON.
-4. Parsed JSON is stored alongside the raw response; token counts and elapsed ms persist for monitoring.
-5. `NewsMarketInsightDAO.insert_summary` performs idempotent upsert so retries overwrite the latest run cleanly.
+1. `build_market_overview_payload` 聚合实时指数/指数历史/基金流/两融/宏观/外围/活跃度等数据。
+2. `collect_recent_market_headlines` 抓取市场级快讯，将摘要、分析、confidence、markets 等字段压缩成 `newsSignals`。
+3. `generate_market_insight_summary` 将 overview + newsSignals 拼接成统一 prompt，调用 DeepSeek Reasoner（`model_override="deepseek-reasoner"`）并收集 usage。
+4. 解析到的 JSON 与原始响应一起写入 `news_market_insights`，DAO 仍做幂等 upsert；若返回不合法 JSON 会保留 raw text 以便排查。
 
 ### API & Frontend
-- `/news/market-insight` returns the latest summary (or a fallback list of qualifying headlines when no summary exists).
+- `/market/market-insight`（旧 `/news/...` 仅保留兼容）返回最新 summary；若无 summary 则退回临时 headlines 提示“待生成”。
 - Response model surfaces:
   - Summary metadata (`generatedAt`, `windowStart`, `windowEnd`, headline count, token usage, latency, model).
   - Structured JSON payload (sentiment, confidence, overview, drivers, sectors/indices/risk/actions, detailed notes per headline).
-  - Referenced headlines with impact summaries/analysis/confidence.
-- New sidebar entry under “News” → “Market Insight”; front-end bundle `frontend/public/market-insight.js` renders:
-  - Highlight card with sentiment chip, KPI grid, and sectioned lists。
-  - Responsive article grid featuring impact badges, summaries, analysis paragraphs, and scope chips。
-  - Manual “Generate Insight” button（40条默认样本，内置任务状态提示，409 冲突时提示“任务运行中”）。
-- Styles consolidated in `frontend/public/styles.css` for sentiment chips, insight cards, and news chips; query-string cache busting updated (`styles.css?v=20261110`, `sidebar.js?v=20261110`, `i18n.js?v=20261110`).
+  - `articles` 字段仅在 fallback 模式才会返回临时 headlines。
+- `market-insight.html/js` 只呈现 AI 推理卡片（sentiment chip、summary、signals、position、risks、detailed notes），不再显示“参与新闻”；按钮直接触发 `/control/sync/market-insight` 并在 409 时提示任务运行中。
 
 ### Operational Notes
 - Uses Asia/Shanghai naive timestamps end-to-end; monitor entries convert to local time when persisting job state.
 - Reasoner model default output cap 32k tokens; adjust `MAX_OUTPUT_TOKENS` in `market_insight_service` if future prompts expand.
-- If the reasoner returns invalid JSON, service stores raw text while keeping the run result for debugging (`raw_response` column).
-- Fallback mode surfaces the qualifying headline list so the frontend still provides context even when no summary exists.
+- If the reasoner returns invalid JSON, service stores raw text while keeping the run result for debugging (`raw_response` column); parser会尝试自动补齐缺失的大括号。
+- Fallback mode 仅在 summary 缺失时暴露 headlines，帮助用户知晓“正在排队生成”。
 
 ## Database Schema
 - The stock metadata table definition is stored at `backend/config/stock_basic_schema.sql`. Services/DAOs apply this template automatically.

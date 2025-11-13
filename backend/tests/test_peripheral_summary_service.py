@@ -42,40 +42,22 @@ def patch_data_access(monkeypatch, sample_settings):
             pass
 
         def list_entries(self, limit=200):  # noqa: D401
-            return {
-                "items": [
+            items = []
+            for idx, spec in enumerate(peripheral_summary_service.GLOBAL_INDEX_TARGETS.values(), start=1):
+                direction = 1 if idx % 2 else -1
+                items.append(
                     {
-                        "code": "DJI",
-                        "name": "道琼斯",
-                        "latest_price": 39000.5,
-                        "change_amount": 120.3,
-                        "change_percent": 0.31,
-                        "high_price": 39100.0,
-                        "low_price": 38800.0,
-                        "last_quote_time": now,
-                    },
-                    {
-                        "code": "IXIC",
-                        "name": "纳斯达克",
-                        "latest_price": 15000.2,
-                        "change_amount": -80.0,
-                        "change_percent": -0.53,
-                        "high_price": 15120.0,
-                        "low_price": 14950.0,
-                        "last_quote_time": now,
-                    },
-                    {
-                        "code": "INX",
-                        "name": "标普500",
-                        "latest_price": 5200.1,
-                        "change_amount": 15.2,
-                        "change_percent": 0.29,
-                        "high_price": 5220.0,
-                        "low_price": 5180.0,
-                        "last_quote_time": now,
-                    },
-                ]
-            }
+                        "code": spec["codes"][0],
+                        "name": spec["display_name"],
+                        "latest_price": 1000.0 + idx * 100,
+                        "change_amount": direction * 10.0,
+                        "change_percent": direction * 0.5,
+                        "high_price": 1010.0 + idx * 100,
+                        "low_price": 990.0 + idx * 100,
+                        "last_quote_time": now - timedelta(minutes=idx),
+                    }
+                )
+            return {"items": items}
 
     class DummyDollarDAO:
         def __init__(self, *_args, **_kwargs):
@@ -168,6 +150,11 @@ def patch_data_access(monkeypatch, sample_settings):
     monkeypatch.setattr(peripheral_summary_service, "RmbMidpointDAO", DummyRmbDAO)
     monkeypatch.setattr(peripheral_summary_service, "FuturesRealtimeDAO", DummyFuturesDAO)
     monkeypatch.setattr(peripheral_summary_service, "PeripheralInsightDAO", lambda *_args, **_kwargs: dummy_dao)
+    monkeypatch.setattr(
+        peripheral_summary_service,
+        "list_global_index_history",
+        lambda code, limit=10: {"code": code, "items": [{"trade_date": date.today(), "close_price": 100.0}]},
+    )
 
     return dummy_dao
 
@@ -182,3 +169,6 @@ def test_generate_peripheral_insight_without_llm(patch_data_access):
     assert payload["summary"] is None
     assert payload["metrics"]["dollarIndex"]["close"] == 105.5
     assert payload["metrics"]["rmbMidpoint"]["rates"]["USD"]
+    assert len(payload["metrics"]["globalIndices"]) == len(peripheral_summary_service.GLOBAL_INDEX_TARGETS)
+    assert payload["metrics"]["globalIndicesHistory"]
+    assert not payload["metrics"]["warnings"]

@@ -785,30 +785,6 @@ def fetch_profit_forecast_em(symbol: Optional[str] = None) -> pd.DataFrame:
     return normalized
 
 
-def _empty_global_index_frame() -> pd.DataFrame:
-    return pd.DataFrame(columns=list(GLOBAL_INDEX_COLUMN_MAP.values()))
-
-
-def fetch_global_indices() -> pd.DataFrame:
-    """Fetch real-time global index snapshot."""
-    try:
-        dataframe = ak.index_global_spot_em()
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch global index data via AkShare: %s", exc)
-        return _empty_global_index_frame()
-
-    if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no global index data.")
-        return _empty_global_index_frame()
-
-    renamed = dataframe.rename(columns=GLOBAL_INDEX_COLUMN_MAP)
-    for column in GLOBAL_INDEX_COLUMN_MAP.values():
-        if column not in renamed.columns:
-            renamed[column] = None
-
-    return renamed.loc[:, list(GLOBAL_INDEX_COLUMN_MAP.values())]
-
-
 def _empty_dollar_index_frame() -> pd.DataFrame:
     return pd.DataFrame(columns=list(DOLLAR_INDEX_COLUMN_MAP.values()))
 

@@ -1235,12 +1235,18 @@
                 <div>
                   <h3 data-i18n="hsgtFundFlowTitle">HSGT Fund Flow</h3>
                   <p class="card__subtitle" data-i18n="hsgtFundFlowSubtitle">
-                    Ingest Eastmoney Shanghai/Shenzhen-Hong Kong connect fund flow summary snapshots.
+                    Sync Tushare moneyflow_hsgt series for Shanghai/Shenzhen-Hong Kong connect capital flows.
                   </p>
                 </div>
-                <button class="primary-btn" id="run-hsgt-fund-flow" data-i18n="runNow">
-                  Run
-                </button>
+                <div class="card__actions">
+                  <label class="card__toggle">
+                    <input type="checkbox" id="hsgt-full-refresh" />
+                    <span data-i18n="hsgtFundFlowFullRefreshLabel">Full refresh (truncate existing)</span>
+                  </label>
+                  <button class="primary-btn" id="run-hsgt-fund-flow" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
               </div>
               <div class="progress" aria-hidden="true">
                 <div class="progress__bar" id="hsgt-fund-flow-progress"></div>

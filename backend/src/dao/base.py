@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Iterator, Sequence
 
+import math
+
 import pandas as pd
 import psycopg2
 from psycopg2 import sql, errors
@@ -172,14 +174,20 @@ class PostgresDAOBase:
         )
         records = normalized.to_dict(orient="records")
         for record in records:
+            for key, value in list(record.items()):
+                if value is None:
+                    continue
+                if isinstance(value, float) and math.isnan(value):
+                    record[key] = None
+                    continue
+                if pd.isna(value):
+                    record[key] = None
+                    continue
             for column in date_columns:
                 if column not in record:
                     continue
                 value = record[column]
                 if value is None:
-                    continue
-                if pd.isna(value):
-                    record[column] = None
                     continue
                 if isinstance(value, pd.Timestamp):
                     value = value.to_pydatetime()

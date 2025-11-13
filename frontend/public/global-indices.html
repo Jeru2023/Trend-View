@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="title">Trend View - Global Indices</title>
-    <link rel="stylesheet" href="styles.css?v=20251226" />
+    <link rel="stylesheet" href="styles.css?v=20251230" />
     <script>
       (function () {
         var key = "trend-view-lang";
@@ -47,6 +47,32 @@
         </header>
 
         <section class="page">
+          <div class="global-index-chart-panel">
+            <div class="global-index-chart-controls">
+              <div
+                class="index-history-selector"
+                id="global-index-selector"
+                role="tablist"
+                aria-label="Global index selector"
+              ></div>
+              <div class="index-history-meta">
+                <span data-i18n="chartLastUpdated">Chart latest</span>
+                <strong id="global-index-chart-updated">--</strong>
+              </div>
+            </div>
+            <article class="chart-card">
+              <header class="chart-card__header">
+                <h2 data-i18n="chartTitle">Trailing Year Trend</h2>
+              </header>
+              <div class="chart-card__body chart-card__body--tall">
+                <div class="chart-container" id="global-index-chart" aria-live="polite"></div>
+                <p class="chart-empty hidden" id="global-index-chart-empty" data-i18n="chartEmpty">
+                  No chart data available.
+                </p>
+              </div>
+            </article>
+          </div>
+
           <div class="global-index-meta">
             <button class="primary-btn" id="global-index-refresh" data-i18n="refreshButton">
               Refresh
@@ -58,23 +84,19 @@
             <table class="data-table" id="global-index-table">
               <thead>
                 <tr>
-                  <th data-i18n="tableCode">Code</th>
-                  <th data-i18n="tableName">Name</th>
-                  <th data-i18n="tableLatest">Last</th>
-                  <th data-i18n="tableChange">Change</th>
-                  <th data-i18n="tableChangePercent">Change %</th>
-                  <th data-i18n="tableOpen">Open</th>
-                  <th data-i18n="tableHigh">High</th>
-                  <th data-i18n="tableLow">Low</th>
-                  <th data-i18n="tablePrevClose">Prev Close</th>
-                  <th data-i18n="tableAmplitude">Amplitude</th>
-                  <th data-i18n="tableQuoteTime">Quote Time</th>
+                  <th data-i18n="historyTableDate">Date</th>
+                  <th data-i18n="historyTableOpen">Open</th>
+                  <th data-i18n="historyTableHigh">High</th>
+                  <th data-i18n="historyTableLow">Low</th>
+                  <th data-i18n="historyTableClose">Close</th>
+                  <th data-i18n="historyTableChange">Change</th>
+                  <th data-i18n="historyTableChangePercent">Change %</th>
                 </tr>
               </thead>
               <tbody
                 id="global-index-tbody"
-                data-empty-en="No global index data."
-                data-empty-zh="暂无全球指数数据。"
+                data-empty-en="No history data."
+                data-empty-zh="暂无历史行情数据。"
               ></tbody>
             </table>
           </div>
@@ -84,6 +106,6 @@
 
     <script src="i18n.js?v=20270415"></script>
     <script src="sidebar.js?v=20270478"></script>
-    <script type="module" src="global-indices.js?v=20260306"></script>
+    <script type="module" src="global-indices.js?v=20261205"></script>
   </body>
 </html>

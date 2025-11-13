@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="title">Trend View - HSGT Fund Flow</title>
-    <link rel="stylesheet" href="styles.css?v=20270415" />
+    <link rel="stylesheet" href="styles.css?v=20270420" />
     <script>
       (function () {
         var key = "trend-view-lang";
@@ -35,7 +35,7 @@
           <div>
             <h1 class="page-heading" data-i18n="pageTitle">HSGT Fund Flow</h1>
             <p class="page-subtitle" data-i18n="pageSubtitle">
-              Monitor Shanghai/Shenzhen-Hong Kong connect capital flows from Eastmoney summaries.
+              Monitor Shanghai/Shenzhen-Hong Kong connect capital flows via Tushare moneyflow_hsgt.
             </p>
           </div>
           <div class="header-actions">
@@ -47,6 +47,26 @@
         </header>
 
         <section class="page">
+          <article class="chart-card hsgt-chart-card">
+            <div class="chart-card__header">
+              <h2 data-i18n="chartTitle">Net Buy & Fund Inflow Trend</h2>
+            </div>
+            <div class="chart-card__body chart-card__body--tall">
+              <div id="hsgt-chart" class="chart-container"></div>
+              <p class="chart-empty hidden" id="hsgt-chart-empty" data-i18n="chartEmpty">
+                Not enough data to render the chart.
+              </p>
+            </div>
+          </article>
+          <div class="sync-bar">
+            <button class="primary-btn" type="button" id="hsgt-sync-button" data-i18n="syncButton">
+              Sync latest
+            </button>
+            <div class="sync-bar__timestamp">
+              <span data-i18n="lastUpdatedLabel">Last updated:</span>
+              <strong id="hsgt-last-updated">--</strong>
+            </div>
+          </div>
           <div class="filters" id="hsgt-filters">
             <div class="filter-group">
               <label for="hsgt-year-filter" data-i18n="filterYear">Year</label>
@@ -63,18 +83,11 @@
             <table class="data-table hsgt-fund-flow-table" id="hsgt-fund-flow-table">
               <thead>
                 <tr>
+                  <th data-i18n="colSymbol">Symbol</th>
                   <th data-i18n="colTradeDate">Trade Date</th>
                   <th data-i18n="colNetBuy">Net Buy (亿元)</th>
-                  <th data-i18n="colBuyAmount">Buy Amount (亿元)</th>
-                  <th data-i18n="colSellAmount">Sell Amount (亿元)</th>
-                  <th data-i18n="colNetBuyCumulative">Cumulative Net Buy (万亿元)</th>
                   <th data-i18n="colFundInflow">Fund Inflow (亿元)</th>
-                  <th data-i18n="colBalance">Balance (亿元)</th>
-                  <th data-i18n="colMarketValue">Market Value (元)</th>
-                  <th data-i18n="colLeadingStock">Leading Stock</th>
-                  <th data-i18n="colLeadingChange">Leading Change (%)</th>
-                  <th data-i18n="colHs300">HS300</th>
-                  <th data-i18n="colHs300Change">HS300 Change (%)</th>
+                  <th data-i18n="colNetBuyCumulative">Cumulative Net Buy (万亿元)</th>
                 </tr>
               </thead>
               <tbody
@@ -94,8 +107,8 @@
       </main>
     </div>
 
-    <script src="i18n.js?v=20270415"></script>
+    <script src="i18n.js?v=20270420"></script>
     <script src="sidebar.js?v=20270478"></script>
-    <script type="module" src="hsgt-fund-flow.js?v=20270415"></script>
+    <script type="module" src="hsgt-fund-flow.js?v=20270420"></script>
   </body>
 </html>

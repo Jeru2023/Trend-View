@@ -7,7 +7,7 @@ from .finance_breakfast_service import sync_finance_breakfast
 from .performance_express_service import list_performance_express, sync_performance_express
 from .performance_forecast_service import list_performance_forecast, sync_performance_forecast
 from .profit_forecast_service import list_profit_forecast, sync_profit_forecast
-from .global_index_service import list_global_indices, sync_global_indices
+from .global_index_service import list_global_indices, list_global_index_history, sync_global_indices
 from .dollar_index_service import list_dollar_index, sync_dollar_index
 from .rmb_midpoint_service import list_rmb_midpoint_rates, sync_rmb_midpoint_rates
 from .futures_realtime_service import list_futures_realtime, sync_futures_realtime
@@ -190,6 +190,7 @@ __all__ = [
     "list_performance_forecast",
     "list_profit_forecast",
     "list_global_indices",
+    "list_global_index_history",
     "list_realtime_indices",
     "list_dollar_index",
     "list_rmb_midpoint_rates",

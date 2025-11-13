@@ -14,13 +14,8 @@ from zoneinfo import ZoneInfo
 
 from ..api_clients import generate_finance_analysis
 from ..config.settings import AppSettings, load_settings
-from ..dao import (
-    DollarIndexDAO,
-    FuturesRealtimeDAO,
-    GlobalIndexDAO,
-    PeripheralInsightDAO,
-    RmbMidpointDAO,
-)
+from ..dao import DollarIndexDAO, FuturesRealtimeDAO, GlobalIndexDAO, PeripheralInsightDAO, RmbMidpointDAO
+from .global_index_service import list_global_index_history
 
 logger = logging.getLogger(__name__)
 
@@ -29,19 +24,39 @@ _LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 GLOBAL_INDEX_TARGETS: Dict[str, Dict[str, Sequence[str]]] = {
     "dow_jones": {
-        "codes": ("DJI", ".DJI", "DJIA"),
+        "codes": ("^DJI", "DJI", "DJIA"),
         "names": ("道琼斯", "道指", "Dow Jones", "Dow Jones Industrial Average"),
         "display_name": "道琼斯工业指数",
     },
     "nasdaq": {
-        "codes": ("IXIC", "NDX"),
+        "codes": ("^IXIC", "IXIC", "NDX"),
         "names": ("纳斯达克", "NASDAQ"),
         "display_name": "纳斯达克综合指数",
     },
     "sp500": {
-        "codes": ("INX", "GSPC", "SP500"),
+        "codes": ("^GSPC", "GSPC", "SP500"),
         "names": ("标普500", "标准普尔500"),
         "display_name": "标普500指数",
+    },
+    "nikkei": {
+        "codes": ("^N225", "N225"),
+        "names": ("日经225", "Nikkei"),
+        "display_name": "日经225指数",
+    },
+    "hang_seng": {
+        "codes": ("^HSI", "HSI"),
+        "names": ("恒生指数", "Hang Seng"),
+        "display_name": "恒生指数",
+    },
+    "ftse_a50": {
+        "codes": ("XIN9.FGI", "CN50=F", "XIN9", "^XIN9"),
+        "names": ("富时中国A50", "FTSE China A50"),
+        "display_name": "富时中国A50指数",
+    },
+    "stoxx50": {
+        "codes": ("^STOXX50E", "^SX5E", "SX5E"),
+        "names": ("欧洲斯托克50", "Euro Stoxx 50"),
+        "display_name": "欧洲斯托克50指数",
     },
 }
 
@@ -145,6 +160,7 @@ def _collect_metrics(settings: AppSettings) -> PeripheralMetrics:
 
     warnings: List[str] = []
     global_indices: List[Dict[str, Any]] = []
+    global_history: Dict[str, List[Dict[str, Any]]] = {}
     for key, spec in GLOBAL_INDEX_TARGETS.items():
         match = next(
             (
@@ -174,6 +190,13 @@ def _collect_metrics(settings: AppSettings) -> PeripheralMetrics:
         if isinstance(as_of, datetime):
             if _now_utc() - as_of.replace(tzinfo=_UTC if as_of.tzinfo is None else as_of.tzinfo) > timedelta(days=1, hours=6):
                 warnings.append(f"{spec['display_name']}数据可能过期（{_to_iso(as_of)}）")
+        primary_code = spec["codes"][0]
+        try:
+            history_payload = list_global_index_history(code=primary_code, limit=10)
+            global_history[key] = history_payload.get("items", [])
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to load history for %s: %s", primary_code, exc)
+            warnings.append(f"{spec['display_name']}历史缺失")
 
     dollar_summary: Optional[Dict[str, Any]] = None
     if dollar_rows:
@@ -283,6 +306,7 @@ def _collect_metrics(settings: AppSettings) -> PeripheralMetrics:
     metrics = {
         "generatedAt": generated_at_local.isoformat(),
         "globalIndices": global_indices,
+        "globalIndicesHistory": global_history,
         "dollarIndex": dollar_summary,
         "rmbMidpoint": rmb_summary,
         "commodities": futures_summary,

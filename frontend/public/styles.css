@@ -4798,6 +4798,10 @@ body {
 }
 .index-history-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px}
 .index-history-selector{display:flex;flex-wrap:wrap;gap:8px}
+.global-index-chart-panel{display:flex;flex-direction:column;gap:16px;margin-bottom:24px}
+.global-index-chart-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.global-index-chart-controls .index-history-selector{flex:1 1 auto}
+.global-index-chart-controls .index-history-meta{white-space:nowrap}
 .index-history-meta{display:flex;align-items:center;font-size:.9rem;color:var(--text-muted);gap:6px}
 .index-history-meta strong{color:var(--text)}
 .index-history-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end;min-width:200px}

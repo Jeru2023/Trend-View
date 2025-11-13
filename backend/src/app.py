@@ -91,6 +91,7 @@ from .services import (
     list_performance_forecast,
     list_profit_forecast,
     list_global_indices,
+    list_global_index_history,
     list_realtime_indices,
     list_dollar_index,
     list_rmb_midpoint_rates,
@@ -1302,6 +1303,7 @@ class SyncGlobalIndexRequest(BaseModel):
 
 class SyncGlobalIndexResponse(BaseModel):
     rows: int
+    history_rows: int = Field(..., alias="historyRows")
     codes: List[str] = Field(default_factory=list)
     code_count: int = Field(..., alias="codeCount")
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
@@ -1925,6 +1927,9 @@ class SyncBigDealFundFlowResponse(BaseModel):
 
 class SyncHsgtFundFlowRequest(BaseModel):
     symbol: Optional[str] = None
+    start_date: Optional[str] = Field(None, alias="startDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+    full_refresh: bool = Field(False, alias="fullRefresh")
 
     class Config:
         allow_population_by_field_name = True
@@ -2181,6 +2186,32 @@ class GlobalIndexListResponse(BaseModel):
     total: int
     items: List[GlobalIndexRecord]
     last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
+
+
+class GlobalIndexHistoryPoint(BaseModel):
+    trade_date: date = Field(..., alias="tradeDate")
+    open_price: Optional[float] = Field(None, alias="openPrice")
+    high_price: Optional[float] = Field(None, alias="highPrice")
+    low_price: Optional[float] = Field(None, alias="lowPrice")
+    close_price: Optional[float] = Field(None, alias="closePrice")
+    volume: Optional[float] = None
+    prev_close: Optional[float] = Field(None, alias="prevClose")
+    change_amount: Optional[float] = Field(None, alias="changeAmount")
+    change_percent: Optional[float] = Field(None, alias="changePercent")
+    currency: Optional[str] = None
+    timezone: Optional[str] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class GlobalIndexHistoryResponse(BaseModel):
+    code: str
+    name: Optional[str] = None
+    items: List[GlobalIndexHistoryPoint]
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class RealtimeIndexRecord(BaseModel):
@@ -3129,17 +3160,8 @@ class HsgtFundFlowRecord(BaseModel):
     trade_date: Optional[date] = Field(None, alias="tradeDate")
     symbol: Optional[str] = None
     net_buy_amount: Optional[float] = Field(None, alias="netBuyAmount")
-    buy_amount: Optional[float] = Field(None, alias="buyAmount")
-    sell_amount: Optional[float] = Field(None, alias="sellAmount")
     net_buy_amount_cumulative: Optional[float] = Field(None, alias="netBuyAmountCumulative")
     fund_inflow: Optional[float] = Field(None, alias="fundInflow")
-    balance: Optional[float] = None
-    market_value: Optional[float] = Field(None, alias="marketValue")
-    leading_stock: Optional[str] = Field(None, alias="leadingStock")
-    leading_stock_change_percent: Optional[float] = Field(None, alias="leadingStockChangePercent")
-    leading_stock_code: Optional[str] = Field(None, alias="leadingStockCode")
-    hs300_index: Optional[float] = Field(None, alias="hs300Index")
-    hs300_change_percent: Optional[float] = Field(None, alias="hs300ChangePercent")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     class Config:
@@ -5440,15 +5462,24 @@ async def _run_hsgt_fund_flow_job(request: SyncHsgtFundFlowRequest) -> None:
         started = time.perf_counter()
         default_symbol = "北向资金"
         symbol = (request.symbol or default_symbol).strip() if hasattr(request, "symbol") else default_symbol
+        start_date = request.start_date if hasattr(request, "start_date") else None
+        end_date = request.end_date if hasattr(request, "end_date") else None
+        full_refresh = request.full_refresh if hasattr(request, "full_refresh") else False
         monitor.update("hsgt_fund_flow", message=f"Collecting HSGT fund flow data ({symbol})")
         try:
-            result = sync_hsgt_fund_flow(symbol=symbol, progress_callback=progress_callback)
+            result = sync_hsgt_fund_flow(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                full_refresh=bool(full_refresh),
+                progress_callback=progress_callback,
+            )
             stats = HSGTFundFlowDAO(load_settings().postgres).stats()
             elapsed = time.perf_counter() - started
             total_rows = stats.get("count") if isinstance(stats, dict) else None
             if total_rows is None:
                 total_rows = result.get("rows")
-            message_text = f"Synced {result.get('rows', 0)} HSGT fund flow rows ({symbol})"
+            message_text = result.get("statusMessage") or f"Synced {result.get('rows', 0)} HSGT fund flow rows ({symbol})"
             monitor.finish(
                 "hsgt_fund_flow",
                 success=True,
@@ -6931,6 +6962,14 @@ async def startup_event() -> None:
         schedule_global_flash_classification_job()
         scheduler.add_job(
             lambda: _submit_scheduler_task(
+                safe_start_global_index_job(SyncGlobalIndexRequest())
+            ),
+            CronTrigger(minute=0),
+            id="global_index_hourly",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            lambda: _submit_scheduler_task(
                 safe_start_profit_forecast_job(SyncProfitForecastRequest())
             ),
             CronTrigger(hour=19, minute=45),
@@ -7013,6 +7052,7 @@ async def startup_event() -> None:
         _submit_scheduler_task(
             safe_start_global_flash_classification_job(SyncGlobalFlashClassifyRequest())
         )
+        _submit_scheduler_task(safe_start_global_index_job(SyncGlobalIndexRequest()))
         _maybe_queue_global_flash_sync("hourly")
 
 
@@ -7709,6 +7749,15 @@ def list_global_indices_api(
         items=items,
         lastSyncedAt=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
     )
+
+
+@app.get("/macro/global-indices/history", response_model=GlobalIndexHistoryResponse)
+def get_global_index_history_api(
+    code: str = Query(..., min_length=1, description="Yahoo Finance index symbol (e.g. ^DJI)."),
+    limit: int = Query(260, ge=10, le=1000, description="Number of historical rows to return."),
+) -> GlobalIndexHistoryResponse:
+    payload = list_global_index_history(code=code, limit=limit)
+    return GlobalIndexHistoryResponse(**payload)
 
 
 @app.get("/markets/realtime-indices", response_model=RealtimeIndexListResponse)
@@ -9186,17 +9235,8 @@ def list_hsgt_fund_flow_entries(
             tradeDate=entry.get("trade_date"),
             symbol=entry.get("symbol"),
             netBuyAmount=entry.get("net_buy_amount"),
-            buyAmount=entry.get("buy_amount"),
-            sellAmount=entry.get("sell_amount"),
             netBuyAmountCumulative=entry.get("net_buy_amount_cumulative"),
             fundInflow=entry.get("fund_inflow"),
-            balance=entry.get("balance"),
-            marketValue=entry.get("market_value"),
-            leadingStock=entry.get("leading_stock"),
-            leadingStockChangePercent=entry.get("leading_stock_change_percent"),
-            leadingStockCode=entry.get("leading_stock_code"),
-            hs300Index=entry.get("hs300_index"),
-            hs300ChangePercent=entry.get("hs300_change_percent"),
             updatedAt=entry.get("updated_at"),
         )
         for entry in result.get("items", [])
@@ -9489,7 +9529,8 @@ async def list_global_flash_entries(
     return [NewsArticleItem(**entry) for entry in entries]
 
 
-@app.get("/news/market-insight", response_model=MarketInsightResponse)
+@app.get("/market/market-insight", response_model=MarketInsightResponse)
+@app.get("/news/market-insight", response_model=MarketInsightResponse, include_in_schema=False)
 def get_market_insight(
     lookback_hours: int = Query(24, ge=1, le=72, alias="lookbackHours", description="Hours to look back when no summary exists."),
     article_limit: int = Query(40, ge=5, le=50, alias="articleLimit", description="Maximum referenced headlines when no summary exists."),
@@ -9562,7 +9603,8 @@ def get_market_insight(
     return MarketInsightResponse(summary=summary_payload, articles=articles)
 
 
-@app.get("/news/market-insight/history", response_model=MarketInsightHistoryResponse)
+@app.get("/market/market-insight/history", response_model=MarketInsightHistoryResponse)
+@app.get("/news/market-insight/history", response_model=MarketInsightHistoryResponse, include_in_schema=False)
 def get_market_insight_history(
     limit: int = Query(6, ge=1, le=20, description="Number of historical market insight records to return."),
 ) -> MarketInsightHistoryResponse:

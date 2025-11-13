@@ -48,6 +48,7 @@
         "performance_forecast_table": "performance_forecast",
         "profit_forecast_table": "profit_forecast",
         "global_index_table": "global_indices",
+        "global_index_history_table": "global_index_history",
         "realtime_index_table": "realtime_indices",
         "industry_fund_flow_table": "industry_fund_flow",
         "concept_fund_flow_table": "concept_fund_flow",
