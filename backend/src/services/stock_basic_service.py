@@ -9,7 +9,7 @@ import math
 from datetime import date, datetime
 from typing import Dict, Optional, Sequence
 
-from ..api_clients import fetch_stock_basic
+from ..api_clients import fetch_stock_basic, get_realtime_quotes
 from ..config.runtime_config import load_runtime_config
 from ..config.settings import AppSettings, load_settings
 from ..dao import (
@@ -26,6 +26,38 @@ from .stock_main_business_service import get_stock_main_business
 from .stock_main_composition_service import get_stock_main_composition
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_realtime_snapshot(ts_code: str, token: Optional[str]) -> dict[str, Optional[float]]:
+    if not ts_code or not token:
+        return {}
+    try:
+        frame = get_realtime_quotes([ts_code], token=token)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to fetch realtime snapshot for %s: %s", ts_code, exc)
+        return {}
+    if frame is None or frame.empty:
+        return {}
+    row = frame.iloc[0]
+    def _safe_number(value: object) -> Optional[float]:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+    volume_raw = row.get("volume")
+    volume_value = _safe_number(volume_raw)
+    if volume_value is not None:
+        # Tushare realtime_quote already reports volume in shares; convert to hands to align
+        # with how ``daily_trade.vol`` is stored.
+        volume_value /= 100.0
+    return {
+        "open": _safe_number(row.get("open")),
+        "high": _safe_number(row.get("high")),
+        "low": _safe_number(row.get("low")),
+        "close": _safe_number(row.get("close") or row.get("price")),
+        "pre_close": _safe_number(row.get("pre_close")),
+        "volume": volume_value,
+    }
 
 
 def _resolve_token(token: str | None, settings: AppSettings) -> str:
@@ -264,7 +296,21 @@ def get_stock_detail(
     favorite_entry = favorites_dao.get_entry(code)
     is_favorite = favorite_entry is not None
     favorite_group = favorite_entry.get("group") if favorite_entry else None
-    history_rows = daily_trade_dao.fetch_price_history(code, limit=history_limit)
+    history_rows = daily_trade_dao.fetch_price_history(code, limit=history_limit, include_intraday=True)
+    latest_bar = daily_trade_dao.fetch_latest_bar(code, include_intraday=True)
+    realtime_snapshot: dict[str, Optional[float]] = {}
+    if latest_bar and latest_bar.get("is_intraday"):
+        token = getattr(settings.tushare, "token", None)
+        realtime_snapshot = _fetch_realtime_snapshot(code, token)
+    if latest_bar:
+        if realtime_snapshot.get("close") is not None:
+            latest_bar["close"] = realtime_snapshot["close"]
+        if realtime_snapshot.get("volume") is not None:
+            latest_bar["volume"] = realtime_snapshot["volume"]
+        item["last_price"] = latest_bar.get("close")
+        item["pct_change"] = latest_bar.get("pct_change")
+        item["volume"] = latest_bar.get("volume")
+        item["trade_date"] = latest_bar.get("trade_date")
     candles: list[dict[str, object]] = []
     for row in history_rows:
         open_price = _safe_float(row.get("open"))
@@ -282,8 +328,19 @@ def get_stock_detail(
                 "close": close_price,
                 "volume": _safe_float(row.get("volume")),
                 "pctChange": _safe_float(row.get("pct_change")),
+                "isIntraday": bool(row.get("is_intraday")),
             }
         )
+
+    if (
+        candles
+        and latest_bar
+        and latest_bar.get("is_intraday")
+        and candles[-1]["time"] == latest_bar.get("trade_date")
+    ):
+        if realtime_snapshot.get("volume") is not None:
+            candles[-1]["volume"] = realtime_snapshot["volume"]
+        candles[-1]["isIntraday"] = True
 
     trading_data = {
         "code": item["code"],

@@ -46,6 +46,8 @@ CONTINUOUS_RISE_CODE = "continuous_rise"
 CONTINUOUS_RISE_NAME = "连续上涨"
 VOLUME_SURGE_BREAKOUT_CODE = "volume_surge_breakout"
 VOLUME_SURGE_BREAKOUT_NAME = "爆量启动"
+BIG_DEAL_INDICATOR_CODE = "big_deal_inflow"
+BIG_DEAL_INDICATOR_NAME = "当日大单净流入"
 
 DEFAULT_INDICATOR_CODE = CONTINUOUS_VOLUME_CODE
 MAX_INTERSECTION_FETCH = 2000
@@ -176,6 +178,18 @@ def _format_volume_label(value: Any) -> str | None:
     if absolute >= 10000:
         return f"{numeric / 10000:.2f}万股"
     return f"{numeric:.0f}股"
+
+
+def _format_amount_label(value: Any) -> str | None:
+    numeric = _safe_float(value)
+    if numeric is None:
+        return None
+    absolute = abs(numeric)
+    if absolute >= 100000000:
+        return f"{numeric / 100000000:.2f}亿"
+    if absolute >= 10000:
+        return f"{numeric / 10000:.2f}万"
+    return f"{numeric:.0f}"
 
 
 def _normalize_continuous_volume_frame(dataframe: pd.DataFrame, captured_at: datetime) -> pd.DataFrame:
@@ -324,6 +338,89 @@ def _normalize_volume_surge_breakout_frame(dataframe: pd.DataFrame, captured_at:
     return frame.reindex(columns=INDICATOR_SCREENING_COLUMNS_FRAME)
 
 
+def _fetch_big_deal_indicator_frame(settings) -> pd.DataFrame:
+    dao = BigDealFundFlowDAO(settings.postgres)
+    trade_day = datetime.now(LOCAL_TZ).date()
+    dataset = dao.list_positive_inflows(trade_date=trade_day, limit=MAX_SINGLE_INDICATOR_FETCH, offset=0)
+    items = dataset.get("items", [])
+    if not items:
+        return pd.DataFrame(
+            columns=[
+                "rank",
+                "stock_code",
+                "stock_code_full",
+                "stock_name",
+                "volume_days",
+                "big_deal_net_amount",
+                "big_deal_buy_amount",
+                "big_deal_sell_amount",
+                "big_deal_net_text",
+                "big_deal_buy_text",
+                "big_deal_sell_text",
+            ]
+        )
+
+    records: list[dict[str, Any]] = []
+    for idx, entry in enumerate(items, start=1):
+        code = str(entry.get("stock_code") or "").zfill(6)
+        code_full = _format_stock_code_full(code)
+        net_amount = _safe_float(entry.get("net_amount"))
+        buy_amount = _safe_float(entry.get("buy_amount"))
+        sell_amount = _safe_float(entry.get("sell_amount"))
+        trade_count = entry.get("trade_count")
+        records.append(
+            {
+                "rank": idx,
+                "stock_code": code,
+                "stock_code_full": code_full,
+                "stock_name": entry.get("stock_name"),
+                "industry": None,
+                "volume_days": trade_count,
+                "big_deal_net_amount": net_amount,
+                "big_deal_buy_amount": buy_amount,
+                "big_deal_sell_amount": sell_amount,
+                "big_deal_net_text": _format_amount_label(net_amount),
+                "big_deal_buy_text": _format_amount_label(buy_amount),
+                "big_deal_sell_text": _format_amount_label(sell_amount),
+            }
+        )
+
+    return pd.DataFrame.from_records(records)
+
+
+def _normalize_big_deal_inflow_frame(dataframe: pd.DataFrame, captured_at: datetime) -> pd.DataFrame:
+    if dataframe.empty:
+        return dataframe
+
+    frame = dataframe.copy()
+    frame["indicator_code"] = BIG_DEAL_INDICATOR_CODE
+    frame["indicator_name"] = BIG_DEAL_INDICATOR_NAME
+    frame["captured_at"] = captured_at
+    frame["rank"] = pd.to_numeric(frame.get("rank"), errors="coerce")
+    frame["stock_code"] = frame.get("stock_code", "").astype(str).str.zfill(6)
+    frame["stock_code_full"] = frame["stock_code"].apply(_format_stock_code_full)
+    frame["stock_name"] = frame.get("stock_name")
+    frame["price_change_percent"] = None
+    frame["stage_change_percent"] = None
+    frame["last_price"] = None
+
+    frame["volume_days"] = pd.to_numeric(frame.get("volume_days"), errors="coerce").astype("Int64")
+    frame["volume_shares"] = frame.get("big_deal_buy_amount").apply(_safe_float)
+    frame["baseline_volume_shares"] = frame.get("big_deal_sell_amount").apply(_safe_float)
+    frame["volume_text"] = frame.get("big_deal_buy_text")
+    frame["baseline_volume_text"] = frame.get("big_deal_sell_text")
+
+    frame["turnover_percent"] = None
+    frame["turnover_rate"] = None
+    frame["turnover_amount"] = frame.get("big_deal_net_amount").apply(_safe_float)
+    frame["turnover_amount_text"] = frame.get("big_deal_net_text")
+
+    frame["high_price"] = None
+    frame["low_price"] = None
+
+    return frame.reindex(columns=INDICATOR_SCREENING_COLUMNS_FRAME)
+
+
 INDICATOR_SCREENING_COLUMNS_FRAME = [
     "indicator_code",
     "indicator_name",
@@ -375,6 +472,11 @@ INDICATOR_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "name": VOLUME_SURGE_BREAKOUT_NAME,
         "fetcher": lambda settings: _fetch_volume_surge_breakout_candidates(settings),
         "normalizer": _normalize_volume_surge_breakout_frame,
+    },
+    BIG_DEAL_INDICATOR_CODE: {
+        "name": BIG_DEAL_INDICATOR_NAME,
+        "fetcher": lambda settings: _fetch_big_deal_indicator_frame(settings),
+        "normalizer": _normalize_big_deal_inflow_frame,
     },
 }
 
@@ -595,7 +697,7 @@ def list_indicator_screenings(
     fundamental_dao = FundamentalMetricsDAO(settings.postgres) if require_metrics else None
     daily_indicator_dao = DailyIndicatorDAO(settings.postgres) if require_metrics else None
     big_deal_dao = BigDealFundFlowDAO(settings.postgres)
-    require_big_deal_filter = has_big_deal_inflow is True
+    require_big_deal_filter = has_big_deal_inflow is True or BIG_DEAL_INDICATOR_CODE in codes
 
     def _maybe_attach_metrics(entries: list[dict[str, Any]]) -> None:
         if not require_metrics or not entries:
@@ -633,6 +735,50 @@ def list_indicator_screenings(
             "items": sliced,
         }
 
+    per_code_records: Dict[str, Dict[str, dict]] = {}
+    for code in codes:
+        dataset = dao.list_entries(indicator_code=code, limit=MAX_INTERSECTION_FETCH, offset=0)
+        items = dataset.get("items", [])
+        _maybe_attach_metrics(items)
+        per_code_records[code] = {entry["stock_code"]: entry for entry in items if entry.get("stock_code")}
+
+    latest_captured = _resolve_latest_captured(per_code_records)
+    intersection_items: List[dict[str, Any]] = []
+    primary_entries = list(per_code_records[primary_code].values())
+    primary_entries.sort(key=lambda item: (item.get("rank") or 10**9, item.get("stock_code") or ""))
+
+    for entry in primary_entries:
+        stock_code = entry.get("stock_code")
+        if not stock_code:
+            continue
+        if not all(stock_code in per_code_records[code] for code in codes[1:]):
+            continue
+        serialized = _serialize_entry(entry)
+        serialized["matchedIndicators"] = list(codes)
+        details = {primary_code: _extract_indicator_details(entry, primary_code)}
+        for code in codes[1:]:
+            details[code] = _extract_indicator_details(per_code_records[code][stock_code], code)
+        serialized["indicatorDetails"] = details
+        intersection_items.append(serialized)
+
+    _annotate_big_deal_inflow(
+        intersection_items,
+        big_deal_dao=big_deal_dao,
+        trade_date=datetime.now(LOCAL_TZ).date(),
+    )
+    filtered = _apply_indicator_filters(intersection_items, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
+    filtered = _apply_big_deal_filter(filtered, require_big_deal_filter)
+    total = len(filtered)
+    sliced = filtered[offset : offset + limit]
+
+    return {
+        "indicatorCode": primary_code,
+        "indicatorCodes": list(codes),
+        "indicatorName": INDICATOR_DEFINITIONS[primary_code]["name"],
+        "capturedAt": latest_captured,
+        "total": total,
+        "items": sliced,
+    }
 
 def run_indicator_realtime_refresh(
     codes: Sequence[str] | None,
@@ -687,10 +833,9 @@ def run_indicator_realtime_refresh(
                 except (ValueError, TypeError):
                     trade_date = datetime.now(LOCAL_TZ).date()
 
-            current_volume_hands = _safe_float(record.get("volume"))
-            if current_volume_hands is None:
+            current_volume_shares = _safe_float(record.get("volume"))
+            if current_volume_shares is None:
                 continue
-            current_volume_shares = current_volume_hands * 100
             estimated_shares, _ = estimate_full_day_volume(
                 ts_code,
                 trade_time,
@@ -861,6 +1006,7 @@ def _apply_indicator_filters(
 
 def _serialize_entry(entry: dict[str, Any]) -> dict[str, Any]:
     indicator_code = entry.get("indicator_code")
+    net_amount = _safe_float(entry.get("turnover_amount"))
     serialized = {
         "indicatorCode": indicator_code,
         "indicatorName": entry.get("indicator_name"),
@@ -879,7 +1025,7 @@ def _serialize_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "volumeDays": entry.get("volume_days"),
         "turnoverPercent": _safe_float(entry.get("turnover_percent")),
         "turnoverRate": _safe_float(entry.get("turnover_rate")),
-        "turnoverAmount": _safe_float(entry.get("turnover_amount")),
+        "turnoverAmount": net_amount,
         "turnoverAmountText": entry.get("turnover_amount_text"),
         "highPrice": _safe_float(entry.get("high_price")),
         "lowPrice": _safe_float(entry.get("low_price")),
@@ -892,7 +1038,17 @@ def _serialize_entry(entry: dict[str, Any]) -> dict[str, Any]:
     }
     serialized["indicatorDetails"] = {}
     if indicator_code:
-        serialized["indicatorDetails"][indicator_code] = _extract_indicator_details(entry, indicator_code)
+        detail = _extract_indicator_details(entry, indicator_code)
+        if indicator_code == BIG_DEAL_INDICATOR_CODE:
+            serialized["hasBigDealInflow"] = bool(net_amount is not None and net_amount > 0)
+            detail = {
+                **detail,
+                "bigDealNetAmount": net_amount,
+                "bigDealBuyAmount": _safe_float(entry.get("volume_shares")),
+                "bigDealSellAmount": _safe_float(entry.get("baseline_volume_shares")),
+                "bigDealTradeCount": entry.get("volume_days"),
+            }
+        serialized["indicatorDetails"][indicator_code] = detail
     return serialized
 
 
