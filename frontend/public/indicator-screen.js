@@ -10,6 +10,7 @@ const VOLUME_PRICE_RISE_CODE = "volume_price_rise";
 const UPWARD_BREAKOUT_CODE = "upward_breakout";
 const CONTINUOUS_RISE_CODE = "continuous_rise";
 const VOLUME_SURGE_BREAKOUT_CODE = "volume_surge_breakout";
+const BIG_DEAL_INFLOW_CODE = "big_deal_inflow";
 const PAGE_SIZE = 50;
 
 const INDICATOR_OPTIONS = [
@@ -67,6 +68,17 @@ const INDICATOR_OPTIONS = [
     ],
     summaryExtraKey: "volumeText",
   },
+  {
+    code: BIG_DEAL_INFLOW_CODE,
+    label: { zh: "当日大单净流入", en: "Large Order Inflow" },
+    columns: [
+      { key: "bigDealNetAmount", labelKey: "colBigDealNet", type: "amount" },
+      { key: "bigDealBuyAmount", labelKey: "colBigDealBuy", type: "amount" },
+      { key: "bigDealSellAmount", labelKey: "colBigDealSell", type: "amount" },
+      { key: "bigDealTradeCount", labelKey: "colBigDealTrades", type: "number" },
+    ],
+    summaryExtraKey: "bigDealNetAmount",
+  },
 ];
 
 let currentLang = getInitialLanguage();
@@ -85,10 +97,15 @@ let filters = {
   netIncomeQoqRatio: null,
   peMin: null,
   peMax: null,
-  hasBigDealInflow: false,
 };
 let filterDebounceTimer = null;
 const FILTER_DEBOUNCE_MS = 500;
+let lastResponseIndicatorCodes = [];
+let lastResponsePrimaryIndicator = null;
+let latestSyncStats = {
+  realtimeTrade: null,
+  bigDeal: null,
+};
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
@@ -111,7 +128,6 @@ const elements = {
   filterNetIncomeQoq: document.getElementById("filter-netincome-qoq"),
   filterPeMin: document.getElementById("filter-pe-min"),
   filterPeMax: document.getElementById("filter-pe-max"),
-  filterBigDealInflow: document.getElementById("filter-bigdeal-inflow"),
   snapshotButton: document.getElementById("indicator-snapshot-btn"),
 };
 
@@ -144,6 +160,10 @@ function persistLanguage(lang) {
 
 function getDict() {
   return translations[currentLang] || translations.zh;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function formatNumber(value, options = {}) {
@@ -286,6 +306,51 @@ function renderBigdealUpdated() {
   elements.bigdealUpdated.textContent = lastBigdealSyncedAt ? formatDateTime(lastBigdealSyncedAt) : "--";
 }
 
+async function fetchSyncStats() {
+  try {
+    const response = await fetch(`${API_BASE}/indicator-screenings/stats`);
+    if (!response.ok) {
+      throw new Error(`Failed to load sync stats: ${response.status}`);
+    }
+    const data = await response.json();
+    latestSyncStats = {
+      realtimeTrade: data.realtimeTrade || {},
+      bigDeal: data.bigDeal || {},
+    };
+    if (data.indicatorCapturedAt) {
+      lastCapturedAt = data.indicatorCapturedAt;
+      renderUpdated();
+    }
+    if (latestSyncStats.realtimeTrade?.finishedAt) {
+      lastRealtimeSyncedAt = latestSyncStats.realtimeTrade.finishedAt;
+      renderRealtimeUpdated();
+    }
+    if (latestSyncStats.bigDeal?.finishedAt) {
+      lastBigdealSyncedAt = latestSyncStats.bigDeal.finishedAt;
+      renderBigdealUpdated();
+    }
+    return data;
+  } catch (error) {
+    console.error("Failed to fetch indicator sync stats", error);
+    return null;
+  }
+}
+
+async function waitForJobCompletion(jobKey, timeoutMs = 180000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const stats = await fetchSyncStats();
+    if (stats && stats[jobKey]) {
+      const status = stats[jobKey].status;
+      if (status && status !== "running") {
+        return stats[jobKey];
+      }
+    }
+    await delay(3000);
+  }
+  return null;
+}
+
 function renderSummary() {
   if (!elements.tagList) {
     return;
@@ -343,6 +408,17 @@ function buildIndicatorTooltip(indicatorCode) {
         const max = Math.max(...values).toFixed(2);
         volumeText = min === max ? `${min}%` : `${min}% ~ ${max}%`;
       }
+    } else if (extraKey === "bigDealNetAmount") {
+      const values = detailsList
+        .map((detail) => Number(detail?.bigDealNetAmount))
+        .filter((value) => Number.isFinite(value));
+      if (values.length) {
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const minText = formatNumber(min, { notation: "compact" });
+        const maxText = formatNumber(max, { notation: "compact" });
+        volumeText = min === max ? minText : `${minText} ~ ${maxText}`;
+      }
     } else if (extraKey === "volumeText") {
       const value =
         detailsList.find((detail) => typeof detail?.volumeText === "string")?.volumeText ??
@@ -376,6 +452,7 @@ function renderTable() {
     return;
   }
   const columns = getColumnsForSelection();
+  const activeIndicator = primaryIndicator();
   renderTableHead(columns);
 
   const tbody = elements.tableBody;
@@ -395,7 +472,7 @@ function renderTable() {
 
   const fragment = document.createDocumentFragment();
   currentItems.forEach((item) => {
-    const indicatorData = getIndicatorData(item, primaryIndicator());
+    const indicatorData = getIndicatorData(item, activeIndicator);
     const row = document.createElement("tr");
     const cells = columns.map((column) => {
       return `<td>${column.renderer(item, indicatorData)}</td>`;
@@ -426,6 +503,16 @@ function renderStockLink(item, options = {}) {
   return `<a href="${url}" target="_blank" rel="noopener">${escapeHTML(text)}</a>`;
 }
 
+function renderStockCell(record) {
+  const codeLink = renderStockLink(record);
+  const nameLink = renderStockLink(record, { useName: true });
+  if (codeLink === "--" && nameLink === "--") {
+    return "--";
+  }
+  const nameLine = nameLink === "--" ? "" : `<div class="stock-cell__name">${nameLink}</div>`;
+  return `<div class="stock-cell"><div class="stock-cell__code">${codeLink}</div>${nameLine}</div>`;
+}
+
 function renderIndicatorBadges(record) {
   if (!Array.isArray(record.matchedIndicators) || !record.matchedIndicators.length) {
     return "--";
@@ -453,6 +540,10 @@ function getTrendClass(value) {
 
 async function fetchIndicatorData(page = currentPage) {
   const dict = getDict();
+  if (!hasActiveIndicatorSelection()) {
+    resetIndicatorResults(dict.noIndicatorSelected || "");
+    return;
+  }
   try {
     const limit = PAGE_SIZE;
     const offset = (page - 1) * PAGE_SIZE;
@@ -472,9 +563,6 @@ async function fetchIndicatorData(page = currentPage) {
     if (filters.peMax !== null) {
       params.set("peMax", String(filters.peMax));
     }
-    if (filters.hasBigDealInflow) {
-      params.set("hasBigDealInflow", "true");
-    }
     const response = await fetch(`${API_BASE}/indicator-screenings?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`Request failed with status ${response.status}`);
@@ -482,6 +570,9 @@ async function fetchIndicatorData(page = currentPage) {
     const payload = await response.json();
     currentItems = Array.isArray(payload.items) ? payload.items : [];
     lastCapturedAt = payload.capturedAt || null;
+    lastResponseIndicatorCodes = Array.isArray(payload.indicatorCodes) ? payload.indicatorCodes : [];
+    lastResponsePrimaryIndicator =
+      payload.indicatorCode || lastResponseIndicatorCodes[0] || lastResponsePrimaryIndicator;
     totalItems = Number(payload.total) || 0;
     currentPage = page;
     if (elements.snapshotButton) {
@@ -498,6 +589,8 @@ async function fetchIndicatorData(page = currentPage) {
     currentItems = [];
     lastCapturedAt = null;
     totalItems = 0;
+    lastResponseIndicatorCodes = [];
+    lastResponsePrimaryIndicator = null;
     if (elements.snapshotButton) {
       elements.snapshotButton.disabled = true;
     }
@@ -567,16 +660,17 @@ async function handleRealtimeRefresh() {
     if (!response.ok) {
       throw new Error(`Realtime refresh failed with status ${response.status}`);
     }
-    const payload = await response.json();
-    const refreshedCount = Number(payload.processed ?? 0) || 0;
+    const initialPayload = await response.json().catch(() => ({}));
+    renderStatus(dict.realtimeQueued || dict.realtimeRunning || "Realtime job queued…", "info");
+    const jobSnapshot = await waitForJobCompletion("realtimeTrade");
+    const initialProcessed =
+      initialPayload && typeof initialPayload.processed !== "undefined" ? initialPayload.processed : 0;
+    const refreshedCount = Number(jobSnapshot?.totalRows ?? initialProcessed ?? 0);
     const successText = (dict.realtimeSuccess || "Realtime update completed ({count}).").replace(
       "{count}",
       refreshedCount,
     );
     renderStatus(successText, "success");
-    const updatedAtRaw = payload.updatedAt || new Date().toISOString();
-    lastRealtimeSyncedAt = updatedAtRaw;
-    renderRealtimeUpdated();
     await fetchIndicatorData(currentPage);
   } catch (error) {
     console.error("Failed to run realtime refresh", error);
@@ -647,9 +741,6 @@ function bindEvents() {
   if (elements.filterPeMax) {
     elements.filterPeMax.addEventListener("input", updateFilterState);
   }
-  if (elements.filterBigDealInflow) {
-    elements.filterBigDealInflow.addEventListener("change", updateFilterState);
-  }
 }
 
 async function handleBigdealRefresh() {
@@ -671,10 +762,11 @@ async function handleBigdealRefresh() {
     if (!response.ok) {
       throw new Error(`Big-deal refresh failed with status ${response.status}`);
     }
-    const successText = dict.bigdealSuccess || "Big-deal data sync started.";
-    renderStatus(successText, "success");
-    lastBigdealSyncedAt = new Date().toISOString();
-    renderBigdealUpdated();
+    await response.json().catch(() => ({}));
+    const queuedText = dict.bigdealQueued || dict.bigdealRunning || "Big-deal data sync queued.";
+    renderStatus(queuedText, "info");
+    await waitForJobCompletion("bigDeal");
+    renderStatus(dict.bigdealSuccess || "Big-deal data sync completed.", "success");
   } catch (error) {
     console.error("Failed to sync big deal data", error);
     renderStatus(dict.bigdealError || "Big-deal data sync failed.", "error");
@@ -690,6 +782,7 @@ function initialize() {
   bindEvents();
   applyTranslations();
   fetchIndicatorData();
+  fetchSyncStats();
 }
 
 initialize();
@@ -754,29 +847,48 @@ function renderIndicatorTags() {
   elements.tagList.appendChild(fragment);
 }
 
+function resetIndicatorResults(message) {
+  currentItems = [];
+  totalItems = 0;
+  lastCapturedAt = null;
+  lastResponseIndicatorCodes = [];
+  lastResponsePrimaryIndicator = null;
+  if (elements.snapshotButton) {
+    elements.snapshotButton.disabled = true;
+  }
+  renderIndicatorTags();
+  renderSummary();
+  renderTable();
+  renderUpdated();
+  updatePaginationControls();
+  if (message) {
+    renderStatus(message, "info");
+  }
+}
+
+function hasActiveIndicatorSelection() {
+  return selectedIndicators.length > 0;
+}
+
 function toggleIndicator(code) {
   if (!code) {
     return;
   }
+  const dict = getDict();
   let shouldFetch = true;
   if (selectedIndicators.includes(code)) {
     selectedIndicators = selectedIndicators.filter((item) => item !== code);
     if (selectedIndicators.length === 0) {
-      shouldFetch = false;
-      currentItems = [];
-      totalItems = 0;
-      lastCapturedAt = null;
-      renderIndicatorTags();
-      renderSummary();
-      renderTable();
-      renderUpdated();
-      updatePaginationControls();
-      renderStatus("", "info");
+      shouldFetch = hasActiveIndicatorSelection();
+      if (!shouldFetch) {
+        resetIndicatorResults(dict.noIndicatorSelected || "");
+      }
     }
   } else {
     selectedIndicators = [...selectedIndicators, code];
   }
   if (!shouldFetch) {
+    renderIndicatorTags();
     return;
   }
   renderIndicatorTags();
@@ -812,7 +924,6 @@ function updateFilterState() {
   filters.netIncomeQoqRatio = qoqValue !== null && Number.isFinite(qoqValue) ? qoqValue / 100 : null;
   filters.peMin = elements.filterPeMin?.value ? Number(elements.filterPeMin.value) : null;
   filters.peMax = elements.filterPeMax?.value ? Number(elements.filterPeMax.value) : null;
-  filters.hasBigDealInflow = Boolean(elements.filterBigDealInflow?.checked);
   scheduleFilterRefresh();
 }
 
@@ -822,12 +933,19 @@ function scheduleFilterRefresh() {
   }
   filterDebounceTimer = setTimeout(() => {
     currentPage = 1;
+    if (!hasActiveIndicatorSelection()) {
+      resetIndicatorResults(getDict().noIndicatorSelected || "");
+      return;
+    }
     fetchIndicatorData(1);
   }, FILTER_DEBOUNCE_MS);
 }
 
 function primaryIndicator() {
-  return selectedIndicators[0] || CONTINUOUS_VOLUME_CODE;
+  if (selectedIndicators.length) {
+    return selectedIndicators[0];
+  }
+  return lastResponsePrimaryIndicator || CONTINUOUS_VOLUME_CODE;
 }
 
 function getIndicatorOption(code) {
@@ -847,20 +965,20 @@ function getColumnsForSelection() {
       renderer: (record) => renderIndicatorBadges(record),
     },
     {
-      id: "code",
-      labelKey: "colCode",
-      renderer: (record) => renderStockLink(record),
-    },
-    {
-      id: "name",
-      labelKey: "colName",
-      renderer: (record) => renderStockLink(record, { useName: true }),
+      id: "stock",
+      labelKey: "colStock",
+      renderer: (record) => renderStockCell(record),
     },
     {
       id: "price",
       labelKey: "colPrice",
       renderer: (record) =>
         formatNumber(record.lastPrice, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    },
+    {
+      id: "pctChange",
+      labelKey: "colChange",
+      renderer: (record) => formatPercent(record.priceChangePercent),
     },
   ];
   const option = getIndicatorOption(primaryIndicator());
@@ -891,6 +1009,13 @@ function formatColumnValue(value, type) {
   if (type === "number") {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : "--";
+  }
+  if (type === "amount") {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return "--";
+    }
+    return formatNumber(numeric, { notation: "compact", maximumFractionDigits: 1 });
   }
   if (type === "text") {
     return value ? escapeHTML(String(value)) : "--";

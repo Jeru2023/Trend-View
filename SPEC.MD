@@ -53,6 +53,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - 2025-11-13 (FIX backend-172): Stopped deleting/null-filtering HSGT rows without net buy data and prevented cumulative values from carrying forward on empty rows so AkShare’s partial snapshots still surface without showing misleading “stuck” totals.
 - 2025-11-13 (CHANGE backend/frontend-175): Reverted the HSGT pipeline back to Tushare `moneyflow_hsgt`, trimmed the DB schema/UI down to the fields that feed that API (symbol, trade date, net buy, fund inflow, cumulative), refreshed the copy to mention Tushare, and tweaked DAO legacy detection so AkShare-era tables get dropped once during migration.
 - 2025-11-13 (FEATURE frontend-176): Added an ECharts-powered net-buy/fund-inflow trend card to the HSGT page that auto-loads the latest rows and refreshes alongside manual syncs.
+- 2025-11-14 (CHANGE backend/frontend-201): Retired the HSGT (陆港通) fund-flow module entirely once the upstream data feed was discontinued; removed its tables/DAO/services, control-panel job, and dedicated UI.
 - 2025-11-09 (FEATURE backend/frontend-062): Introduced fund-flow based sector hotlist service (top industries/concepts across multi-period rankings), `/fund-flow/sector-hotlist` API, fund navigation placement, refreshed sector insight page, and supporting unit tests.
 - 2025-11-10 (UPDATE backend-063): Patched HSGT fund flow sync to enrich the latest records via `stock_hsgt_fund_flow_summary_em`, ensuring north/southbound metrics stay current despite historical endpoint gaps, with new unit coverage for the summary merge.
 - 2025-11-13 (FIX backend-171): Finalised the AkShare migration for the HSGT fund-flow pipeline by purging legacy Tushare rows automatically, switching the sync to `stock_hsgt_hist_em`, and merging the summary snapshot when the historical feed lags so control-panel refreshes always surface the latest trading day.
@@ -239,7 +240,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 ### Summary
 - Introduces Eastmoney big-board fund flow history via AkShare `stock_market_fund_flow`.
 - Schema template `backend/config/market_fund_flow_schema.sql` with DAO/service pair (`MarketFundFlowDAO`, `market_fund_flow_service`).
-- Fund-flow aggregate job now chains industry → concept → individual → HSGT → margin account → market fund flow → big deal.
+- Fund-flow aggregate job now chains industry → concept → individual → margin account → market fund flow → big deal.
 
 ### Backend Flow
 1. Service fetches, renames columns using `MARKET_FUND_FLOW_COLUMN_MAP`, and `_prepare_market_fund_flow_frame` normalises numerics/percents (converted to ratios).
@@ -293,7 +294,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
    - Realtime indices filtered by turnover > ¥5,000亿.
    - Latest 10 trading days from `index_history` for configured benchmark indices.
    - Latest market, macro, peripheral insights (reference articles stripped).
-   - Recent 10-day slices for market fund flow, HSGT fund flow (默认“北向资金”), and margin account tables.
+   - Recent 10-day slices for market fund flow and margin account tables.
    - Latest market activity snapshot (赚钱效应) along with warnings/metrics.
 2. Aggregation normalises JSON fields (peripheral metrics) and returns a timestamped payload ready for LLM consumption.
 3. FastAPI endpoint `/market/overview` returns the structured payload (`MarketOverviewResponse`).

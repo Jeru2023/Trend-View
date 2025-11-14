@@ -87,7 +87,6 @@ class PostgresSettings:
     stock_notes_table: str
     investment_journal_table: str
     indicator_screening_table: str
-    hsgt_fund_flow_table: str
     peripheral_insight_table: str
     leverage_ratio_table: str
     social_financing_table: str
@@ -325,9 +324,6 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             indicator_screening_table=str(
                 postgres_config.get("indicator_screening_table", "indicator_screening")
-            ),
-            hsgt_fund_flow_table=str(
-                postgres_config.get("hsgt_fund_flow_table", "hsgt_fund_flow")
             ),
             peripheral_insight_table=str(
                 postgres_config.get("peripheral_insight_table", "peripheral_insights")

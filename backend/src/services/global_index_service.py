@@ -381,6 +381,11 @@ def sync_global_indices(*, settings_path: Optional[str] = None) -> dict[str, obj
         if history_df.empty:
             continue
         history_df = history_df.sort_values("trade_date").reset_index(drop=True)
+        if "close" not in history_df.columns:
+            if "close_price" in history_df.columns:
+                history_df["close"] = history_df["close_price"]
+            else:
+                history_df["close"] = None
         prev_close_initial = None
         rows_for_symbol = latest_rows.get(symbol)
         if rows_for_symbol and not needs_core_backfill:

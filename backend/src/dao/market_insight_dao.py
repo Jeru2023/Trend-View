@@ -15,6 +15,28 @@ from ..config.settings import PostgresSettings
 from .base import PostgresDAOBase
 
 SCHEMA_SQL_PATH = Path(__file__).resolve().parents[2] / "config" / "market_insights_schema.sql"
+SUMMARY_COLUMNS: tuple[str, ...] = (
+    "summary_id",
+    "generated_at",
+    "window_start",
+    "window_end",
+    "headline_count",
+    "summary_json",
+    "raw_response",
+    "referenced_articles",
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "elapsed_ms",
+    "model_used",
+    "index_stage",
+    "fund_stage",
+    "sentiment_stage",
+    "macro_stage",
+    "news_stage",
+    "comprehensive_stage",
+)
+
 STAGE_COLUMN_MAP = {
     "index_analysis": "index_stage",
     "fund_flow_analysis": "fund_stage",
@@ -61,57 +83,8 @@ class MarketInsightDAO(PostgresDAOBase):
         return summary_id
 
     def latest_summary(self) -> Optional[Dict[str, object]]:
-        with self.connect() as conn:
-            self.ensure_table(conn)
-            with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL(
-                        "SELECT summary_id, generated_at, window_start, window_end, headline_count, summary_json, "
-                        "raw_response, referenced_articles, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, model_used, "
-                        "index_stage, fund_stage, sentiment_stage, macro_stage, news_stage, comprehensive_stage "
-                        "FROM {schema}.{table} ORDER BY generated_at DESC LIMIT 1"
-                    ).format(
-                        schema=sql.Identifier(self.config.schema),
-                        table=sql.Identifier(self._table_name),
-                    )
-                )
-                row = cur.fetchone()
-        if not row:
-            return None
-        keys = [
-            "summary_id",
-            "generated_at",
-            "window_start",
-            "window_end",
-            "headline_count",
-            "summary_json",
-            "raw_response",
-            "referenced_articles",
-            "prompt_tokens",
-            "completion_tokens",
-            "total_tokens",
-            "elapsed_ms",
-            "model_used",
-            "index_stage",
-            "fund_stage",
-            "sentiment_stage",
-            "macro_stage",
-            "news_stage",
-            "comprehensive_stage",
-        ]
-        record = dict(zip(keys, row))
-        record["referenced_articles"] = self._decode_json(record.get("referenced_articles"))
-        record["summary_json"] = self._decode_json(record.get("summary_json"))
-        for column in (
-            "index_stage",
-            "fund_stage",
-            "sentiment_stage",
-            "macro_stage",
-            "news_stage",
-            "comprehensive_stage",
-        ):
-            record[column] = self._decode_json(record.get(column))
-        return record
+        row = self._fetch_single_record("ORDER BY generated_at DESC LIMIT 1")
+        return row
 
     def stats(self) -> Dict[str, object]:
         with self.connect() as conn:
@@ -131,59 +104,11 @@ class MarketInsightDAO(PostgresDAOBase):
 
     def list_summaries(self, limit: int = 20) -> List[Dict[str, object]]:
         limit_value = max(1, min(int(limit), 100))
-        with self.connect() as conn:
-            self.ensure_table(conn)
-            with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL(
-                        "SELECT summary_id, generated_at, window_start, window_end, headline_count, summary_json, "
-                        "raw_response, referenced_articles, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, model_used, "
-                        "index_stage, fund_stage, sentiment_stage, macro_stage, news_stage, comprehensive_stage "
-                        "FROM {schema}.{table} ORDER BY generated_at DESC LIMIT %s"
-                    ).format(
-                        schema=sql.Identifier(self.config.schema),
-                        table=sql.Identifier(self._table_name),
-                    ),
-                    (limit_value,),
-                )
-                rows = cur.fetchall()
-        keys = [
-            "summary_id",
-            "generated_at",
-            "window_start",
-            "window_end",
-            "headline_count",
-            "summary_json",
-            "raw_response",
-            "referenced_articles",
-            "prompt_tokens",
-            "completion_tokens",
-            "total_tokens",
-            "elapsed_ms",
-            "model_used",
-            "index_stage",
-            "fund_stage",
-            "sentiment_stage",
-            "macro_stage",
-            "news_stage",
-            "comprehensive_stage",
-        ]
-        results = []
-        for row in rows:
-            record = dict(zip(keys, row))
-            record["referenced_articles"] = self._decode_json(record.get("referenced_articles"))
-            record["summary_json"] = self._decode_json(record.get("summary_json"))
-            for column in (
-                "index_stage",
-                "fund_stage",
-                "sentiment_stage",
-                "macro_stage",
-                "news_stage",
-                "comprehensive_stage",
-            ):
-                record[column] = self._decode_json(record.get(column))
-            results.append(record)
-        return results
+        query = sql.SQL(
+            "ORDER BY generated_at DESC LIMIT %s"
+        )
+        rows = self._fetch_multiple_records(query, (limit_value,))
+        return rows
 
     def update_stage(self, summary_id: str, stage_key: str, payload: Dict[str, object]) -> None:
         column = STAGE_COLUMN_MAP.get(stage_key)
@@ -227,6 +152,67 @@ class MarketInsightDAO(PostgresDAOBase):
             return json.loads(value)
         except json.JSONDecodeError:
             return value
+
+    def fetch_summary_by_window(self, window_start: datetime, window_end: datetime) -> Optional[Dict[str, object]]:
+        where_clause = sql.SQL("WHERE window_start = %s AND window_end = %s ORDER BY generated_at DESC LIMIT 1")
+        return self._fetch_single_record(where_clause, (window_start, window_end))
+
+    def latest_pending_summary(self) -> Optional[Dict[str, object]]:
+        where_clause = sql.SQL("WHERE comprehensive_stage IS NULL ORDER BY generated_at DESC LIMIT 1")
+        return self._fetch_single_record(where_clause)
+
+    def _fetch_single_record(self, clause: str | sql.SQL, params: Optional[tuple] = None) -> Optional[Dict[str, object]]:
+        query = sql.SQL(
+            "SELECT summary_id, generated_at, window_start, window_end, headline_count, summary_json, "
+            "raw_response, referenced_articles, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, model_used, "
+            "index_stage, fund_stage, sentiment_stage, macro_stage, news_stage, comprehensive_stage "
+            "FROM {schema}.{table} {clause}"
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+            clause=clause if isinstance(clause, sql.SQL) else sql.SQL(clause),
+        )
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, params or ())
+                row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_record(row)
+
+    def _fetch_multiple_records(self, clause: sql.SQL, params: Optional[tuple] = None) -> List[Dict[str, object]]:
+        query = sql.SQL(
+            "SELECT summary_id, generated_at, window_start, window_end, headline_count, summary_json, "
+            "raw_response, referenced_articles, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, model_used, "
+            "index_stage, fund_stage, sentiment_stage, macro_stage, news_stage, comprehensive_stage "
+            "FROM {schema}.{table} {clause}"
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+            clause=clause,
+        )
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, params or ())
+                rows = cur.fetchall()
+        return [self._row_to_record(row) for row in rows]
+
+    def _row_to_record(self, row: tuple) -> Dict[str, object]:
+        record = dict(zip(SUMMARY_COLUMNS, row))
+        record["referenced_articles"] = self._decode_json(record.get("referenced_articles"))
+        record["summary_json"] = self._decode_json(record.get("summary_json"))
+        for column in (
+            "index_stage",
+            "fund_stage",
+            "sentiment_stage",
+            "macro_stage",
+            "news_stage",
+            "comprehensive_stage",
+        ):
+            record[column] = self._decode_json(record.get(column))
+        return record
 
 
 __all__ = ["MarketInsightDAO"]

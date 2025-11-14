@@ -1,4 +1,4 @@
-console.info("Industry insight module v20270438");
+console.info("Industry insight module v20270460");
 
 const translations = getTranslations("industryInsight");
 
@@ -9,10 +9,15 @@ const API_BASE =
     : `${window.location.origin.replace(/:\d+$/, "")}:8000`);
 
 const LANG_STORAGE_KEY = "trend-view-lang";
+const EXPORT_SCALE = window.devicePixelRatio > 1 ? 2 : 1.4;
+const EXPORT_MAX_WIDTH = 1080;
+const EXPORT_MOBILE_MAX_WIDTH = 720;
+const EXPORT_MOBILE_MIN_WIDTH = 540;
 
 const elements = {
   refreshButton: document.getElementById("industry-insight-refresh"),
   status: document.getElementById("industry-insight-status"),
+  exportImageButton: document.getElementById("industry-insight-export-image"),
   generatedAt: document.getElementById("industry-insight-generated-at"),
   lookback: document.getElementById("industry-insight-lookback"),
   summary: document.getElementById("industry-insight-summary"),
@@ -30,6 +35,57 @@ const state = {
   fallbackSummary: null,
   fallbackGeneratedAt: null,
 };
+let exportInProgress = false;
+
+function formatNarrativeText(value) {
+  if (value === null || value === undefined) return "";
+  let text = String(value);
+  if (!text.trim()) return "";
+  text = text.replace(/；/g, "；\n\n").replace(/;/g, ";\n\n");
+  text = text.replace(/([。！？])(?!\s|\n)/g, "$1\n");
+  text = text.replace(/(\.)(?=\s|$)/g, ".\n");
+  text = text.replace(/\n{3,}/g, "\n\n");
+  return text.trim();
+}
+
+function setNarrativeText(node, value, fallback = "--") {
+  if (!node) return;
+  const formatted = formatNarrativeText(value);
+  node.textContent = formatted || fallback || "";
+}
+
+function getExportBannerInfo() {
+  const dict = getDict();
+  const generated =
+    state.insight?.generatedAt || state.fallbackGeneratedAt || state.snapshot?.generatedAt || null;
+  const title = dict.pageTitle || "Industry Reasoning";
+  const dateLabel = dict.generatedAtLabel || "Generated";
+  const dateValue = generated ? `${dateLabel}: ${formatDateTime(generated)}` : "";
+  const footer =
+    dict.exportDisclaimer ||
+    (state.lang === "zh" ? "以上内容由AI推理，仅供参考" : "AI-generated content. For reference only.");
+  return { title, date: dateValue, footer };
+}
+
+function injectExportBanners(root, info) {
+  if (!root || !info) return;
+  const top = document.createElement("div");
+  top.className = "insight-export-banner insight-export-banner--top";
+  const titleEl = document.createElement("strong");
+  titleEl.textContent = info.title || "";
+  top.appendChild(titleEl);
+  if (info.date) {
+    const dateEl = document.createElement("span");
+    dateEl.textContent = info.date;
+    top.appendChild(dateEl);
+  }
+  root.insertBefore(top, root.firstChild);
+
+  const bottom = document.createElement("div");
+  bottom.className = "insight-export-banner insight-export-banner--bottom";
+  bottom.textContent = info.footer || "";
+  root.appendChild(bottom);
+}
 
 function getInitialLanguage() {
   try {
@@ -130,6 +186,49 @@ function formatList(values) {
     .filter(Boolean);
 }
 
+function getExportFilename() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  const timestamp = [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds()),
+  ].join("");
+  return `industry-insight-${timestamp}`;
+}
+
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+}
+
+function openMobilePreview(dataUrl) {
+  const previewWindow = window.open("", "_blank");
+  if (!previewWindow) {
+    return false;
+  }
+  const dict = getDict();
+  previewWindow.document.write(`<!DOCTYPE html>
+<html lang="${state.lang || "zh"}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${dict.pageTitle || "Industry Insight"}</title>
+    <style>
+      body{margin:0;padding:16px;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+      img{width:100%;height:auto;display:block;border-radius:16px;box-shadow:0 20px 70px rgba(15,23,42,0.45);}
+    </style>
+  </head>
+  <body>
+    <img src="${dataUrl}" alt="Industry insight export" />
+  </body>
+</html>`);
+  previewWindow.document.close();
+  return true;
+}
+
 function clearContainer(node, message) {
   if (!node) return;
   node.innerHTML = "";
@@ -181,14 +280,15 @@ function buildSummarySection(title, content, type = "text") {
     list.className = "concept-summary__list";
     formatList(content).forEach((item) => {
       const li = document.createElement("li");
-      li.textContent = item;
+      setNarrativeText(li, item);
       list.appendChild(li);
     });
     block.appendChild(list);
-  } else if (type === "html") {
-    const para = document.createElement("div");
+  } else {
+    const tag = type === "html" ? "div" : "p";
+    const para = document.createElement(tag);
     para.className = "concept-summary__text";
-    para.textContent = content;
+    setNarrativeText(para, content, "--");
     block.appendChild(para);
   }
 
@@ -226,7 +326,7 @@ function createTopIndustryCard(industry, dict) {
   if (industry.drivers) {
     const drivers = document.createElement("p");
     drivers.className = "concept-summary__drivers";
-    drivers.textContent = industry.drivers;
+    setNarrativeText(drivers, industry.drivers);
     card.appendChild(drivers);
   }
 
@@ -260,7 +360,7 @@ function createTopIndustryCard(industry, dict) {
     riskList.className = "concept-summary__list";
     risks.forEach((risk) => {
       const li = document.createElement("li");
-      li.textContent = risk;
+      setNarrativeText(li, risk);
       riskList.appendChild(li);
     });
     card.appendChild(riskList);
@@ -276,7 +376,7 @@ function createTopIndustryCard(industry, dict) {
     actionList.className = "concept-summary__list concept-summary__list--actions";
     actions.forEach((action) => {
       const li = document.createElement("li");
-      li.textContent = action;
+      setNarrativeText(li, action);
       actionList.appendChild(li);
     });
     card.appendChild(actionList);
@@ -582,7 +682,7 @@ function renderHistory(items) {
     if (summaryJson?.rotation_notes) {
       const notes = document.createElement("p");
       notes.className = "concept-history-card__notes";
-      notes.textContent = summaryJson.rotation_notes;
+      setNarrativeText(notes, summaryJson.rotation_notes);
       card.appendChild(notes);
     }
 
@@ -678,6 +778,129 @@ function setStatus(message, tone) {
     node.dataset.tone = tone;
   } else {
     node.removeAttribute("data-tone");
+  }
+}
+
+function triggerImageDownload(dataUrl) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = `${getExportFilename()}.png`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function resolveExportWidth() {
+  const viewportWidth = Math.max(
+    window.innerWidth || 0,
+    document.documentElement?.clientWidth || 0,
+    EXPORT_MOBILE_MIN_WIDTH
+  );
+  if (viewportWidth > 900) {
+    return EXPORT_MOBILE_MAX_WIDTH;
+  }
+  return Math.min(Math.max(viewportWidth, EXPORT_MOBILE_MIN_WIDTH), EXPORT_MOBILE_MAX_WIDTH);
+}
+
+function prepareExportClone(target, width) {
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "fixed";
+  wrapper.style.left = "-10000px";
+  wrapper.style.top = "0";
+  wrapper.style.width = `${width}px`;
+  wrapper.style.background = "#ffffff";
+  wrapper.style.padding = "0";
+  wrapper.style.zIndex = "-1";
+
+  const clone = target.cloneNode(true);
+  clone.style.width = "100%";
+  clone.setAttribute("data-export-mode", "mobile");
+  clone.classList.add("insight-export-clone");
+  stripHistorySectionForExport(clone);
+  injectExportBanners(clone, getExportBannerInfo());
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
+
+  return {
+    node: clone,
+    cleanup: () => {
+      document.body.removeChild(wrapper);
+    },
+  };
+}
+
+function stripHistorySectionForExport(root) {
+  if (!root || typeof root.querySelector !== "function") return;
+  const historyNode = root.querySelector("#industry-insight-history");
+  if (!historyNode) return;
+  const section = historyNode.closest(".insight-section");
+  if (section && section.parentNode) {
+    section.remove();
+  } else {
+    historyNode.remove();
+  }
+}
+
+async function exportIndustryInsightImage() {
+  if (exportInProgress) return;
+  const dict = getDict();
+  if (!window.html2canvas) {
+    setStatus(dict.exportFailed || "Export failed", "error");
+    return;
+  }
+  const target = document.getElementById("industry-insight-root");
+  if (!target) {
+    setStatus(dict.exportFailed || "Export failed", "error");
+    return;
+  }
+  exportInProgress = true;
+  setStatus(dict.exporting || "Preparing export...", "info");
+  let cleanupExport = null;
+  try {
+    const exportWidth = resolveExportWidth();
+    const { node: exportNode, cleanup } = prepareExportClone(target, exportWidth);
+    cleanupExport = cleanup;
+    const canvas = await window.html2canvas(exportNode, {
+      scale: EXPORT_SCALE,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      scrollY: 0,
+      scrollX: 0,
+      width: exportWidth,
+      windowWidth: exportWidth,
+    });
+    let finalCanvas = canvas;
+    if (canvas.width > EXPORT_MAX_WIDTH) {
+      const scaleFactor = EXPORT_MAX_WIDTH / canvas.width;
+      const scaledCanvas = document.createElement("canvas");
+      scaledCanvas.width = EXPORT_MAX_WIDTH;
+      scaledCanvas.height = Math.round(canvas.height * scaleFactor);
+      const ctx = scaledCanvas.getContext("2d");
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(canvas, 0, 0, scaledCanvas.width, scaledCanvas.height);
+        finalCanvas = scaledCanvas;
+      }
+    }
+    const dataUrl = finalCanvas.toDataURL("image/png");
+    if (isMobileDevice()) {
+      const opened = openMobilePreview(dataUrl);
+      if (!opened) {
+        triggerImageDownload(dataUrl);
+      }
+    } else {
+      triggerImageDownload(dataUrl);
+    }
+    setStatus(dict.exportReady || "Export ready.", "success");
+  } catch (error) {
+    console.error("Industry insight export failed:", error);
+    setStatus(dict.exportFailed || "Export failed", "error");
+  } finally {
+    if (typeof cleanupExport === "function") {
+      cleanupExport();
+    }
+    exportInProgress = false;
   }
 }
 
@@ -812,6 +1035,9 @@ function init() {
   initLanguage();
   if (elements.refreshButton) {
     elements.refreshButton.addEventListener("click", handleRefreshClick);
+  }
+  if (elements.exportImageButton) {
+    elements.exportImageButton.addEventListener("click", exportIndustryInsightImage);
   }
   fetchInsight();
 }

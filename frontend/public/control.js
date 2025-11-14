@@ -120,6 +120,15 @@ const elements = {
     progress: document.getElementById("daily-indicator-progress"),
     button: document.getElementById("run-daily-indicator"),
   },
+  realtimeTrade: {
+    status: document.getElementById("realtime-trade-status"),
+    updated: document.getElementById("realtime-trade-updated"),
+    duration: document.getElementById("realtime-trade-duration"),
+    rows: document.getElementById("realtime-trade-rows"),
+    message: document.getElementById("realtime-trade-message"),
+    progress: document.getElementById("realtime-trade-progress"),
+    button: document.getElementById("run-realtime-trade"),
+  },
   indexHistory: {
     status: document.getElementById("index-history-status"),
     updated: document.getElementById("index-history-updated"),
@@ -325,16 +334,6 @@ const elements = {
     message: document.getElementById("industry-fund-flow-message"),
     progress: document.getElementById("industry-fund-flow-progress"),
     button: document.getElementById("run-industry-fund-flow"),
-  },
-  hsgtFundFlow: {
-    status: document.getElementById("hsgt-fund-flow-status"),
-    updated: document.getElementById("hsgt-fund-flow-updated"),
-    duration: document.getElementById("hsgt-fund-flow-duration"),
-    rows: document.getElementById("hsgt-fund-flow-rows"),
-    message: document.getElementById("hsgt-fund-flow-message"),
-    progress: document.getElementById("hsgt-fund-flow-progress"),
-    button: document.getElementById("run-hsgt-fund-flow"),
-    fullRefreshToggle: document.getElementById("hsgt-full-refresh"),
   },
   marginAccount: {
     status: document.getElementById("margin-account-status"),
@@ -761,6 +760,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const realtimeTradeSnapshot = jobs.realtime_trade || {
+      status: "idle",
+      progress: 0,
+    };
     const leverageSnapshot = jobs.leverage_ratio || {
       status: "idle",
       progress: 0,
@@ -849,10 +852,6 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
-    const hsgtFundFlowSnapshot = jobs.hsgt_fund_flow || {
-      status: "idle",
-      progress: 0,
-    };
     const marginAccountSnapshot = jobs.margin_account || {
       status: "idle",
       progress: 0,
@@ -890,6 +889,7 @@ async function loadStatus() {
     updateJobCard(elements.dailyTrade, dailySnapshot);
     updateJobCard(elements.dailyTradeMetrics, metricsSnapshot);
     updateJobCard(elements.dailyIndicator, indicatorSnapshot);
+    updateJobCard(elements.realtimeTrade, realtimeTradeSnapshot);
     updateJobCard(elements.indexHistory, indexHistorySnapshot);
     updateJobCard(elements.fundamentalMetrics, fundamentalSnapshot);
     updateJobCard(elements.macroAggregate, macroAggregateSnapshot);
@@ -923,7 +923,6 @@ async function loadStatus() {
     updateJobCard(elements.conceptInsight, conceptInsightSnapshot);
     updateJobCard(elements.industryInsight, industryInsightSnapshot);
     updateJobCard(elements.individualFundFlow, individualFundFlowSnapshot);
-    updateJobCard(elements.hsgtFundFlow, hsgtFundFlowSnapshot);
     updateJobCard(elements.marginAccount, marginAccountSnapshot);
     updateJobCard(elements.marketFundFlow, marketFundFlowSnapshot);
     updateJobCard(elements.marketActivity, marketActivitySnapshot);
@@ -950,6 +949,7 @@ async function loadStatus() {
       dailySnapshot,
       metricsSnapshot,
       indicatorSnapshot,
+      realtimeTradeSnapshot,
       indexHistorySnapshot,
       fundamentalSnapshot,
       macroAggregateSnapshot,
@@ -982,7 +982,6 @@ async function loadStatus() {
       conceptInsightSnapshot,
       industryInsightSnapshot,
       individualFundFlowSnapshot,
-      hsgtFundFlowSnapshot,
       marginAccountSnapshot,
       marketFundFlowSnapshot,
       marketActivitySnapshot,
@@ -1006,22 +1005,82 @@ async function loadStatus() {
 }
 
 async function triggerJob(endpoint, payload) {
+  const body = payload ? JSON.stringify(payload) : "{}";
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body,
     });
     if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
+      let errorMessage = `Request failed with status ${response.status}`;
+      try {
+        const data = await response.json();
+        if (data && typeof data.detail === "string") {
+          errorMessage = data.detail;
+        } else if (data && typeof data.message === "string") {
+          errorMessage = data.message;
+        }
+      } catch (parseError) {
+        /* no-op */
+      }
+      throw new Error(errorMessage);
     }
     setTimeout(loadStatus, 500);
     if (!pollTimer) {
       pollTimer = setInterval(loadStatus, 3000);
     }
+    return { ok: true };
   } catch (error) {
     console.error("Failed to start job", error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
+}
+
+function setJobPending(cardElements) {
+  if (!cardElements) {
+    return;
+  }
+  const dict = translations[currentLang];
+  const statusText = dict.statusStarting || dict.statusRunning || "";
+  cardElements.status.textContent = statusText;
+  if (cardElements.message) {
+    cardElements.message.textContent = dict.jobStartingMessage || dict.statusStarting || "";
+  }
+  if (cardElements.rows) {
+    cardElements.rows.textContent = "--";
+  }
+  if (cardElements.button) {
+    cardElements.button.disabled = true;
+  }
+  updateProgressBar(cardElements.progress, 0.1);
+}
+
+function setJobError(cardElements, errorMessage) {
+  if (!cardElements) {
+    return;
+  }
+  const dict = translations[currentLang];
+  cardElements.status.textContent = dict.statusFailed || "Failed";
+  if (cardElements.message) {
+    cardElements.message.textContent = errorMessage || dict.jobStartFailed || dict.statusFailed || "";
+  }
+  if (cardElements.button) {
+    cardElements.button.disabled = false;
+  }
+  updateProgressBar(cardElements.progress, 0);
+}
+
+function triggerJobForCard(cardElements, endpoint, payload) {
+  setJobPending(cardElements);
+  triggerJob(endpoint, payload).then((result) => {
+    if (!result?.ok) {
+      setJobError(cardElements, result?.error);
+    }
+  });
 }
 
 
@@ -1128,17 +1187,22 @@ function initActions() {
   elements.stockBasic.button.addEventListener("click", () =>
     triggerJob("/control/sync/stock-basic", {})
   );
-  elements.dailyTrade.button.addEventListener("click", () =>
-    triggerJob("/control/sync/daily-trade", {
+  elements.dailyTrade.button.addEventListener("click", () => {
+    triggerJobForCard(elements.dailyTrade, "/control/sync/daily-trade", {
       window_days: configState.dailyTradeWindowDays || undefined,
-    })
-  );
+    });
+  });
   elements.dailyTradeMetrics.button.addEventListener("click", () =>
     triggerJob("/control/sync/daily-trade-metrics", {})
   );
   elements.dailyIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/daily-indicators", {})
   );
+  if (elements.realtimeTrade.button) {
+    elements.realtimeTrade.button.addEventListener("click", () =>
+      triggerJob("/control/sync/realtime-trade", { syncAll: true })
+    );
+  }
   if (elements.indexHistory.button) {
     elements.indexHistory.button.addEventListener("click", () =>
       triggerJob("/control/sync/index-history", {})
@@ -1251,15 +1315,6 @@ function initActions() {
         symbols: INDUSTRY_FUND_FLOW_SYMBOLS,
       })
     );
-  }
-  if (elements.hsgtFundFlow.button) {
-    elements.hsgtFundFlow.button.addEventListener("click", () => {
-      const payload = {};
-      if (elements.hsgtFundFlow.fullRefreshToggle) {
-        payload.fullRefresh = Boolean(elements.hsgtFundFlow.fullRefreshToggle.checked);
-      }
-      triggerJob("/control/sync/hsgt-fund-flow", payload);
-    });
   }
   if (elements.marginAccount.button) {
     elements.marginAccount.button.addEventListener("click", () =>

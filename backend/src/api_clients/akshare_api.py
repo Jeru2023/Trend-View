@@ -172,22 +172,6 @@ CONTINUOUS_RISE_COLUMN_MAP: Final[dict[str, str]] = {
     "所属行业": "industry",
 }
 
-HSGT_FUND_FLOW_COLUMN_MAP: Final[dict[str, str]] = {
-    "日期": "trade_date",
-    "当日成交净买额": "net_buy_amount",
-    "买入成交额": "buy_amount",
-    "卖出成交额": "sell_amount",
-    "历史累计净买额": "net_buy_amount_cumulative",
-    "当日资金流入": "fund_inflow",
-    "当日余额": "balance",
-    "持股市值": "market_value",
-    "领涨股": "leading_stock",
-    "领涨股-涨跌幅": "leading_stock_change_percent",
-    "沪深300": "hs300_index",
-    "沪深300-涨跌幅": "hs300_change_percent",
-    "领涨股-代码": "leading_stock_code",
-}
-
 MARGIN_ACCOUNT_COLUMN_MAP: Final[dict[str, str]] = {
     "日期": "trade_date",
     "融资余额": "financing_balance",
@@ -1234,7 +1218,14 @@ def _fetch_ths_individual_fund_flow(symbol: str) -> pd.DataFrame:
 
     combined = pd.concat(frames, ignore_index=True)
     combined = combined.drop_duplicates(subset=["股票代码"], keep="first")
-    combined.insert(0, "序号", range(1, len(combined) + 1))
+    rank_values = range(1, len(combined) + 1)
+    if "序号" in combined.columns:
+        combined["序号"] = rank_values
+        # ensure 序号 stays as the first column for downstream rename logic
+        remaining = [col for col in combined.columns if col != "序号"]
+        combined = combined[["序号", *remaining]]
+    else:
+        combined.insert(0, "序号", rank_values)
     return combined
 
 
@@ -1459,80 +1450,6 @@ def fetch_big_deal_fund_flow() -> pd.DataFrame:
     return renamed.loc[:, list(BIG_DEAL_FUND_FLOW_COLUMN_MAP.values())]
 
 
-def _empty_hsgt_fund_flow_frame() -> pd.DataFrame:
-    return pd.DataFrame(columns=list(HSGT_FUND_FLOW_COLUMN_MAP.values()))
-
-
-def fetch_hsgt_fund_flow_history(symbol: str = "北向资金") -> pd.DataFrame:
-    """Fetch Eastmoney HSGT historical fund flow data for the specified symbol."""
-    try:
-        dataframe = ak.stock_hsgt_hist_em(symbol=symbol)
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch HSGT fund flow history via AkShare: %s", exc)
-        return _empty_hsgt_fund_flow_frame()
-
-    if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no HSGT fund flow history for %s", symbol)
-        return _empty_hsgt_fund_flow_frame()
-
-    renamed = dataframe.rename(columns=HSGT_FUND_FLOW_COLUMN_MAP)
-    for column in HSGT_FUND_FLOW_COLUMN_MAP.values():
-        if column not in renamed.columns:
-            renamed[column] = None
-
-    return renamed.loc[:, list(HSGT_FUND_FLOW_COLUMN_MAP.values())]
-
-
-def _empty_hsgt_fund_flow_summary_frame() -> pd.DataFrame:
-    return pd.DataFrame(
-        columns=[
-            "trade_date",
-            "channel_type",
-            "board_name",
-            "funds_direction",
-            "trading_status",
-            "net_buy_amount",
-            "fund_inflow",
-            "balance",
-            "rising_count",
-            "flat_count",
-            "falling_count",
-            "index_name",
-            "index_change_percent",
-        ]
-    )
-
-
-def fetch_hsgt_fund_flow_summary() -> pd.DataFrame:
-    """Fetch the latest HSGT fund flow summary snapshot."""
-    try:
-        dataframe = ak.stock_hsgt_fund_flow_summary_em()
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch HSGT fund flow summary via AkShare: %s", exc)
-        return _empty_hsgt_fund_flow_summary_frame()
-
-    if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no HSGT fund flow summary data.")
-        return _empty_hsgt_fund_flow_summary_frame()
-
-    renamed = dataframe.rename(
-        columns={
-            "交易日": "trade_date",
-            "类型": "channel_type",
-            "板块": "board_name",
-            "资金方向": "funds_direction",
-            "交易状态": "trading_status",
-            "成交净买额": "net_buy_amount",
-            "资金净流入": "fund_inflow",
-            "当日资金余额": "balance",
-            "上涨数": "rising_count",
-            "持平数": "flat_count",
-            "下跌数": "falling_count",
-            "相关指数": "index_name",
-            "指数涨跌幅": "index_change_percent",
-        }
-    )
-
     renamed["trade_date"] = pd.to_datetime(renamed["trade_date"], errors="coerce").dt.date
 
     for column in [
@@ -1652,7 +1569,6 @@ __all__ = [
     "CONTINUOUS_VOLUME_COLUMN_MAP",
     "VOLUME_PRICE_RISE_COLUMN_MAP",
     "BIG_DEAL_FUND_FLOW_COLUMN_MAP",
-    "HSGT_FUND_FLOW_COLUMN_MAP",
     "MARGIN_ACCOUNT_COLUMN_MAP",
     "STOCK_MAIN_BUSINESS_COLUMN_MAP",
     "STOCK_MAIN_COMPOSITION_COLUMN_MAP",
@@ -1674,8 +1590,6 @@ __all__ = [
     "fetch_stock_rank_lxsz_ths",
     "fetch_stock_rank_ljqs_ths",
     "fetch_big_deal_fund_flow",
-    "fetch_hsgt_fund_flow_history",
-    "fetch_hsgt_fund_flow_summary",
     "fetch_margin_account_info",
     "fetch_stock_main_business",
     "fetch_stock_main_composition",

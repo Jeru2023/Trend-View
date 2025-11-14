@@ -18,7 +18,6 @@ class MarketOverviewServiceTests(unittest.TestCase):
 
         self.assertIn("marketFundFlow", payload)
         self.assertLessEqual(len(payload.get("marketFundFlow", [])), 10)
-        self.assertLessEqual(len(payload.get("hsgtFundFlow", [])), 10)
         self.assertLessEqual(len(payload.get("marginAccount", [])), 10)
 
         self.assertIn("marketInsight", payload)

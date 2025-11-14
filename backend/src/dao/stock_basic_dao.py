@@ -229,6 +229,27 @@ class StockBasicDAO(PostgresDAOBase):
         ]
         return {"total": total, "items": items}
 
+    def fetch_names(self, codes: Sequence[str]) -> dict[str, str]:
+        unique = sorted({(code or "").strip().upper() for code in codes if code})
+        if not unique:
+            return {}
+        query = sql.SQL(
+            """
+            SELECT ts_code, name
+            FROM {schema}.{table}
+            WHERE ts_code = ANY(%s)
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self.config.stock_table),
+        )
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, (unique,))
+                rows = cur.fetchall()
+        return {code: name for code, name in rows if code}
+
     def exists(self, code: str) -> bool:
         """Return True when the provided stock code exists in stock_basic."""
         with self.connect() as conn:
@@ -249,4 +270,3 @@ class StockBasicDAO(PostgresDAOBase):
 __all__ = [
     "StockBasicDAO",
 ]
-

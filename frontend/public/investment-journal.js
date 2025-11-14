@@ -495,7 +495,18 @@ function renderNotesTable() {
     const dateCell = document.createElement("td");
     dateCell.textContent = formatDateTime(entry.updatedAt || entry.createdAt);
     const codeCell = document.createElement("td");
-    codeCell.textContent = entry.stockCode || entry.stock_code || "--";
+    const stockCode = entry.stockCode || entry.stock_code || "";
+    const stockName = entry.stockName || entry.stock_name || "";
+    if (stockCode) {
+      const link = document.createElement("a");
+      link.href = `stock-detail.html?code=${encodeURIComponent(stockCode)}`;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = stockName ? `${stockName} (${stockCode})` : stockCode;
+      codeCell.appendChild(link);
+    } else {
+      codeCell.textContent = stockName || "--";
+    }
     const contentCell = document.createElement("td");
     contentCell.textContent = entry.content || "--";
     row.appendChild(dateCell);

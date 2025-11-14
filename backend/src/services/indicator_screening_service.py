@@ -1041,19 +1041,12 @@ def _serialize_entry(entry: dict[str, Any]) -> dict[str, Any]:
         detail = _extract_indicator_details(entry, indicator_code)
         if indicator_code == BIG_DEAL_INDICATOR_CODE:
             serialized["hasBigDealInflow"] = bool(net_amount is not None and net_amount > 0)
-            detail = {
-                **detail,
-                "bigDealNetAmount": net_amount,
-                "bigDealBuyAmount": _safe_float(entry.get("volume_shares")),
-                "bigDealSellAmount": _safe_float(entry.get("baseline_volume_shares")),
-                "bigDealTradeCount": entry.get("volume_days"),
-            }
         serialized["indicatorDetails"][indicator_code] = detail
     return serialized
 
 
 def _extract_indicator_details(entry: dict[str, Any], indicator_code: str) -> dict[str, Any]:
-    return {
+    detail = {
         "priceChangePercent": _safe_float(entry.get("price_change_percent")),
         "stageChangePercent": _safe_float(entry.get("stage_change_percent")),
         "lastPrice": _safe_float(entry.get("last_price")),
@@ -1067,6 +1060,16 @@ def _extract_indicator_details(entry: dict[str, Any], indicator_code: str) -> di
         "highPrice": _safe_float(entry.get("high_price")),
         "lowPrice": _safe_float(entry.get("low_price")),
     }
+    if indicator_code == BIG_DEAL_INDICATOR_CODE:
+        detail.update(
+            {
+                "bigDealNetAmount": _safe_float(entry.get("turnover_amount")),
+                "bigDealBuyAmount": _safe_float(entry.get("volume_shares")),
+                "bigDealSellAmount": _safe_float(entry.get("baseline_volume_shares")),
+                "bigDealTradeCount": entry.get("volume_days"),
+            }
+        )
+    return detail
 
 
 def _normalize_indicator_code(code: str | None) -> str:

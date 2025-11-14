@@ -34,6 +34,7 @@ STAGE_TIMEOUT_SECONDS = 180
 STAGE_STATUS_RUNNING = "running"
 STAGE_STATUS_SUCCESS = "success"
 STAGE_STATUS_FAILED = "failed"
+STAGE_CACHE_MAX_AGE_SECONDS = 3600
 
 ALLOWED_EVENT_TYPES = {
     "monetary_policy",
@@ -278,6 +279,13 @@ STAGE_DEFINITIONS: Tuple[StageDefinition, ...] = (
 )
 STAGE_TITLE_MAP = {stage.key: stage.title for stage in STAGE_DEFINITIONS}
 STAGE_ORDER = tuple(stage.key for stage in STAGE_DEFINITIONS)
+STAGE_COLUMN_NAMES = {
+    "index_analysis": "index_stage",
+    "fund_flow_analysis": "fund_stage",
+    "sentiment_analysis": "sentiment_stage",
+    "macro_analysis": "macro_stage",
+    "news_analysis": "news_stage",
+}
 
 
 def _extract_stage_payload(stage: StageDefinition, overview: Dict[str, object]) -> Dict[str, object]:
@@ -802,7 +810,9 @@ def generate_market_insight_summary(
     stage_success_results: List[Dict[str, object]] = []
     stage_raw_responses: Dict[str, str] = {}
     stage_records: Dict[str, Dict[str, object]] = {}
-    summary_id = uuid.uuid4().hex
+    stage_cached_results: Dict[str, Dict[str, object]] = {}
+    reused_pending_summary = False
+    summary_id: Optional[str] = None
     referenced_articles_payload = [
         {
             "article_id": item.get("article_id"),
@@ -823,23 +833,61 @@ def generate_market_insight_summary(
         }
         for item in articles
     ]
-    summary_dao.insert_summary(
-        {
-            "summary_id": summary_id,
-            "generated_at": window_end,
-            "window_start": window_start,
-            "window_end": window_end,
-            "headline_count": len(articles),
-            "summary_json": None,
-            "raw_response": None,
-            "referenced_articles": json.dumps(referenced_articles_payload, ensure_ascii=False),
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-            "elapsed_ms": None,
-            "model_used": DEEPSEEK_REASONER_MODEL,
-        }
-    )
+
+    pending_summary = summary_dao.latest_pending_summary()
+    if pending_summary and not pending_summary.get("comprehensive_stage"):
+        pending_generated_at = pending_summary.get("generated_at")
+        if isinstance(pending_generated_at, datetime):
+            age_seconds = abs((window_end - pending_generated_at).total_seconds())
+            if age_seconds <= STAGE_CACHE_MAX_AGE_SECONDS:
+                summary_id = pending_summary.get("summary_id")
+                reused_pending_summary = True
+                for stage in STAGE_DEFINITIONS:
+                    column_name = STAGE_COLUMN_NAMES.get(stage.key)
+                    cached_record = pending_summary.get(column_name) if column_name else None
+                    if isinstance(cached_record, dict):
+                        stage_records[stage.key] = dict(cached_record)
+                        if (
+                            cached_record.get("status") == STAGE_STATUS_SUCCESS
+                            and cached_record.get("result")
+                        ):
+                            stage_cached_results[stage.key] = cached_record["result"]
+                            usage_map = cached_record.get("usage")
+                            if isinstance(usage_map, dict):
+                                total_prompt_tokens += usage_map.get("prompt_tokens", 0)
+                                total_completion_tokens += usage_map.get("completion_tokens", 0)
+                                total_tokens += usage_map.get("total_tokens", 0)
+    if summary_id is None:
+        summary_id = uuid.uuid4().hex
+        summary_dao.insert_summary(
+            {
+                "summary_id": summary_id,
+                "generated_at": window_end,
+                "window_start": window_start,
+                "window_end": window_end,
+                "headline_count": len(articles),
+                "summary_json": None,
+                "raw_response": None,
+                "referenced_articles": json.dumps(referenced_articles_payload, ensure_ascii=False),
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "elapsed_ms": None,
+                "model_used": DEEPSEEK_REASONER_MODEL,
+            }
+        )
+    else:
+        logger.info("Reusing pending summary %s with cached stage results", summary_id)
+        summary_dao.update_columns(
+            summary_id,
+            generated_at=window_end,
+            window_start=window_start,
+            window_end=window_end,
+            headline_count=len(articles),
+        )
+        existing_articles = pending_summary.get("referenced_articles") if pending_summary else None
+        if isinstance(existing_articles, list):
+            referenced_articles_payload = existing_articles
 
     def _accumulate_usage(usage_map: Dict[str, int]) -> None:
         nonlocal total_prompt_tokens, total_completion_tokens, total_tokens
@@ -850,6 +898,15 @@ def generate_market_insight_summary(
     started = time.perf_counter()
     for index, stage in enumerate(STAGE_DEFINITIONS):
         stage_progress = stage_base_progress + stage_weight * index
+        cached_result = stage_cached_results.get(stage.key)
+        if cached_result:
+            stage_success_results.append(cached_result)
+            _notify(
+                min(stage_progress + stage_weight * 0.85, 0.88),
+                f"[{index + 1}/{stage_total}] 「{stage.title}」沿用现有推理结果",
+            )
+            logger.info("Stage '%s' reused cached result for summary %s", stage.key, summary_id)
+            continue
         _notify(stage_progress, f"[{index + 1}/{stage_total}] 正在推理「{stage.title}」")
         stage_payload = _extract_stage_payload(stage, overview_payload)
         stage_started = time.perf_counter()

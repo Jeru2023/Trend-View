@@ -298,7 +298,7 @@
                 <div>
                   <h3 data-i18n="fundFlowAggregateTitle">Fund Flow Bundle Sync</h3>
                   <p class="card__subtitle" data-i18n="fundFlowAggregateSubtitle">
-                    Run industry, concept, individual, HSGT, market fund flow, margin account, and big-deal fund flow jobs sequentially.
+                    Run industry, concept, individual, market fund flow, margin account, and big-deal fund flow jobs sequentially.
                   </p>
                 </div>
                 <button class="primary-btn" id="run-fund-flow-aggregate" data-i18n="runNow">
@@ -623,6 +623,46 @@
                   </div>
               </div>
               <p class="job-message" id="daily-indicator-message"></p>
+            </div>
+
+            <div class="card" id="realtime-trade-card">
+              <div class="card__header">
+                <div>
+                  <h3 data-i18n="realtimeTradeTitle">Realtime Trade Data</h3>
+                  <p class="card__subtitle" data-i18n="realtimeTradeSubtitle">
+                    Fetch intraday quotes and update the latest daily_trade rows for every stock.
+                  </p>
+                </div>
+                <button class="primary-btn" id="run-realtime-trade" data-i18n="runNow">
+                  Run
+                </button>
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress__bar" id="realtime-trade-progress"></div>
+              </div>
+              <div class="job-meta">
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="lastStatus">Status</span>
+                    <strong id="realtime-trade-status">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="records">Records</span>
+                    <strong id="realtime-trade-rows">&mdash;</strong>
+                  </div>
+                </div>
+                <div class="job-meta__row">
+                  <div class="job-meta__item">
+                    <span data-i18n="dataUpdated">Data Updated</span>
+                    <strong id="realtime-trade-updated">&mdash;</strong>
+                  </div>
+                  <div class="job-meta__item">
+                    <span data-i18n="lastDuration">Last Duration</span>
+                    <strong id="realtime-trade-duration">&mdash;</strong>
+                  </div>
+                </div>
+              </div>
+              <p class="job-message" id="realtime-trade-message"></p>
             </div>
 
             <div class="card" id="index-history-card">
@@ -1189,53 +1229,6 @@
               </div>
               <p class="job-message" id="individual-fund-flow-message"></p>
             </div>
-
-            <div class="card" id="hsgt-fund-flow-card">
-              <div class="card__header">
-                <div>
-                  <h3 data-i18n="hsgtFundFlowTitle">HSGT Fund Flow</h3>
-                  <p class="card__subtitle" data-i18n="hsgtFundFlowSubtitle">
-                    Sync Tushare moneyflow_hsgt series for Shanghai/Shenzhen-Hong Kong connect capital flows.
-                  </p>
-                </div>
-                <div class="card__actions">
-                  <label class="card__toggle">
-                    <input type="checkbox" id="hsgt-full-refresh" />
-                    <span data-i18n="hsgtFundFlowFullRefreshLabel">Full refresh (truncate existing)</span>
-                  </label>
-                  <button class="primary-btn" id="run-hsgt-fund-flow" data-i18n="runNow">
-                    Run
-                  </button>
-                </div>
-              </div>
-              <div class="progress" aria-hidden="true">
-                <div class="progress__bar" id="hsgt-fund-flow-progress"></div>
-              </div>
-              <div class="job-meta">
-                <div class="job-meta__row">
-                  <div class="job-meta__item">
-                    <span data-i18n="lastStatus">Status</span>
-                    <strong id="hsgt-fund-flow-status">&mdash;</strong>
-                  </div>
-                  <div class="job-meta__item">
-                    <span data-i18n="records">Records</span>
-                    <strong id="hsgt-fund-flow-rows">&mdash;</strong>
-                  </div>
-                </div>
-                <div class="job-meta__row">
-                  <div class="job-meta__item">
-                    <span data-i18n="dataUpdated">Data Updated</span>
-                    <strong id="hsgt-fund-flow-updated">&mdash;</strong>
-                  </div>
-                  <div class="job-meta__item">
-                    <span data-i18n="lastDuration">Last Duration</span>
-                    <strong id="hsgt-fund-flow-duration">&mdash;</strong>
-                  </div>
-                </div>
-              </div>
-              <p class="job-message" id="hsgt-fund-flow-message"></p>
-            </div>
-
             <div class="card" id="margin-account-card">
               <div class="card__header">
                 <div>

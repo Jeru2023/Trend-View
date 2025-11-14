@@ -223,6 +223,113 @@ class BigDealFundFlowDAO(PostgresDAOBase):
 
         return {"total": int(total), "items": items}
 
+    def list_positive_inflows(
+        self,
+        *,
+        trade_date: Optional[date] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, object]:
+        day = trade_date or datetime.now().date()
+        start = datetime.combine(day, time.min)
+        end = start + timedelta(days=1)
+        buy_pattern = "%买%"
+        sell_pattern = "%卖%"
+
+        count_query = sql.SQL(
+            """
+            SELECT COUNT(*)
+            FROM (
+                SELECT stock_code
+                FROM {schema}.{table}
+                WHERE trade_time >= %s AND trade_time < %s
+                GROUP BY stock_code
+                HAVING (SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END)
+                        - SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END)) > 0
+            ) AS positive
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+
+        data_query = sql.SQL(
+            """
+            SELECT stock_code,
+                   MAX(stock_name) AS stock_name,
+                   SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END) AS buy_amount,
+                   SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END) AS sell_amount,
+                   COUNT(*) AS trade_count,
+                   MAX(trade_time) AS last_trade_time,
+                   (SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END)
+                    - SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END)) AS net_amount
+            FROM {schema}.{table}
+            WHERE trade_time >= %s AND trade_time < %s
+            GROUP BY stock_code
+            HAVING (SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END)
+                    - SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END)) > 0
+            ORDER BY net_amount DESC
+            LIMIT %s OFFSET %s
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+
+        params_count = (start, end, buy_pattern, sell_pattern)
+        params_data = (
+            buy_pattern,
+            sell_pattern,
+            buy_pattern,
+            sell_pattern,
+            start,
+            end,
+            buy_pattern,
+            sell_pattern,
+            limit,
+            offset,
+        )
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(count_query, params_count)
+                total = cur.fetchone()[0] or 0
+                cur.execute(data_query, params_data)
+                rows = cur.fetchall()
+
+        columns = [
+            "stock_code",
+            "stock_name",
+            "buy_amount",
+            "sell_amount",
+            "trade_count",
+            "last_trade_time",
+            "net_amount",
+        ]
+        items: list[dict[str, object]] = []
+        for row in rows:
+            record = dict(zip(columns, row))
+            try:
+                record["buy_amount"] = float(record.get("buy_amount") or 0.0)
+            except (TypeError, ValueError):
+                record["buy_amount"] = 0.0
+            try:
+                record["sell_amount"] = float(record.get("sell_amount") or 0.0)
+            except (TypeError, ValueError):
+                record["sell_amount"] = 0.0
+            try:
+                record["net_amount"] = float(record.get("net_amount") or 0.0)
+            except (TypeError, ValueError):
+                record["net_amount"] = 0.0
+            try:
+                record["trade_count"] = int(record.get("trade_count") or 0)
+            except (TypeError, ValueError):
+                record["trade_count"] = 0
+            items.append(record)
+
+        return {"total": int(total), "items": items, "tradeDate": day}
+
     def fetch_buy_amount_map(
         self,
         stock_codes: Sequence[str],

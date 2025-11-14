@@ -10,7 +10,6 @@ from zoneinfo import ZoneInfo
 
 from ..config.settings import load_settings
 from ..dao import (
-    HSGTFundFlowDAO,
     IndexHistoryDAO,
     MarginAccountDAO,
     MarketActivityDAO,
@@ -92,7 +91,6 @@ def build_market_overview_payload(*, settings_path: Optional[str] = None) -> Dic
     realtime_dao = RealtimeIndexDAO(settings.postgres)
     history_dao = IndexHistoryDAO(settings.postgres)
     market_fund_flow_dao = MarketFundFlowDAO(settings.postgres)
-    hsgt_dao = HSGTFundFlowDAO(settings.postgres)
     margin_dao = MarginAccountDAO(settings.postgres)
     peripheral_dao = PeripheralInsightDAO(settings.postgres)
     activity_dao = MarketActivityDAO(settings.postgres)
@@ -154,7 +152,6 @@ def build_market_overview_payload(*, settings_path: Optional[str] = None) -> Dic
                 macro_insight[key] = _serialize_datetime(macro_insight[key])
 
     market_fund_flow = market_fund_flow_dao.list_entries(limit=10).get("items", [])
-    hsgt_flow = hsgt_dao.list_entries(symbol="北向资金", limit=10).get("items", [])
     margin_stats = margin_dao.list_entries(limit=10).get("items", [])
 
     peripheral = peripheral_dao.fetch_latest()
@@ -180,7 +177,6 @@ def build_market_overview_payload(*, settings_path: Optional[str] = None) -> Dic
         "marketInsight": market_insight,
         "macroInsight": macro_insight,
         "marketFundFlow": market_fund_flow,
-        "hsgtFundFlow": hsgt_flow,
         "marginAccount": margin_stats,
         "peripheralInsight": peripheral,
         "marketActivity": activity_rows,

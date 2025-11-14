@@ -22,10 +22,12 @@ const elements = {
   resetButton: document.getElementById("market-insight-reset"),
   exportImageButton: document.getElementById("market-insight-export-image"),
   exportPdfButton: document.getElementById("market-insight-export-pdf"),
+  history: document.getElementById("market-insight-history"),
 };
 
 const state = {
   data: null,
+  history: [],
 };
 
 const JOB_STATUS_INTERVAL = 5000;
@@ -38,6 +40,9 @@ let manualSyncPending = false;
 let resettingJob = false;
 let summaryPollingActive = false;
 const EXPORT_SCALE = window.devicePixelRatio > 1 ? 2 : 1.5;
+const EXPORT_MAX_WIDTH = 1080;
+const EXPORT_MOBILE_MAX_WIDTH = 760;
+const EXPORT_MOBILE_MIN_WIDTH = 540;
 let exportInProgress = false;
 
 function getInitialLanguage() {
@@ -126,6 +131,76 @@ function formatInteger(value) {
   }
   const locale = currentLang === "zh" ? "zh-CN" : "en-US";
   return numeric.toLocaleString(locale);
+}
+
+function formatNarrativeText(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  let text = String(value);
+  if (!text.trim()) {
+    return "";
+  }
+  text = text.replace(/；/g, "；\n\n").replace(/;/g, ";\n\n");
+  text = text.replace(/([。！？])(?!\s|\n)/g, "$1\n");
+  text = text.replace(/(\.)(?=\s|$)/g, ".\n");
+  text = text.replace(/\n{3,}/g, "\n\n");
+  return text.trim();
+}
+
+function setNarrativeText(node, value, fallback = "--") {
+  if (!node) return;
+  const formatted = formatNarrativeText(value);
+  node.textContent = formatted || fallback || "";
+}
+
+function getExportBannerInfo() {
+  const dict = getDict();
+  const summary = state.data?.summary;
+  const title = dict.pageTitle || "Market Reasoning";
+  const dateLabel = dict.generatedAtLabel || dict.metaUpdatedLabel || "Updated";
+  const dateValue = summary?.generatedAt ? `${dateLabel}: ${formatDateTime(summary.generatedAt)}` : "";
+  const footer =
+    dict.exportDisclaimer ||
+    (currentLang === "zh" ? "以上内容由AI推理，仅供参考" : "AI-generated content. For reference only.");
+  return { title, date: dateValue, footer };
+}
+
+function injectExportBanners(root, info) {
+  if (!root || !info) return;
+  const top = document.createElement("div");
+  top.className = "insight-export-banner insight-export-banner--top";
+  const titleEl = document.createElement("strong");
+  titleEl.textContent = info.title || "";
+  top.appendChild(titleEl);
+  if (info.date) {
+    const dateEl = document.createElement("span");
+    dateEl.textContent = info.date;
+    top.appendChild(dateEl);
+  }
+  root.insertBefore(top, root.firstChild);
+
+  const bottom = document.createElement("div");
+  bottom.className = "insight-export-banner insight-export-banner--bottom";
+  bottom.textContent = info.footer || "";
+  root.appendChild(bottom);
+}
+
+function normalizeSummaryPayload(summary) {
+  if (!summary) {
+    return null;
+  }
+  if (typeof summary === "string") {
+    try {
+      return JSON.parse(summary);
+    } catch (error) {
+      return null;
+    }
+  }
+  if (typeof summary === "object") {
+    return summary;
+  }
+  return null;
 }
 
 function setRefreshLoading(isLoading) {
@@ -300,6 +375,66 @@ function getExportBaseFilename() {
   return `market-insight-${timestamp}`;
 }
 
+function resolveExportWidth() {
+  const viewportWidth = Math.max(
+    window.innerWidth || 0,
+    document.documentElement?.clientWidth || 0,
+    EXPORT_MOBILE_MIN_WIDTH
+  );
+  if (viewportWidth > 900) {
+    return EXPORT_MOBILE_MAX_WIDTH;
+  }
+  return Math.min(Math.max(viewportWidth, EXPORT_MOBILE_MIN_WIDTH), EXPORT_MOBILE_MAX_WIDTH);
+}
+
+function prepareExportClone(target, width) {
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "fixed";
+  wrapper.style.left = "-10000px";
+  wrapper.style.top = "0";
+  wrapper.style.width = `${width}px`;
+  wrapper.style.background = "#ffffff";
+  wrapper.style.padding = "0";
+  wrapper.style.zIndex = "-1";
+
+  const clone = target.cloneNode(true);
+  clone.style.width = "100%";
+  clone.setAttribute("data-export-mode", "mobile");
+  clone.classList.add("insight-export-clone");
+  stripHistorySectionForExport(clone);
+  injectExportBanners(clone, getExportBannerInfo());
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
+
+  return {
+    node: clone,
+    cleanup: () => {
+      document.body.removeChild(wrapper);
+    },
+  };
+}
+
+function stripHistorySectionForExport(root) {
+  if (!root || typeof root.querySelector !== "function") return;
+  const historyNode = root.querySelector("#market-insight-history");
+  if (!historyNode) return;
+  const section = historyNode.closest(".insight-section");
+  if (section && section.parentNode) {
+    section.remove();
+  } else {
+    historyNode.remove();
+  }
+}
+
+function triggerDownload(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 async function exportInsight(format) {
   if (exportInProgress) {
     return;
@@ -320,21 +455,25 @@ async function exportInsight(format) {
   }
   exportInProgress = true;
   setStatus(dict.exporting || "Preparing export...", "info");
+  let cleanupExport = null;
   try {
-    const canvas = await window.html2canvas(target, {
+    const exportWidth = resolveExportWidth();
+    const { node: exportNode, cleanup } = prepareExportClone(target, exportWidth);
+    cleanupExport = cleanup;
+    const canvas = await window.html2canvas(exportNode, {
       scale: EXPORT_SCALE,
       useCORS: true,
       backgroundColor: "#ffffff",
-      scrollY: -window.scrollY,
+      scrollY: 0,
+      scrollX: 0,
+      width: exportWidth,
+      windowWidth: exportWidth,
     });
+    cleanupExport();
+    cleanupExport = null;
     if (format === "image") {
       const dataUrl = canvas.toDataURL("image/png");
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = `${getExportBaseFilename()}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      triggerDownload(dataUrl, `${getExportBaseFilename()}.png`);
     } else {
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF("p", "pt", "a4");
@@ -363,6 +502,9 @@ async function exportInsight(format) {
     console.error("Export failed", error);
     setStatus(error?.message || dict.exportFailed || "Export failed", "error");
   } finally {
+    if (typeof cleanupExport === "function") {
+      cleanupExport();
+    }
     exportInProgress = false;
   }
 }
@@ -452,7 +594,7 @@ function renderStageResults(stageEntries) {
       if (stage.analysis) {
         const analysis = document.createElement("p");
         analysis.className = "stage-card__analysis";
-        analysis.textContent = stage.analysis;
+        setNarrativeText(analysis, stage.analysis);
         card.appendChild(analysis);
       }
 
@@ -466,7 +608,7 @@ function renderStageResults(stageEntries) {
         list.className = "stage-card__list";
         highlights.forEach((item) => {
           const li = document.createElement("li");
-          li.textContent = item;
+          setNarrativeText(li, item);
           list.appendChild(li);
         });
         card.appendChild(list);
@@ -505,7 +647,7 @@ function renderStageResults(stageEntries) {
           if (metric.insight) {
             const insight = document.createElement("span");
             insight.className = "stage-card__metric-insight";
-            insight.textContent = metric.insight;
+            setNarrativeText(insight, metric.insight);
             row.appendChild(insight);
           }
 
@@ -684,7 +826,7 @@ function renderSummary() {
     dict.comprehensiveSummaryLabel || dict.marketOverviewLabel || dict.summarySectionTitle || "Overview";
   overviewBlock.appendChild(overviewHeading);
   const overviewPara = document.createElement("p");
-  overviewPara.textContent = comprehensive.summary || "--";
+  setNarrativeText(overviewPara, comprehensive.summary, "--");
   overviewBlock.appendChild(overviewPara);
   card.appendChild(overviewBlock);
 
@@ -702,17 +844,17 @@ function renderSummary() {
     keySignals.forEach((signal) => {
       const li = document.createElement("li");
       const strong = document.createElement("strong");
-      strong.textContent = signal.title || dict.signalLabel || "Signal";
+      setNarrativeText(strong, signal.title || dict.signalLabel || "Signal", dict.signalLabel || "Signal");
       li.appendChild(strong);
       if (signal.detail) {
         const detail = document.createElement("p");
-        detail.textContent = signal.detail;
+        setNarrativeText(detail, signal.detail);
         li.appendChild(detail);
       }
       if (Array.isArray(signal.supporting_analyses) && signal.supporting_analyses.length) {
         const sources = document.createElement("div");
         sources.className = "insight-card__detail-confidence";
-        sources.textContent = `${dict.signalSupportLabel || "Based on"}: ${signal.supporting_analyses.join(", ")}`;
+        setNarrativeText(sources, `${dict.signalSupportLabel || "Based on"}: ${signal.supporting_analyses.join(", ")}`);
         li.appendChild(sources);
       }
       list.appendChild(li);
@@ -737,7 +879,7 @@ function renderSummary() {
     list.className = "insight-card__list";
     positionItems.forEach((item) => {
       const li = document.createElement("li");
-      li.textContent = `${item.label}: ${item.value}`;
+      setNarrativeText(li, `${item.label}: ${item.value}`);
       list.appendChild(li);
     });
     positionSection.appendChild(list);
@@ -759,19 +901,19 @@ function renderSummary() {
       const li = document.createElement("li");
       if (scenario.scenario) {
         const strong = document.createElement("strong");
-        strong.textContent = scenario.scenario;
+        setNarrativeText(strong, scenario.scenario, scenario.scenario);
         li.appendChild(strong);
       }
       if (scenario.conditions) {
         const conditions = document.createElement("p");
         conditions.className = "insight-card__scenario-meta";
-        conditions.textContent = `${dict.scenarioConditionsLabel || "Conditions"}: ${scenario.conditions}`;
+        setNarrativeText(conditions, `${dict.scenarioConditionsLabel || "Conditions"}: ${scenario.conditions}`);
         li.appendChild(conditions);
       }
       if (scenario.target) {
         const target = document.createElement("p");
         target.className = "insight-card__detail-analysis";
-        target.textContent = `${dict.scenarioTargetLabel || "Outcome"}: ${scenario.target}`;
+        setNarrativeText(target, `${dict.scenarioTargetLabel || "Outcome"}: ${scenario.target}`);
         li.appendChild(target);
       }
       list.appendChild(li);
@@ -782,6 +924,102 @@ function renderSummary() {
 
 
   container.appendChild(card);
+}
+
+function renderHistory(items = state.history) {
+  const container = elements.history;
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  const dict = getDict();
+  if (!items || !items.length) {
+    const langKey = `empty${currentLang.charAt(0).toUpperCase()}${currentLang.slice(1)}`;
+    const message =
+      container.dataset[langKey] ||
+      dict.historyEmpty ||
+      "No historical records.";
+    const empty = document.createElement("div");
+    empty.className = "insight-history__empty";
+    empty.textContent = message;
+    container.appendChild(empty);
+    return;
+  }
+
+  items.forEach((entry) => {
+    const card = document.createElement("article");
+    card.className = "history-card";
+
+    const header = document.createElement("div");
+    header.className = "history-card__header";
+    const headerParts = [];
+    const generatedAt = entry.generatedAt || entry.generated_at;
+    if (generatedAt) {
+      headerParts.push(`${dict.historyGeneratedLabel || "Generated"}: ${formatDateTime(generatedAt)}`);
+    }
+    const windowStart = entry.windowStart || entry.window_start;
+    const windowEnd = entry.windowEnd || entry.window_end;
+    if (windowStart || windowEnd) {
+      headerParts.push(
+        `${dict.historyWindowLabel || "Window"}: ${formatDateTime(windowStart) || "--"} → ${
+          formatDateTime(windowEnd) || "--"
+        }`
+      );
+    }
+    if (entry.modelUsed || entry.model_used) {
+      headerParts.push(`${dict.modelLabel || "Model"}: ${entry.modelUsed || entry.model_used}`);
+    }
+    header.textContent = headerParts.join(" · ") || formatDateTime(generatedAt) || "--";
+    card.appendChild(header);
+
+    const summaryPayload = normalizeSummaryPayload(entry.summaryJson || entry.summary_json || entry.summary);
+    const summaryData = summaryPayload?.summary ? summaryPayload.summary : summaryPayload;
+    const comprehensive = summaryData?.comprehensive_conclusion || {};
+    const summaryText = comprehensive.summary || summaryData?.summary || "";
+    if (summaryText) {
+      const summaryEl = document.createElement("p");
+      summaryEl.className = "history-card__summary";
+      setNarrativeText(summaryEl, summaryText);
+      card.appendChild(summaryEl);
+    }
+
+    const drivers =
+      (Array.isArray(comprehensive.drivers) && comprehensive.drivers) ||
+      (Array.isArray(summaryData?.drivers) && summaryData.drivers) ||
+      [];
+    if (drivers && drivers.length) {
+      const list = document.createElement("ul");
+      list.className = "history-card__drivers";
+      drivers.forEach((driver) => {
+        if (!driver) return;
+        const li = document.createElement("li");
+        setNarrativeText(li, driver);
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+    }
+
+    const metaRow = document.createElement("div");
+    metaRow.className = "history-card__meta";
+    const biasValue = (comprehensive.bias || summaryData?.bias || "").toLowerCase();
+    if (biasValue) {
+      metaRow.appendChild(
+        document.createTextNode(`${dict.biasLabel || "Bias"}: ${dict.biasLabels?.[biasValue] || biasValue}`)
+      );
+    }
+    if (comprehensive.confidence !== undefined && comprehensive.confidence !== null) {
+      const confidenceText = `${dict.confidenceLabel || "Confidence"}: ${formatPercent(comprehensive.confidence, 0)}`;
+      metaRow.appendChild(document.createTextNode(confidenceText));
+    }
+    if (summaryData?.risk_level) {
+      metaRow.appendChild(document.createTextNode(`${dict.riskLabel || "Risk"}: ${summaryData.risk_level}`));
+    }
+    if (metaRow.childNodes.length) {
+      card.appendChild(metaRow);
+    }
+
+    container.appendChild(card);
+  });
 }
 
 async function fetchMarketInsight(options = {}) {
@@ -800,11 +1038,34 @@ async function fetchMarketInsight(options = {}) {
     const data = await response.json();
     state.data = data;
     renderSummary();
+    if (!silent) {
+      fetchMarketInsightHistory();
+    }
   } catch (error) {
     console.error("Failed to fetch market insight", error);
     if (!silent) {
       clearContainer(elements.summary, error?.message || "Failed to load insight");
       setStatus(error?.message || dict.statusFailed || dict.refreshFailed || "Request failed", "error");
+    }
+  }
+}
+
+async function fetchMarketInsightHistory(limit = 6) {
+  if (!elements.history) {
+    return;
+  }
+  try {
+    const response = await fetch(`${API_BASE}/market/market-insight/history?limit=${limit}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    state.history = Array.isArray(payload.items) ? payload.items : [];
+    renderHistory();
+  } catch (error) {
+    console.error("Failed to load market insight history", error);
+    if (!state.history.length) {
+      renderHistory([]);
     }
   }
 }
@@ -936,6 +1197,7 @@ function applyTranslations() {
     elements.summary.dataset.emptyZh = dict.emptySummaryZh || "暂无推理结果。";
   }
   renderSummary();
+  renderHistory();
   if (latestJobSnapshot) {
     applyJobStatus(latestJobSnapshot);
   }
@@ -959,6 +1221,7 @@ function initialize() {
     elements.exportPdfButton.addEventListener("click", () => exportInsight("pdf"));
   }
   fetchMarketInsight();
+  fetchMarketInsightHistory();
 }
 
 document.addEventListener("DOMContentLoaded", initialize);

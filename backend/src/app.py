@@ -71,8 +71,8 @@ from .dao import (
     ConceptInsightDAO,
     IndustryInsightDAO,
     IndividualFundFlowDAO,
+    IndicatorScreeningDAO,
     BigDealFundFlowDAO,
-    HSGTFundFlowDAO,
     MarginAccountDAO,
     MarketActivityDAO,
     MarketFundFlowDAO,
@@ -128,7 +128,6 @@ from .services import (
     list_industry_news,
     list_individual_fund_flow,
     list_big_deal_fund_flow,
-    list_hsgt_fund_flow,
     list_stock_news,
     add_stock_note,
     list_stock_notes,
@@ -215,7 +214,6 @@ from .services import (
     sync_concept_directory,
     sync_individual_fund_flow,
     sync_big_deal_fund_flow,
-    sync_hsgt_fund_flow,
     sync_margin_account_info,
     sync_market_activity,
     sync_market_fund_flow,
@@ -269,6 +267,21 @@ def _clear_job_token(job: str) -> None:
 def _job_token_matches(job: str, token: str) -> bool:
     with _job_token_lock:
         return _active_job_tokens.get(job) == token
+
+
+def _force_reset_job(job: str) -> None:
+    snapshot = monitor.snapshot()
+    if job not in snapshot:
+        raise HTTPException(status_code=400, detail="Unsupported job reset target.")
+    _clear_job_token(job)
+    monitor.finish(
+        job,
+        success=False,
+        message="Job reset by user",
+        error="job reset by user",
+        last_duration=0.0,
+    )
+    logger.warning("Job %s manually reset by user request", job)
 
 
 def _parse_time_string(value: str) -> Tuple[int, int]:
@@ -724,6 +737,7 @@ class FavoriteGroupListResponse(BaseModel):
 class StockNoteItem(BaseModel):
     id: int
     stock_code: str = Field(..., alias="stockCode")
+    stock_name: Optional[str] = Field(None, alias="stockName")
     content: str
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")
@@ -1975,26 +1989,6 @@ class SyncBigDealFundFlowResponse(BaseModel):
         allow_population_by_field_name = True
 
 
-class SyncHsgtFundFlowRequest(BaseModel):
-    symbol: Optional[str] = None
-    start_date: Optional[str] = Field(None, alias="startDate")
-    end_date: Optional[str] = Field(None, alias="endDate")
-    full_refresh: bool = Field(False, alias="fullRefresh")
-
-    class Config:
-        allow_population_by_field_name = True
-
-
-class SyncHsgtFundFlowResponse(BaseModel):
-    rows: int
-    trade_dates: List[str] = Field(default_factory=list, alias="tradeDates")
-    trade_date_count: int = Field(..., alias="tradeDateCount")
-    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
-    symbol: Optional[str] = None
-
-    class Config:
-        allow_population_by_field_name = True
-
 
 class SyncMarginAccountRequest(BaseModel):
     class Config:
@@ -2666,7 +2660,6 @@ class MarketOverviewResponse(BaseModel):
     market_insight: Optional[Dict[str, Any]] = Field(None, alias="marketInsight")
     macro_insight: Optional[Dict[str, Any]] = Field(None, alias="macroInsight")
     market_fund_flow: List[Dict[str, Any]] = Field(default_factory=list, alias="marketFundFlow")
-    hsgt_fund_flow: List[Dict[str, Any]] = Field(default_factory=list, alias="hsgtFundFlow")
     margin_account: List[Dict[str, Any]] = Field(default_factory=list, alias="marginAccount")
     peripheral_insight: Optional[Dict[str, Any]] = Field(None, alias="peripheralInsight")
     market_activity: List[Dict[str, Any]] = Field(default_factory=list, alias="marketActivity")
@@ -3203,28 +3196,6 @@ class BigDealFundFlowListResponse(BaseModel):
     items: List[BigDealFundFlowRecord]
 
 
-class HsgtFundFlowRecord(BaseModel):
-    trade_date: Optional[date] = Field(None, alias="tradeDate")
-    symbol: Optional[str] = None
-    net_buy_amount: Optional[float] = Field(None, alias="netBuyAmount")
-    net_buy_amount_cumulative: Optional[float] = Field(None, alias="netBuyAmountCumulative")
-    fund_inflow: Optional[float] = Field(None, alias="fundInflow")
-    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
-
-    class Config:
-        allow_population_by_field_name = True
-
-
-class HsgtFundFlowListResponse(BaseModel):
-    total: int
-    items: List[HsgtFundFlowRecord]
-    last_synced_at: Optional[datetime] = Field(None, alias="lastSyncedAt")
-    available_years: List[int] = Field(default_factory=list, alias="availableYears")
-
-    class Config:
-        allow_population_by_field_name = True
-
-
 class MarginAccountRecord(BaseModel):
     trade_date: Optional[date] = Field(None, alias="tradeDate")
     financing_balance: Optional[float] = Field(None, alias="financingBalance")
@@ -3345,6 +3316,12 @@ class IndicatorRealtimeResponse(BaseModel):
     metricsUpdated: int
     codes: List[str]
     updatedAt: datetime
+
+
+class IndicatorSyncStatsResponse(BaseModel):
+    realtimeTrade: Dict[str, Optional[Any]] = Field(default_factory=dict)
+    bigDeal: Dict[str, Optional[Any]] = Field(default_factory=dict)
+    indicatorCapturedAt: Optional[datetime] = Field(None, alias="indicatorCapturedAt")
 
 
 class MarketFundFlowRecord(BaseModel):
@@ -4468,6 +4445,39 @@ async def _run_realtime_index_job(request: SyncRealtimeIndexRequest) -> None:  #
     await loop.run_in_executor(None, job)
 
 
+async def _run_realtime_trade_job(request: IndicatorRealtimeRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        monitor.update("realtime_trade", message="Syncing realtime trade data", progress=0.0)
+        try:
+            result = run_indicator_realtime_refresh(request.codes, sync_all=request.syncAll)
+            elapsed = time.perf_counter() - started
+            updated_at = result.get("updatedAt")
+            processed_rows = result.get("processed")
+            processed_total = int(processed_rows) if isinstance(processed_rows, (int, float)) else 0
+            monitor.finish(
+                "realtime_trade",
+                success=True,
+                total_rows=processed_total,
+                message=f"Processed {processed_total} realtime trade rows",
+                finished_at=updated_at if isinstance(updated_at, datetime) else None,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "realtime_trade",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
 async def _run_index_history_job(request: SyncIndexHistoryRequest) -> None:
     loop = asyncio.get_running_loop()
 
@@ -5195,12 +5205,6 @@ async def _run_fund_flow_aggregate_job(request: SyncFundFlowAggregateRequest) ->
             SyncIndividualFundFlowRequest(),
         ),
         (
-            "hsgt_fund_flow",
-            "Syncing HSGT fund flow summary",
-            _run_hsgt_fund_flow_job,
-            SyncHsgtFundFlowRequest(),
-        ),
-        (
             "margin_account",
             "Syncing margin account statistics",
             _run_margin_account_job,
@@ -5481,60 +5485,6 @@ async def _run_big_deal_fund_flow_job(request: SyncBigDealFundFlowRequest) -> No
             elapsed = time.perf_counter() - started
             monitor.finish(
                 "big_deal_fund_flow",
-                success=False,
-                error=str(exc),
-                last_duration=elapsed,
-            )
-            raise
-
-    await loop.run_in_executor(None, job)
-
-
-async def _run_hsgt_fund_flow_job(request: SyncHsgtFundFlowRequest) -> None:
-    loop = asyncio.get_running_loop()
-
-    def progress_callback(progress: float, message: Optional[str], total_rows: Optional[int]) -> None:
-        monitor.update(
-            "hsgt_fund_flow",
-            progress=progress,
-            message=message,
-            total_rows=total_rows,
-        )
-
-    def job() -> None:
-        started = time.perf_counter()
-        default_symbol = "北向资金"
-        symbol = (request.symbol or default_symbol).strip() if hasattr(request, "symbol") else default_symbol
-        start_date = request.start_date if hasattr(request, "start_date") else None
-        end_date = request.end_date if hasattr(request, "end_date") else None
-        full_refresh = request.full_refresh if hasattr(request, "full_refresh") else False
-        monitor.update("hsgt_fund_flow", message=f"Collecting HSGT fund flow data ({symbol})")
-        try:
-            result = sync_hsgt_fund_flow(
-                symbol=symbol,
-                start_date=start_date,
-                end_date=end_date,
-                full_refresh=bool(full_refresh),
-                progress_callback=progress_callback,
-            )
-            stats = HSGTFundFlowDAO(load_settings().postgres).stats()
-            elapsed = time.perf_counter() - started
-            total_rows = stats.get("count") if isinstance(stats, dict) else None
-            if total_rows is None:
-                total_rows = result.get("rows")
-            message_text = result.get("statusMessage") or f"Synced {result.get('rows', 0)} HSGT fund flow rows ({symbol})"
-            monitor.finish(
-                "hsgt_fund_flow",
-                success=True,
-                total_rows=int(total_rows) if total_rows is not None else None,
-                message=message_text,
-                finished_at=stats.get("updated_at") if isinstance(stats, dict) else None,
-                last_duration=elapsed,
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            elapsed = time.perf_counter() - started
-            monitor.finish(
-                "hsgt_fund_flow",
                 success=False,
                 error=str(exc),
                 last_duration=elapsed,
@@ -6041,6 +5991,14 @@ async def start_realtime_index_job(payload: SyncRealtimeIndexRequest) -> None:  
     asyncio.create_task(_run_realtime_index_job(payload))
 
 
+async def start_realtime_trade_job(payload: IndicatorRealtimeRequest) -> None:
+    if _job_running("realtime_trade"):
+        raise HTTPException(status_code=409, detail="Realtime trade sync already running")
+    monitor.start("realtime_trade", message="Syncing realtime trade data")
+    monitor.update("realtime_trade", progress=0.0)
+    asyncio.create_task(_run_realtime_trade_job(payload))
+
+
 async def start_index_history_job(payload: SyncIndexHistoryRequest) -> None:
     if _job_running("index_history"):
         raise HTTPException(status_code=409, detail="Index history sync already running")
@@ -6230,7 +6188,6 @@ async def start_fund_flow_aggregate_job(payload: SyncFundFlowAggregateRequest) -
         ("industry_fund_flow", "Industry fund flow sync already running"),
         ("concept_fund_flow", "Concept fund flow sync already running"),
         ("individual_fund_flow", "Individual fund flow sync already running"),
-        ("hsgt_fund_flow", "HSGT fund flow sync already running"),
         ("margin_account", "Margin account sync already running"),
         ("big_deal_fund_flow", "Big deal fund flow sync already running"),
     ]
@@ -6282,15 +6239,6 @@ async def start_big_deal_fund_flow_job(payload: SyncBigDealFundFlowRequest) -> N
     monitor.start("big_deal_fund_flow", message="Syncing big deal fund flow data")
     monitor.update("big_deal_fund_flow", progress=0.0)
     asyncio.create_task(_run_big_deal_fund_flow_job(payload))
-
-
-async def start_hsgt_fund_flow_job(payload: SyncHsgtFundFlowRequest) -> None:
-    if _job_running("hsgt_fund_flow"):
-        raise HTTPException(status_code=409, detail="HSGT fund flow sync already running")
-    symbol = (payload.symbol or "北向资金").strip() if getattr(payload, "symbol", None) else "北向资金"
-    monitor.start("hsgt_fund_flow", message=f"Syncing HSGT fund flow data ({symbol})")
-    monitor.update("hsgt_fund_flow", progress=0.0)
-    asyncio.create_task(_run_hsgt_fund_flow_job(payload))
 
 
 async def start_margin_account_job(payload: SyncMarginAccountRequest) -> None:
@@ -6719,13 +6667,6 @@ async def safe_start_big_deal_fund_flow_job(payload: SyncBigDealFundFlowRequest)
         logger.info("Big deal fund flow sync skipped: %s", exc.detail)
 
 
-async def safe_start_hsgt_fund_flow_job(payload: SyncHsgtFundFlowRequest) -> None:
-    try:
-        await start_hsgt_fund_flow_job(payload)
-    except HTTPException as exc:
-        logger.info("HSGT fund flow sync skipped: %s", exc.detail)
-
-
 async def safe_start_margin_account_job(payload: SyncMarginAccountRequest) -> None:
     try:
         await start_margin_account_job(payload)
@@ -6937,14 +6878,6 @@ async def startup_event() -> None:
             ),
             CronTrigger(hour=19, minute=35),
             id="individual_fund_flow_daily",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: _submit_scheduler_task(
-                safe_start_hsgt_fund_flow_job(SyncHsgtFundFlowRequest())
-            ),
-            CronTrigger(hour=19, minute=36),
-            id="hsgt_fund_flow_daily",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -9117,51 +9050,6 @@ def list_big_deal_fund_flow_entries(
     return BigDealFundFlowListResponse(total=int(result.get("total", 0)), items=items)
 
 
-@app.get("/fund-flow/hsgt", response_model=HsgtFundFlowListResponse)
-def list_hsgt_fund_flow_entries(
-    symbol: Optional[str] = Query(
-        None,
-        description="Optional symbol selector (default 北向资金).",
-    ),
-    start_date: Optional[str] = Query(
-        None,
-        alias="startDate",
-        description="Optional start date filter (YYYY-MM-DD).",
-    ),
-    end_date: Optional[str] = Query(
-        None,
-        alias="endDate",
-        description="Optional end date filter (YYYY-MM-DD).",
-    ),
-    limit: int = Query(200, ge=1, le=2000, description="Maximum number of entries to return."),
-    offset: int = Query(0, ge=0, description="Offset for pagination."),
-) -> HsgtFundFlowListResponse:
-    result = list_hsgt_fund_flow(
-        symbol=symbol,
-        start_date=start_date,
-        end_date=end_date,
-        limit=limit,
-        offset=offset,
-    )
-    items = [
-        HsgtFundFlowRecord(
-            tradeDate=entry.get("trade_date"),
-            symbol=entry.get("symbol"),
-            netBuyAmount=entry.get("net_buy_amount"),
-            netBuyAmountCumulative=entry.get("net_buy_amount_cumulative"),
-            fundInflow=entry.get("fund_inflow"),
-            updatedAt=entry.get("updated_at"),
-        )
-        for entry in result.get("items", [])
-    ]
-    return HsgtFundFlowListResponse(
-        total=int(result.get("total", 0)),
-        items=items,
-        last_synced_at=result.get("lastSyncedAt") or result.get("last_synced_at") or result.get("updated_at"),
-        availableYears=[int(year) for year in result.get("available_years", [])],
-    )
-
-
 @app.get("/margin/account", response_model=MarginAccountListResponse)
 def list_margin_account_entries(
     start_date: Optional[str] = Query(
@@ -9326,6 +9214,35 @@ def sync_indicator_screening_endpoint(
 def indicator_realtime_refresh_endpoint(payload: IndicatorRealtimeRequest) -> IndicatorRealtimeResponse:
     result = run_indicator_realtime_refresh(payload.codes, sync_all=payload.syncAll)
     return IndicatorRealtimeResponse(**result)
+
+
+@app.get("/indicator-screenings/stats", response_model=IndicatorSyncStatsResponse)
+def indicator_sync_stats_endpoint() -> IndicatorSyncStatsResponse:
+    snapshot = monitor.snapshot()
+
+    def build_job_payload(name: str) -> Dict[str, Optional[Any]]:
+        state = snapshot.get(name) or {}
+        return {
+            "status": state.get("status", "idle"),
+            "startedAt": state.get("startedAt"),
+            "finishedAt": state.get("finishedAt"),
+            "message": state.get("message"),
+            "totalRows": state.get("totalRows"),
+        }
+
+    settings = load_settings()
+    dao = IndicatorScreeningDAO(settings.postgres)
+    try:
+        captured_at = dao.latest_captured()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to fetch indicator latest capture time: %s", exc)
+        captured_at = None
+
+    return IndicatorSyncStatsResponse(
+        realtimeTrade=build_job_payload("realtime_trade"),
+        bigDeal=build_job_payload("big_deal_fund_flow"),
+        indicatorCapturedAt=captured_at,
+    )
 
 
 @app.get("/fund-flow/market", response_model=MarketFundFlowListResponse)
@@ -9600,9 +9517,11 @@ def get_control_status() -> ControlStatusResponse:
         stats_map["stock_basic"] = {}
     try:
         stats_map["daily_trade"] = DailyTradeDAO(settings.postgres).stats()
+        stats_map["realtime_trade"] = stats_map["daily_trade"]
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect daily_trade stats: %s", exc)
         stats_map["daily_trade"] = {}
+        stats_map["realtime_trade"] = {}
     try:
         stats_map["daily_indicator"] = DailyIndicatorDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -9776,11 +9695,6 @@ def get_control_status() -> ControlStatusResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect big_deal_fund_flow stats: %s", exc)
         stats_map["big_deal_fund_flow"] = {}
-    try:
-        stats_map["hsgt_fund_flow"] = HSGTFundFlowDAO(settings.postgres).stats()
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Failed to collect hsgt_fund_flow stats: %s", exc)
-        stats_map["hsgt_fund_flow"] = {}
     try:
         stats_map["margin_account"] = MarginAccountDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
@@ -10180,17 +10094,7 @@ async def control_sync_market_insight(payload: SyncMarketInsightRequest) -> dict
 @app.post("/control/reset-job")
 async def control_reset_job(payload: ResetJobRequest) -> dict[str, str]:
     job = payload.job
-    if job != "market_insight":
-        raise HTTPException(status_code=400, detail="Unsupported job reset target.")
-    _clear_job_token(job)
-    monitor.finish(
-        job,
-        success=False,
-        message="Job reset by user",
-        error="job reset by user",
-        last_duration=0.0,
-    )
-    logger.warning("Job %s manually reset by user request", job)
+    _force_reset_job(job)
     return {"status": "reset"}
 
 
@@ -10348,6 +10252,12 @@ async def control_sync_futures_realtime(payload: SyncFuturesRealtimeRequest) -> 
     return {"status": "started"}
 
 
+@app.post("/control/sync/realtime-trade")
+async def control_sync_realtime_trade(payload: IndicatorRealtimeRequest) -> dict[str, str]:
+    await start_realtime_trade_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/fed-statements")
 async def control_sync_fed_statements(payload: SyncFedStatementRequest) -> dict[str, str]:
     await start_fed_statement_job(payload)
@@ -10435,12 +10345,6 @@ async def control_sync_margin_account(payload: SyncMarginAccountRequest) -> dict
 @app.post("/control/sync/market-fund-flow")
 async def control_sync_market_fund_flow(payload: SyncMarketFundFlowRequest) -> dict[str, str]:
     await start_market_fund_flow_job(payload)
-    return {"status": "started"}
-
-
-@app.post("/control/sync/hsgt-fund-flow")
-async def control_sync_hsgt_fund_flow(payload: SyncHsgtFundFlowRequest) -> dict[str, str]:
-    await start_hsgt_fund_flow_job(payload)
     return {"status": "started"}
 
 

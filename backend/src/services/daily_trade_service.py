@@ -4,11 +4,11 @@ Service layer responsible for fetching and persisting daily trade data.
 
 from __future__ import annotations
 
+from collections import defaultdict
 import logging
-import math
 import time
 from datetime import datetime, timedelta
-from typing import Callable, Iterable, List, Sequence
+from typing import Callable, Iterable, List
 
 import pandas as pd
 
@@ -94,60 +94,105 @@ def sync_daily_trade(
     daily_dao = DailyTradeDAO(settings.postgres)
 
     total_codes = len(code_list)
-    logger.info("Total codes to download: %s", total_codes)
+    logger.info("Total codes considered for download: %s", total_codes)
 
     if batch_size <= 0:
         raise ValueError("batch_size must be greater than zero.")
 
-    num_batches = math.ceil(total_codes / batch_size)
-    logger.info("Processing in %s batches, %s codes per batch", num_batches, batch_size)
+    start_dt = datetime.strptime(start_str, DATE_FORMAT).date()
+    end_dt = datetime.strptime(end_str, DATE_FORMAT).date()
+
+    latest_dates: dict[str, datetime | None] = {}
+    if not start_date:
+        latest_dates = daily_dao.latest_trade_dates_for_codes(code_list)
+
+    code_groups: dict[str, List[str]] = defaultdict(list)
+    codes_to_sync = 0
+    for code in code_list:
+        if start_date:
+            fetch_start_dt = start_dt
+        else:
+            last_trade = latest_dates.get(code)
+            if last_trade is None:
+                fetch_start_dt = start_dt
+            else:
+                normalized = last_trade.date() if isinstance(last_trade, datetime) else last_trade
+                fetch_start_dt = normalized + timedelta(days=1)
+
+        if fetch_start_dt > end_dt:
+            continue
+
+        fetch_start_str = fetch_start_dt.strftime(DATE_FORMAT)
+        code_groups[fetch_start_str].append(code)
+        codes_to_sync += 1
+
+    if codes_to_sync == 0:
+        elapsed = time.perf_counter() - overall_start
+        message = "Daily trade data already up to date; nothing to fetch."
+        logger.info(message)
+        if progress_callback:
+            progress_callback(1.0, message, 0)
+        return {"rows": 0, "elapsed_seconds": elapsed}
+
+    skipped = total_codes - codes_to_sync
+    if skipped > 0:
+        logger.info("Skipping %s codes that are already up to date.", skipped)
+
+    batch_plan: List[tuple[str, List[str]]] = []
+    for fetch_start in sorted(code_groups.keys()):
+        codes_for_start = code_groups[fetch_start]
+        for idx in range(0, len(codes_for_start), batch_size):
+            batch_plan.append((fetch_start, codes_for_start[idx : idx + batch_size]))
+
+    total_batches = len(batch_plan)
+    logger.info(
+        "Processing %s batches (batch size %s) covering %s codes.",
+        total_batches,
+        batch_size,
+        codes_to_sync,
+    )
 
     pro_client = ts.pro_api(resolved_token)
 
     frames: List[pd.DataFrame] = []
     fetched_rows = 0
 
-    for batch_index in range(num_batches):
-        start_idx = batch_index * batch_size
-        end_idx = min((batch_index + 1) * batch_size, total_codes)
-        batch_codes = code_list[start_idx:end_idx]
-
+    for batch_index, (batch_start, batch_codes) in enumerate(batch_plan, start=1):
         logger.info(
-            "Processing batch %s/%s: codes %s to %s",
-            batch_index + 1,
-            num_batches,
-            start_idx + 1,
-            end_idx,
+            "Processing batch %s/%s (%s codes) for %s→%s",
+            batch_index,
+            total_batches,
+            len(batch_codes),
+            batch_start,
+            end_str,
         )
 
         try:
             dataframe = get_daily_trade(
                 pro=pro_client,
                 code_list=batch_codes,
-                start_date=start_str,
+                start_date=batch_start,
                 end_date=end_str,
             )
         except Exception as exc:  # pragma: no cover - network errors
-            logger.error("Error processing batch %s: %s", batch_index + 1, exc)
+            logger.error("Error processing batch %s: %s", batch_index, exc)
             continue
 
         if dataframe.empty:
-            logger.warning("No data returned for batch %s", batch_index + 1)
+            logger.warning("No data returned for batch %s", batch_index)
         else:
             dataframe = dataframe.drop_duplicates(subset=["ts_code", "trade_date"])
             frames.append(dataframe)
             fetched_rows += len(dataframe.index)
-            logger.info(
-                "Fetched %s rows for batch %s", len(dataframe.index), batch_index + 1
-            )
+            logger.info("Fetched %s rows for batch %s", len(dataframe.index), batch_index)
 
-        if batch_index < num_batches - 1 and batch_pause_seconds > 0:
+        if batch_index < total_batches and batch_pause_seconds > 0:
             time.sleep(batch_pause_seconds)
 
         if progress_callback:
             progress_callback(
-                (batch_index + 1) / num_batches,
-                f"Processed batch {batch_index + 1}/{num_batches}",
+                batch_index / total_batches,
+                f"Processed batch {batch_index}/{total_batches}",
                 fetched_rows,
             )
 
@@ -166,10 +211,8 @@ def sync_daily_trade(
         .sort_values(["ts_code", "trade_date"])
     )
 
-    logger.info("Clearing existing daily_trade rows before insert")
-    daily_dao.clear_table()
     inserted = daily_dao.upsert(combined)
-    logger.info("Insert completed, affected rows: %s", inserted)
+    logger.info("Upsert completed, affected rows: %s", inserted)
 
     if progress_callback:
         progress_callback(1.0, "Daily trade sync completed", inserted)
@@ -180,7 +223,6 @@ def sync_daily_trade(
 __all__ = [
     "sync_daily_trade",
 ]
-
 
 
 

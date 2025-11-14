@@ -96,7 +96,6 @@ from .industry_insight_service import (
 )
 from .individual_fund_flow_service import list_individual_fund_flow, sync_individual_fund_flow
 from .big_deal_fund_flow_service import list_big_deal_fund_flow, sync_big_deal_fund_flow
-from .hsgt_fund_flow_service import list_hsgt_fund_flow, sync_hsgt_fund_flow
 from .stock_main_business_service import get_stock_main_business, sync_stock_main_business
 from .stock_main_composition_service import get_stock_main_composition, sync_stock_main_composition
 from .stock_news_service import list_stock_news, sync_stock_news
@@ -263,7 +262,6 @@ __all__ = [
     "list_industry_insights",
     "list_industry_news",
     "list_individual_fund_flow",
-    "list_hsgt_fund_flow",
     "sync_finance_breakfast",
     "upsert_investment_journal_entry",
     "get_investment_journal_entry",
@@ -280,7 +278,6 @@ __all__ = [
     "build_concept_snapshot",
     "sync_individual_fund_flow",
     "sync_big_deal_fund_flow",
-    "sync_hsgt_fund_flow",
     "sync_stock_main_business",
     "sync_stock_main_composition",
     "sync_stock_news",

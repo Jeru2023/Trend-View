@@ -137,20 +137,20 @@ const INDIVIDUAL_FUND_FLOW_METRICS = {
       ],
       labelKey: "individualFundFlowStageChange",
       fallback: "Change (%)",
-      formatter: (value) => formatPercentFlexible(value),
+      formatter: (value) => formatPercent(value),
       signed: true,
     },
     {
       valueKeys: ["turnoverRate", "turnover_rate"],
       labelKey: "individualFundFlowTurnover",
       fallback: "Turnover (%)",
-      formatter: (value) => formatPercentFlexible(value),
+      formatter: (value) => formatPercent(value),
     },
     {
       valueKeys: ["continuousTurnoverRate", "continuous_turnover_rate"],
       labelKey: "individualFundFlowContinuousTurnover",
       fallback: "Continuous Turnover (%)",
-      formatter: (value) => formatPercentFlexible(value),
+      formatter: (value) => formatPercent(value),
     },
     {
       valueKeys: ["latestPrice", "latest_price"],
@@ -196,20 +196,20 @@ const INDIVIDUAL_FUND_FLOW_METRICS = {
       ],
       labelKey: "individualFundFlowStageChange",
       fallback: "Change (%)",
-      formatter: (value) => formatPercentFlexible(value),
+      formatter: (value) => formatPercent(value),
       signed: true,
     },
     {
       valueKeys: ["turnoverRate", "turnover_rate"],
       labelKey: "individualFundFlowTurnover",
       fallback: "Turnover (%)",
-      formatter: (value) => formatPercentFlexible(value),
+      formatter: (value) => formatPercent(value),
     },
     {
       valueKeys: ["continuousTurnoverRate", "continuous_turnover_rate"],
       labelKey: "individualFundFlowContinuousTurnover",
       fallback: "Continuous Turnover (%)",
-      formatter: (value) => formatPercentFlexible(value),
+      formatter: (value) => formatPercent(value),
     },
     {
       valueKeys: ["latestPrice", "latest_price"],
@@ -4138,6 +4138,7 @@ function renderCandlestickChart() {
           const close = source?.close ?? candlestickPoint?.data?.[1];
           const low = source?.low ?? candlestickPoint?.data?.[2];
           const high = source?.high ?? candlestickPoint?.data?.[3];
+          const volumeRaw = source?.volume;
           let pctText = '<span class="tooltip-row__value">--</span>';
           let pctValue = Number(source?.pctChange);
           if (!Number.isFinite(pctValue) && typeof open === "number" && typeof close === "number" && open) {
@@ -4177,6 +4178,10 @@ function renderCandlestickChart() {
               value: escapeHTML(
                 formatNumber(high, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
               ),
+            },
+            {
+              label: dict.labelVolume ?? "Volume",
+              value: escapeHTML(formatNumber(volumeRaw, { maximumFractionDigits: 0 })),
             },
             { label: dict.labelChange ?? "Change", value: pctText, isHtml: true },
           ];

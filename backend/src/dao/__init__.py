@@ -19,7 +19,6 @@ from .concept_insight_dao import ConceptInsightDAO
 from .industry_insight_dao import IndustryInsightDAO
 from .individual_fund_flow_dao import IndividualFundFlowDAO
 from .big_deal_fund_flow_dao import BigDealFundFlowDAO
-from .hsgt_fund_flow_dao import HSGTFundFlowDAO
 from .stock_main_business_dao import StockMainBusinessDAO
 from .stock_main_composition_dao import StockMainCompositionDAO
 from .profit_forecast_dao import ProfitForecastDAO
@@ -86,7 +85,6 @@ __all__ = [
     "IndustryInsightDAO",
     "IndividualFundFlowDAO",
     "BigDealFundFlowDAO",
-    "HSGTFundFlowDAO",
     "StockMainBusinessDAO",
     "StockMainCompositionDAO",
     "ProfitForecastDAO",

@@ -120,6 +120,26 @@ class DailyTradeDAO(PostgresDAOBase):
                 row = cur.fetchone()
         return row[0] if row else None
 
+    def latest_trade_dates_for_codes(self, codes: Sequence[str]) -> Dict[str, datetime]:
+        """Return the latest trade_date for each provided code."""
+        if not codes:
+            return {}
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            query = sql.SQL(
+                "SELECT ts_code, MAX(trade_date) FROM {schema}.{table} "
+                "WHERE ts_code = ANY(%s) AND is_intraday = FALSE GROUP BY ts_code"
+            ).format(
+                schema=sql.Identifier(self.config.schema),
+                table=sql.Identifier(self._table_name),
+            )
+            with conn.cursor() as cur:
+                cur.execute(query, (list(codes),))
+                rows = cur.fetchall()
+
+        return {code: trade_date for code, trade_date in rows if trade_date is not None}
+
     def upsert(self, dataframe: pd.DataFrame) -> int:
         """Synchronise the provided DataFrame into the daily trade table."""
         if dataframe.empty:
@@ -257,7 +277,7 @@ class DailyTradeDAO(PostgresDAOBase):
             where_clause += sql.SQL(" AND is_intraday = FALSE")
         query = sql.SQL(
             """
-            SELECT trade_date, open, high, low, close, vol, pct_chg
+            SELECT trade_date, open, high, low, close, vol, pct_chg, is_intraday
             FROM {schema}.{table}
             {where_clause}
             ORDER BY trade_date DESC
@@ -276,7 +296,16 @@ class DailyTradeDAO(PostgresDAOBase):
                 rows = cur.fetchall()
 
         history = []
-        for trade_date, open_price, high_price, low_price, close_price, volume, pct_change in reversed(rows):
+        for (
+            trade_date,
+            open_price,
+            high_price,
+            low_price,
+            close_price,
+            volume,
+            pct_change,
+            is_intraday,
+        ) in reversed(rows):
             history.append(
                 {
                     "trade_date": trade_date.isoformat() if isinstance(trade_date, date) else str(trade_date),
@@ -286,9 +315,66 @@ class DailyTradeDAO(PostgresDAOBase):
                     "close": float(close_price) if close_price is not None else None,
                     "volume": float(volume) if volume is not None else None,
                     "pct_change": float(pct_change) if pct_change is not None else None,
+                    "is_intraday": bool(is_intraday),
                 }
             )
         return history
+
+    def fetch_latest_bar(
+        self,
+        ts_code: str,
+        *,
+        include_intraday: bool = True,
+    ) -> Optional[dict[str, object]]:
+        if not ts_code:
+            return None
+
+        where_clause = sql.SQL("WHERE ts_code = %s")
+        params: list[object] = [ts_code]
+        if not include_intraday:
+            where_clause += sql.SQL(" AND is_intraday = FALSE")
+
+        query = sql.SQL(
+            """
+            SELECT trade_date,
+                   open,
+                   high,
+                   low,
+                   close,
+                   vol,
+                   pct_chg,
+                   is_intraday
+            FROM {schema}.{table}
+            {where_clause}
+            ORDER BY trade_date DESC, updated_at DESC
+            LIMIT 1
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+            where_clause=where_clause,
+        )
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, tuple(params))
+                row = cur.fetchone()
+
+        if not row:
+            return None
+
+        trade_date, open_price, high_price, low_price, close_price, volume, pct_change, is_intraday = row
+        return {
+            "trade_date": trade_date.isoformat() if isinstance(trade_date, date) else str(trade_date),
+            "open": float(open_price) if open_price is not None else None,
+            "high": float(high_price) if high_price is not None else None,
+            "low": float(low_price) if low_price is not None else None,
+            "close": float(close_price) if close_price is not None else None,
+            "volume": float(volume) if volume is not None else None,
+            "pct_change": float(pct_change) if pct_change is not None else None,
+            "is_intraday": bool(is_intraday),
+        }
 
 
 __all__ = [

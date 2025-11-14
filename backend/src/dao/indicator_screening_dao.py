@@ -139,3 +139,17 @@ class IndicatorScreeningDAO(PostgresDAOBase):
             "latest_captured_at": latest_captured,
             "indicator_code": indicator_code,
         }
+
+    def latest_captured(self) -> Optional[str]:
+        query = sql.SQL(
+            "SELECT MAX(captured_at) FROM {schema}.{table}"
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query)
+                row = cur.fetchone()
+                return row[0] if row else None

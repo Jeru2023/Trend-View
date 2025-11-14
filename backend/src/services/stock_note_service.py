@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from typing import Dict, Optional
 
 from ..config.settings import load_settings
-from ..dao import StockNoteDAO
+from ..dao import StockBasicDAO, StockNoteDAO
 
 MAX_NOTE_LENGTH = 1000
 
@@ -54,11 +54,14 @@ def list_stock_notes(
     sanitized_offset = max(0, offset)
     settings = load_settings(settings_path)
     dao = StockNoteDAO(settings.postgres)
-    return dao.list_notes(
+    stock_basic_dao = StockBasicDAO(settings.postgres)
+    result = dao.list_notes(
         normalized_code,
         limit=sanitized_limit,
         offset=sanitized_offset,
     )
+    _attach_stock_names(result, stock_basic_dao)
+    return result
 
 
 def list_recent_stock_notes(
@@ -75,7 +78,26 @@ def list_recent_stock_notes(
         start, end = end, start
     settings = load_settings(settings_path)
     dao = StockNoteDAO(settings.postgres)
-    return dao.list_recent_notes(start, end, limit=limit)
+    stock_basic_dao = StockBasicDAO(settings.postgres)
+    result = dao.list_recent_notes(start, end, limit=limit)
+    _attach_stock_names(result, stock_basic_dao)
+    return result
+
+
+def _attach_stock_names(result: Dict[str, object], stock_basic_dao: StockBasicDAO) -> None:
+    if not result:
+        return
+    items = result.get("items")
+    if not isinstance(items, list) or not items:
+        return
+    codes = sorted({(item.get("stock_code") or "").strip() for item in items if item.get("stock_code")})
+    if not codes:
+        return
+    name_map = stock_basic_dao.fetch_names(codes)
+    for item in items:
+        code = (item.get("stock_code") or "").strip()
+        if code and code in name_map:
+            item["stock_name"] = name_map[code]
 
 
 __all__ = ["add_stock_note", "list_stock_notes", "list_recent_stock_notes"]
