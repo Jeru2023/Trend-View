@@ -23,6 +23,7 @@ from ..dao import (
     BigDealFundFlowDAO,
     DailyIndicatorDAO,
     DailyTradeDAO,
+    DailyTradeMetricsDAO,
     FundamentalMetricsDAO,
     IndicatorScreeningDAO,
     StockBasicDAO,
@@ -83,6 +84,12 @@ def _safe_float(value: Any) -> float | None:
     if not math.isfinite(numeric):
         return None
     return numeric
+
+
+def _round_decimal(value: float | None, digits: int = 2) -> float | None:
+    if value is None:
+        return None
+    return round(value, digits)
 
 
 def _parse_volume_text(text: Any) -> tuple[float | None, str | None]:
@@ -385,6 +392,33 @@ def _fetch_big_deal_indicator_frame(settings) -> pd.DataFrame:
             }
         )
 
+    codes_full = [record["stock_code_full"] for record in records if record.get("stock_code_full")]
+    if codes_full:
+        trade_dao = DailyTradeDAO(settings.postgres)
+        trade_metrics = trade_dao.fetch_latest_metrics(codes_full, include_intraday=True)
+        stock_dao = StockBasicDAO(settings.postgres)
+        fundamentals = stock_dao.query_fundamentals(
+            include_st=True,
+            include_delisted=True,
+            limit=len(codes_full),
+            offset=0,
+            codes=codes_full,
+        )
+        industry_map = {
+            item.get("code"): item.get("industry")
+            for item in fundamentals.get("items", [])
+            if item.get("code")
+        }
+        for record in records:
+            code_full = record.get("stock_code_full")
+            metrics = trade_metrics.get(code_full or "")
+            if metrics:
+                record["last_price"] = metrics.get("last_price")
+                record["price_change_percent"] = metrics.get("pct_chg")
+            industry = industry_map.get(code_full or "")
+            if industry:
+                record["industry"] = industry
+
     return pd.DataFrame.from_records(records)
 
 
@@ -400,9 +434,15 @@ def _normalize_big_deal_inflow_frame(dataframe: pd.DataFrame, captured_at: datet
     frame["stock_code"] = frame.get("stock_code", "").astype(str).str.zfill(6)
     frame["stock_code_full"] = frame["stock_code"].apply(_format_stock_code_full)
     frame["stock_name"] = frame.get("stock_name")
-    frame["price_change_percent"] = None
+    if "price_change_percent" in frame.columns:
+        frame["price_change_percent"] = frame["price_change_percent"].apply(_safe_float)
+    else:
+        frame["price_change_percent"] = None
     frame["stage_change_percent"] = None
-    frame["last_price"] = None
+    if "last_price" in frame.columns:
+        frame["last_price"] = frame["last_price"].apply(_safe_float)
+    else:
+        frame["last_price"] = None
 
     frame["volume_days"] = pd.to_numeric(frame.get("volume_days"), errors="coerce").astype("Int64")
     frame["volume_shares"] = frame.get("big_deal_buy_amount").apply(_safe_float)
@@ -415,6 +455,7 @@ def _normalize_big_deal_inflow_frame(dataframe: pd.DataFrame, captured_at: datet
     frame["turnover_amount"] = frame.get("big_deal_net_amount").apply(_safe_float)
     frame["turnover_amount_text"] = frame.get("big_deal_net_text")
 
+    frame["industry"] = frame.get("industry")
     frame["high_price"] = None
     frame["low_price"] = None
 
@@ -687,97 +728,80 @@ def list_indicator_screenings(
     net_income_qoq_min: float | None = None,
     pe_min: float | None = None,
     pe_max: float | None = None,
+    turnover_rate_min: float | None = None,
+    turnover_rate_max: float | None = None,
+    daily_change_min: float | None = None,
+    daily_change_max: float | None = None,
+    pct_change_1w_max: float | None = None,
+    pct_change_1m_max: float | None = None,
     has_big_deal_inflow: bool | None = None,
     settings_path: str | None = None,
 ) -> dict[str, Any]:
     codes = _normalize_indicator_codes(indicator_codes)
     settings = load_settings(settings_path)
     dao = IndicatorScreeningDAO(settings.postgres)
-    require_metrics = any(value is not None for value in (net_income_yoy_min, net_income_qoq_min, pe_min, pe_max))
-    fundamental_dao = FundamentalMetricsDAO(settings.postgres) if require_metrics else None
-    daily_indicator_dao = DailyIndicatorDAO(settings.postgres) if require_metrics else None
-    big_deal_dao = BigDealFundFlowDAO(settings.postgres)
+    daily_trade_dao = DailyTradeDAO(settings.postgres)
+    trade_date = daily_trade_dao.latest_trade_date(include_intraday=False)
+    if trade_date is None:
+        raise RuntimeError("Daily trade dataset is empty; run the daily trade sync first.")
+
+    daily_indicator_dao = DailyIndicatorDAO(settings.postgres)
+    trade_metrics_dao = DailyTradeMetricsDAO(settings.postgres)
+    fundamental_dao = FundamentalMetricsDAO(settings.postgres)
     require_big_deal_filter = has_big_deal_inflow is True or BIG_DEAL_INDICATOR_CODE in codes
+    primary_code = codes[0] if codes else None
 
-    def _maybe_attach_metrics(entries: list[dict[str, Any]]) -> None:
-        if not require_metrics or not entries:
-            return
-        if not fundamental_dao or not daily_indicator_dao:
-            return
-        _attach_indicator_metrics(entries, fundamental_dao, daily_indicator_dao)
+    table_names = {
+        "daily_trade": daily_trade_dao._table_name,  # noqa: SLF001
+        "stock_basic": settings.postgres.stock_table,
+        "daily_indicator": daily_indicator_dao._table_name,  # noqa: SLF001
+        "daily_trade_metrics": trade_metrics_dao._table_name,  # noqa: SLF001
+        "fundamental_metrics": fundamental_dao._table_name,  # noqa: SLF001
+        "big_deal": settings.postgres.big_deal_fund_flow_table,
+    }
 
-    primary_code = codes[0]
-    if len(codes) == 1:
-        dataset = dao.list_entries(
-            indicator_code=primary_code,
-            limit=MAX_SINGLE_INDICATOR_FETCH,
-            offset=0,
-        )
-        raw_items = dataset.get("items", [])
-        _maybe_attach_metrics(raw_items)
-        entries = [_serialize_entry(entry) for entry in raw_items]
-        captured_at = _localize_datetime(dataset.get("latest_captured_at"))
-        _annotate_big_deal_inflow(
-            entries,
-            big_deal_dao=big_deal_dao,
-            trade_date=datetime.now(LOCAL_TZ).date(),
-        )
-        filtered_entries = _apply_indicator_filters(entries, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
-        filtered_entries = _apply_big_deal_filter(filtered_entries, require_big_deal_filter)
-        total_filtered = len(filtered_entries)
-        sliced = filtered_entries[offset : offset + limit]
-        return {
-            "indicatorCode": primary_code,
-            "indicatorCodes": codes,
-            "indicatorName": INDICATOR_DEFINITIONS[primary_code]["name"],
-            "capturedAt": captured_at,
-            "total": total_filtered,
-            "items": sliced,
-        }
-
-    per_code_records: Dict[str, Dict[str, dict]] = {}
-    for code in codes:
-        dataset = dao.list_entries(indicator_code=code, limit=MAX_INTERSECTION_FETCH, offset=0)
-        items = dataset.get("items", [])
-        _maybe_attach_metrics(items)
-        per_code_records[code] = {entry["stock_code"]: entry for entry in items if entry.get("stock_code")}
-
-    latest_captured = _resolve_latest_captured(per_code_records)
-    intersection_items: List[dict[str, Any]] = []
-    primary_entries = list(per_code_records[primary_code].values())
-    primary_entries.sort(key=lambda item: (item.get("rank") or 10**9, item.get("stock_code") or ""))
-
-    for entry in primary_entries:
-        stock_code = entry.get("stock_code")
-        if not stock_code:
-            continue
-        if not all(stock_code in per_code_records[code] for code in codes[1:]):
-            continue
-        serialized = _serialize_entry(entry)
-        serialized["matchedIndicators"] = list(codes)
-        details = {primary_code: _extract_indicator_details(entry, primary_code)}
-        for code in codes[1:]:
-            details[code] = _extract_indicator_details(per_code_records[code][stock_code], code)
-        serialized["indicatorDetails"] = details
-        intersection_items.append(serialized)
-
-    _annotate_big_deal_inflow(
-        intersection_items,
-        big_deal_dao=big_deal_dao,
-        trade_date=datetime.now(LOCAL_TZ).date(),
+    dataset = dao.query_full_universe(
+        trade_date=trade_date,
+        indicator_codes=codes,
+        primary_indicator_code=primary_code,
+        limit=limit,
+        offset=offset,
+        net_income_yoy_min=net_income_yoy_min,
+        net_income_qoq_min=net_income_qoq_min,
+        pe_min=pe_min,
+        pe_max=pe_max,
+        turnover_rate_min=turnover_rate_min,
+        turnover_rate_max=turnover_rate_max,
+        daily_change_min=daily_change_min,
+        daily_change_max=daily_change_max,
+        pct_change_1w_max=pct_change_1w_max,
+        pct_change_1m_max=pct_change_1m_max,
+        require_big_deal_inflow=require_big_deal_filter,
+        tables=table_names,
     )
-    filtered = _apply_indicator_filters(intersection_items, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
-    filtered = _apply_big_deal_filter(filtered, require_big_deal_filter)
-    total = len(filtered)
-    sliced = filtered[offset : offset + limit]
+
+    rows: list[dict[str, Any]] = dataset.get("items", [])
+    stock_codes = [row.get("ts_code") for row in rows if row.get("ts_code")]
+    indicator_detail_map = _build_indicator_detail_map(dao, codes, stock_codes)
+
+    entries = _compose_screening_entries(
+        rows,
+        trade_date=trade_date,
+        indicator_codes=codes,
+        primary_indicator_code=primary_code,
+        indicator_details=indicator_detail_map,
+    )
+
+    response_captured = _resolve_response_captured_at(entries, trade_date)
+    indicator_name = INDICATOR_DEFINITIONS[primary_code]["name"] if primary_code else "All Indicators"
 
     return {
-        "indicatorCode": primary_code,
+        "indicatorCode": primary_code or "all",
         "indicatorCodes": list(codes),
-        "indicatorName": INDICATOR_DEFINITIONS[primary_code]["name"],
-        "capturedAt": latest_captured,
-        "total": total,
-        "items": sliced,
+        "indicatorName": indicator_name,
+        "capturedAt": response_captured,
+        "total": dataset.get("total", 0),
+        "items": entries,
     }
 
 def run_indicator_realtime_refresh(
@@ -896,51 +920,6 @@ def run_indicator_realtime_refresh(
         "updatedAt": datetime.now(LOCAL_TZ),
     }
 
-    per_code_records: Dict[str, Dict[str, dict]] = {}
-    for code in codes:
-        dataset = dao.list_entries(indicator_code=code, limit=MAX_INTERSECTION_FETCH, offset=0)
-        items = dataset.get("items", [])
-        _maybe_attach_metrics(items)
-        per_code_records[code] = {entry["stock_code"]: entry for entry in items if entry.get("stock_code")}
-
-    latest_captured = _resolve_latest_captured(per_code_records)
-    intersection_items: List[dict[str, Any]] = []
-    primary_entries = list(per_code_records[primary_code].values())
-    primary_entries.sort(key=lambda item: (item.get("rank") or 10**9, item.get("stock_code") or ""))
-
-    for entry in primary_entries:
-        stock_code = entry.get("stock_code")
-        if not stock_code:
-            continue
-        if not all(stock_code in per_code_records[code] for code in codes[1:]):
-            continue
-        serialized = _serialize_entry(entry)
-        serialized["matchedIndicators"] = list(codes)
-        details = {primary_code: _extract_indicator_details(entry, primary_code)}
-        for code in codes[1:]:
-            details[code] = _extract_indicator_details(per_code_records[code][stock_code], code)
-        serialized["indicatorDetails"] = details
-        intersection_items.append(serialized)
-
-    _annotate_big_deal_inflow(
-        intersection_items,
-        big_deal_dao=big_deal_dao,
-        trade_date=datetime.now(LOCAL_TZ).date(),
-    )
-    filtered = _apply_indicator_filters(intersection_items, net_income_yoy_min, net_income_qoq_min, pe_min, pe_max)
-    filtered = _apply_big_deal_filter(filtered, require_big_deal_filter)
-    total = len(filtered)
-    sliced = filtered[offset : offset + limit]
-
-    return {
-        "indicatorCode": primary_code,
-        "indicatorCodes": list(codes),
-        "indicatorName": INDICATOR_DEFINITIONS[primary_code]["name"],
-        "capturedAt": latest_captured,
-        "total": total,
-        "items": sliced,
-    }
-
 
 def _attach_indicator_metrics(
     entries: Sequence[dict[str, Any]],
@@ -972,14 +951,118 @@ def _attach_indicator_metrics(
         entry["pe_ratio"] = indicator_data.get("pe")
 
 
+def _enrich_entries_with_market_data(entries: Sequence[dict[str, Any]], *, settings) -> None:
+    if not entries:
+        return
+    codes: list[str] = []
+    for entry in entries:
+        code_full = entry.get("stockCodeFull") or entry.get("stock_code_full")
+        if code_full:
+            codes.append(code_full)
+    if not codes:
+        return
+    unique_codes = sorted(set(codes))
+    trade_dao = DailyTradeDAO(settings.postgres)
+    trade_metrics = trade_dao.fetch_latest_metrics(unique_codes, include_intraday=True)
+    stock_dao = StockBasicDAO(settings.postgres)
+    fundamentals = stock_dao.query_fundamentals(
+        include_st=True,
+        include_delisted=True,
+        limit=len(unique_codes),
+        offset=0,
+        codes=unique_codes,
+    )
+    metrics_dao = DailyTradeMetricsDAO(settings.postgres)
+    trend_metrics = metrics_dao.fetch_metrics(unique_codes)
+    missing_pct_codes = [
+        code
+        for code in unique_codes
+        if code not in trend_metrics
+        or trend_metrics[code].get("pct_change_1w") is None
+        or trend_metrics[code].get("pct_change_1m") is None
+    ]
+    fallback_pct_changes: Dict[str, Dict[str, float | None]] = {}
+    if missing_pct_codes:
+        fallback_pct_changes = trade_dao.fetch_pct_change_windows(missing_pct_codes, windows=(5, 20))
+    indicator_dao = DailyIndicatorDAO(settings.postgres)
+    indicator_snapshots = indicator_dao.fetch_latest_indicators(unique_codes)
+    industry_map = {
+        item.get("code"): item.get("industry")
+        for item in fundamentals.get("items", [])
+        if item.get("code")
+    }
+    for entry in entries:
+        code_full = entry.get("stockCodeFull") or entry.get("stock_code_full")
+        if not code_full:
+            continue
+        metrics = trade_metrics.get(code_full)
+        if metrics:
+            last_price = metrics.get("last_price")
+            pct_chg = metrics.get("pct_change")
+            if last_price is not None:
+                entry["lastPrice"] = last_price
+                entry["last_price"] = last_price
+            if pct_chg is not None:
+                entry["priceChangePercent"] = pct_chg
+                entry["price_change_percent"] = pct_chg
+            details = entry.get("indicatorDetails")
+            if isinstance(details, dict):
+                for detail in details.values():
+                    if last_price is not None:
+                        detail["lastPrice"] = last_price
+                    if pct_chg is not None:
+                        detail["priceChangePercent"] = pct_chg
+        industry = industry_map.get(code_full)
+        if industry:
+            entry["industry"] = industry
+        trend = trend_metrics.get(code_full) or {}
+        pct_1w = _safe_float(trend.get("pct_change_1w"))
+        pct_1m = _safe_float(trend.get("pct_change_1m"))
+        if pct_1w is None or pct_1m is None:
+            fallback_entry = fallback_pct_changes.get(code_full) or {}
+            if pct_1w is None:
+                pct_1w = _safe_float(fallback_entry.get("pct_change_5"))
+            if pct_1m is None:
+                pct_1m = _safe_float(fallback_entry.get("pct_change_20"))
+        if pct_1w is not None:
+            entry["pctChange1W"] = pct_1w
+            entry["pct_change_1w"] = pct_1w
+        if pct_1m is not None:
+            entry["pctChange1M"] = pct_1m
+            entry["pct_change_1m"] = pct_1m
+        indicator_snapshot = indicator_snapshots.get(code_full)
+        if indicator_snapshot:
+            turnover_value = _safe_float(indicator_snapshot.get("turnover_rate"))
+            if turnover_value is not None:
+                entry["turnoverRate"] = turnover_value
+                entry["turnover_rate"] = turnover_value
+
+
 def _apply_indicator_filters(
     items: Sequence[dict[str, Any]],
     net_income_yoy_min: float | None,
     net_income_qoq_min: float | None,
     pe_min: float | None,
     pe_max: float | None,
+    turnover_rate_min: float | None,
+    turnover_rate_max: float | None,
+    daily_change_min: float | None,
+    daily_change_max: float | None,
+    pct_change_1w_max: float | None,
+    pct_change_1m_max: float | None,
 ) -> list[dict[str, Any]]:
-    if net_income_yoy_min is None and net_income_qoq_min is None and pe_min is None and pe_max is None:
+    if (
+        net_income_yoy_min is None
+        and net_income_qoq_min is None
+        and pe_min is None
+        and pe_max is None
+        and turnover_rate_min is None
+        and turnover_rate_max is None
+        and daily_change_min is None
+        and daily_change_max is None
+        and pct_change_1w_max is None
+        and pct_change_1m_max is None
+    ):
         return list(items)
 
     filtered: list[dict[str, Any]] = []
@@ -987,6 +1070,10 @@ def _apply_indicator_filters(
         net_income = _safe_float(entry.get("netIncomeYoyLatest"))
         net_income_qoq = _safe_float(entry.get("netIncomeQoqLatest"))
         pe_value = _safe_float(entry.get("peRatio"))
+        turnover_value = _safe_float(entry.get("turnoverRate") or entry.get("turnover_rate"))
+        daily_change = _safe_float(entry.get("priceChangePercent") or entry.get("price_change_percent"))
+        pct_1w = _safe_float(entry.get("pctChange1W") or entry.get("pct_change_1w"))
+        pct_1m = _safe_float(entry.get("pctChange1M") or entry.get("pct_change_1m"))
 
         if net_income_yoy_min is not None:
             if net_income is None or net_income < net_income_yoy_min:
@@ -1000,13 +1087,45 @@ def _apply_indicator_filters(
         if pe_max is not None:
             if pe_value is None or pe_value > pe_max:
                 continue
+        if turnover_rate_min is not None:
+            if turnover_value is None or turnover_value < turnover_rate_min:
+                continue
+        if turnover_rate_max is not None:
+            if turnover_value is None or turnover_value > turnover_rate_max:
+                continue
+        if daily_change_min is not None:
+            if daily_change is None or daily_change < daily_change_min:
+                continue
+        if daily_change_max is not None:
+            if daily_change is None or daily_change > daily_change_max:
+                continue
+        if pct_change_1w_max is not None:
+            if pct_1w is None or pct_1w > pct_change_1w_max:
+                continue
+        if pct_change_1m_max is not None:
+            if pct_1m is None or pct_1m > pct_change_1m_max:
+                continue
         filtered.append(entry)
     return filtered
+
+
+def _deduplicate_entries(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for entry in entries:
+        key = entry.get("stockCodeFull") or entry.get("stockCode") or entry.get("stock_code_full") or entry.get("stock_code")
+        if key:
+            if key in seen:
+                continue
+            seen.add(key)
+        deduped.append(entry)
+    return deduped
 
 
 def _serialize_entry(entry: dict[str, Any]) -> dict[str, Any]:
     indicator_code = entry.get("indicator_code")
     net_amount = _safe_float(entry.get("turnover_amount"))
+    turnover_value = _round_decimal(_safe_float(entry.get("turnover_percent")))
     serialized = {
         "indicatorCode": indicator_code,
         "indicatorName": entry.get("indicator_name"),
@@ -1023,12 +1142,16 @@ def _serialize_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "baselineVolumeShares": _safe_float(entry.get("baseline_volume_shares")),
         "baselineVolumeText": entry.get("baseline_volume_text"),
         "volumeDays": entry.get("volume_days"),
-        "turnoverPercent": _safe_float(entry.get("turnover_percent")),
+        "turnoverPercent": turnover_value,
         "turnoverRate": _safe_float(entry.get("turnover_rate")),
         "turnoverAmount": net_amount,
         "turnoverAmountText": entry.get("turnover_amount_text"),
         "highPrice": _safe_float(entry.get("high_price")),
         "lowPrice": _safe_float(entry.get("low_price")),
+        "bigDealNetAmount": _safe_float(entry.get("bigDealNetAmount")),
+        "bigDealBuyAmount": _safe_float(entry.get("bigDealBuyAmount")),
+        "bigDealSellAmount": _safe_float(entry.get("bigDealSellAmount")),
+        "bigDealTradeCount": entry.get("bigDealTradeCount"),
         "netIncomeYoyLatest": _safe_float(entry.get("net_income_yoy_latest")),
         "netIncomeQoqLatest": _safe_float(entry.get("net_income_qoq_latest")),
         "peRatio": _safe_float(entry.get("pe_ratio")),
@@ -1053,7 +1176,7 @@ def _extract_indicator_details(entry: dict[str, Any], indicator_code: str) -> di
         "volumeDays": entry.get("volume_days"),
         "volumeText": entry.get("volume_text"),
         "baselineVolumeText": entry.get("baseline_volume_text"),
-        "turnoverPercent": _safe_float(entry.get("turnover_percent")),
+        "turnoverPercent": _round_decimal(_safe_float(entry.get("turnover_percent"))),
         "turnoverRate": _safe_float(entry.get("turnover_rate")),
         "turnoverAmount": _safe_float(entry.get("turnover_amount")),
         "turnoverAmountText": entry.get("turnover_amount_text"),
@@ -1072,6 +1195,123 @@ def _extract_indicator_details(entry: dict[str, Any], indicator_code: str) -> di
     return detail
 
 
+def _build_indicator_detail_map(
+    dao: IndicatorScreeningDAO,
+    indicator_codes: Sequence[str],
+    stock_codes: Sequence[str],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    if not indicator_codes or not stock_codes:
+        return {}
+    detail_map: dict[str, dict[str, dict[str, Any]]] = {}
+    unique_codes = list(dict.fromkeys(stock_codes))
+    for code in indicator_codes:
+        per_code = dao.fetch_latest_entries_for_codes(indicator_code=code, stock_codes=unique_codes)
+        if not per_code:
+            continue
+        for ts_code, record in per_code.items():
+            detail_map.setdefault(ts_code, {})[code] = record
+    return detail_map
+
+
+def _compose_screening_entries(
+    rows: Sequence[dict[str, Any]],
+    *,
+    trade_date: date,
+    indicator_codes: Sequence[str],
+    primary_indicator_code: str | None,
+    indicator_details: dict[str, dict[str, dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    default_captured = datetime.combine(trade_date, FINAL_SYNC_CUTOFF).replace(tzinfo=LOCAL_TZ)
+    indicator_name = INDICATOR_DEFINITIONS[primary_indicator_code]["name"] if primary_indicator_code else "All Indicators"
+
+    for row in rows:
+        ts_code = row.get("ts_code")
+        if not ts_code:
+            continue
+        stock_code = row.get("stock_code")
+        if not stock_code and isinstance(ts_code, str):
+            stock_code = ts_code.split(".", 1)[0]
+
+        entry = {
+            "indicatorCode": primary_indicator_code or "all",
+            "indicatorName": indicator_name,
+            "capturedAt": default_captured,
+            "rank": None,
+            "stockCode": stock_code,
+            "stockCodeFull": ts_code,
+            "stockName": row.get("stock_name"),
+            "industry": row.get("industry"),
+            "priceChangePercent": _safe_float(row.get("pct_chg")),
+            "stageChangePercent": None,
+            "lastPrice": _safe_float(row.get("close")),
+            "volumeShares": None,
+            "volumeText": None,
+            "baselineVolumeShares": None,
+            "baselineVolumeText": None,
+            "volumeDays": None,
+            "turnoverPercent": None,
+            "turnoverRate": _safe_float(row.get("turnover_rate")),
+            "turnoverAmount": None,
+            "turnoverAmountText": None,
+            "highPrice": None,
+            "lowPrice": None,
+            "netIncomeYoyLatest": _safe_float(row.get("net_income_yoy_latest")),
+            "netIncomeQoqLatest": _safe_float(row.get("net_income_qoq_latest")),
+            "peRatio": _safe_float(row.get("pe_ratio")),
+            "pctChange1W": _safe_float(row.get("pct_change_1w")),
+            "pctChange1M": _safe_float(row.get("pct_change_1m")),
+            "bigDealNetAmount": _safe_float(row.get("big_deal_net_amount")),
+            "bigDealBuyAmount": _safe_float(row.get("big_deal_buy_amount")),
+            "bigDealSellAmount": _safe_float(row.get("big_deal_sell_amount")),
+            "bigDealTradeCount": row.get("big_deal_trade_count"),
+            "hasBigDealInflow": bool((_safe_float(row.get("big_deal_net_amount")) or 0) > 0),
+            "matchedIndicators": [],
+            "indicatorDetails": {},
+        }
+
+        stock_detail_map = indicator_details.get(ts_code, {})
+        if stock_detail_map:
+            matched = list(stock_detail_map.keys())
+            entry["matchedIndicators"] = matched
+            for code, detail in stock_detail_map.items():
+                entry["indicatorDetails"][code] = _extract_indicator_details(detail, code)
+
+        if primary_indicator_code and primary_indicator_code in stock_detail_map:
+            detail = stock_detail_map[primary_indicator_code]
+            entry["capturedAt"] = _localize_datetime(detail.get("captured_at")) or default_captured
+            entry["rank"] = detail.get("rank")
+            entry["stageChangePercent"] = _safe_float(detail.get("stage_change_percent"))
+            entry["volumeText"] = detail.get("volume_text")
+            entry["volumeShares"] = _safe_float(detail.get("volume_shares"))
+            entry["baselineVolumeText"] = detail.get("baseline_volume_text")
+            entry["baselineVolumeShares"] = _safe_float(detail.get("baseline_volume_shares"))
+            entry["volumeDays"] = detail.get("volume_days")
+            entry["turnoverPercent"] = _round_decimal(_safe_float(detail.get("turnover_percent")))
+            entry["turnoverAmount"] = _safe_float(detail.get("turnover_amount"))
+            entry["turnoverAmountText"] = detail.get("turnover_amount_text")
+            entry["highPrice"] = _safe_float(detail.get("high_price"))
+            entry["lowPrice"] = _safe_float(detail.get("low_price"))
+            if entry.get("priceChangePercent") is None:
+                entry["priceChangePercent"] = _safe_float(detail.get("price_change_percent"))
+            if entry.get("lastPrice") is None:
+                entry["lastPrice"] = _safe_float(detail.get("last_price"))
+
+        entries.append(entry)
+    return entries
+
+
+def _resolve_response_captured_at(entries: Sequence[dict[str, Any]], trade_date: date) -> datetime:
+    default_value = datetime.combine(trade_date, FINAL_SYNC_CUTOFF).replace(tzinfo=LOCAL_TZ)
+    latest = default_value
+    for entry in entries:
+        candidate = entry.get("capturedAt")
+        if isinstance(candidate, datetime):
+            if latest is None or candidate > latest:
+                latest = candidate
+    return latest or default_value
+
+
 def _normalize_indicator_code(code: str | None) -> str:
     if code and code in INDICATOR_DEFINITIONS:
         return code
@@ -1080,12 +1320,12 @@ def _normalize_indicator_code(code: str | None) -> str:
 
 def _normalize_indicator_codes(codes: Sequence[str] | None) -> List[str]:
     if not codes:
-        return [DEFAULT_INDICATOR_CODE]
+        return []
     normalized = []
     for code in codes:
         if code in INDICATOR_DEFINITIONS and code not in normalized:
             normalized.append(code)
-    return normalized or [DEFAULT_INDICATOR_CODE]
+    return normalized
 
 
 def _resolve_latest_captured(per_code_records: Dict[str, Dict[str, dict]]) -> datetime | None:
@@ -1113,7 +1353,30 @@ def _annotate_big_deal_inflow(
     inflow_map = big_deal_dao.fetch_buy_amount_map(codes, trade_date=target_date)
     for entry in entries:
         code = entry.get("stockCode")
-        entry["hasBigDealInflow"] = bool(inflow_map.get(code) and inflow_map.get(code) > 0)
+        detail = inflow_map.get(code or "")
+        net_amount = _safe_float(detail.get("netAmount")) if detail else None
+        buy_amount = _safe_float(detail.get("buyAmount")) if detail else None
+        sell_amount = _safe_float(detail.get("sellAmount")) if detail else None
+        trade_count = detail.get("tradeCount") if detail else None
+        entry["hasBigDealInflow"] = bool(net_amount is not None and net_amount > 0)
+        entry["bigDealNetAmount"] = net_amount
+        entry["bigDealBuyAmount"] = buy_amount
+        entry["bigDealSellAmount"] = sell_amount
+        entry["bigDealTradeCount"] = trade_count
+        indicator_details = entry.get("indicatorDetails")
+        if not isinstance(indicator_details, dict):
+            indicator_details = {}
+            entry["indicatorDetails"] = indicator_details
+        detail_entry = indicator_details.get(BIG_DEAL_INDICATOR_CODE, {})
+        detail_entry.update(
+            {
+                "bigDealNetAmount": net_amount,
+                "bigDealBuyAmount": buy_amount,
+                "bigDealSellAmount": sell_amount,
+                "bigDealTradeCount": trade_count,
+            }
+        )
+        indicator_details[BIG_DEAL_INDICATOR_CODE] = detail_entry
 
 
 def _apply_big_deal_filter(

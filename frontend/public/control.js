@@ -1235,7 +1235,7 @@ function initActions() {
   );
   if (elements.profitForecast.button) {
     elements.profitForecast.button.addEventListener("click", () =>
-      triggerJob("/control/sync/profit-forecast", {})
+      triggerJobForCard(elements.profitForecast, "/control/sync/profit-forecast", {})
     );
   }
   if (elements.industryFundFlow.button) {

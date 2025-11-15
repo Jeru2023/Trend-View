@@ -232,6 +232,10 @@ from .services import (
     is_trading_day,
     INDEX_CONFIG,
 )
+from .services.indicator_screening_service import (
+    BIG_DEAL_INDICATOR_CODE,
+    VOLUME_SURGE_BREAKOUT_CODE,
+)
 from .state import monitor
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -3268,6 +3272,10 @@ class IndicatorScreeningRecord(BaseModel):
     turnover_amount_text: Optional[str] = Field(None, alias="turnoverAmountText")
     high_price: Optional[float] = Field(None, alias="highPrice")
     low_price: Optional[float] = Field(None, alias="lowPrice")
+    big_deal_net_amount: Optional[float] = Field(None, alias="bigDealNetAmount")
+    big_deal_buy_amount: Optional[float] = Field(None, alias="bigDealBuyAmount")
+    big_deal_sell_amount: Optional[float] = Field(None, alias="bigDealSellAmount")
+    big_deal_trade_count: Optional[int] = Field(None, alias="bigDealTradeCount")
     net_income_yoy_latest: Optional[float] = Field(None, alias="netIncomeYoyLatest")
     pe_ratio: Optional[float] = Field(None, alias="peRatio")
     matched_indicators: List[str] = Field(default_factory=list, alias="matchedIndicators")
@@ -3591,6 +3599,22 @@ async def _run_daily_trade_job(request: SyncDailyTradeRequest) -> None:
                 batch_pause_seconds=request.batch_pause_seconds or 0.6,
                 progress_callback=progress_callback,
             )
+            indicator_rows: Optional[int] = None
+            try:
+                indicator_result = sync_indicator_screening(indicator_code=VOLUME_SURGE_BREAKOUT_CODE)
+                if isinstance(indicator_result, dict):
+                    indicator_rows = indicator_result.get("rows")
+                logger.info(
+                    "Indicator %s snapshot refreshed after daily_trade sync (rows=%s)",
+                    VOLUME_SURGE_BREAKOUT_CODE,
+                    indicator_rows,
+                )
+            except Exception as indicator_exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "Failed to refresh %s indicator snapshot: %s",
+                    VOLUME_SURGE_BREAKOUT_CODE,
+                    indicator_exc,
+                )
             stats: Dict[str, object] = {}
             try:
                 stats = DailyTradeDAO(load_settings().postgres).stats()
@@ -5467,6 +5491,22 @@ async def _run_big_deal_fund_flow_job(request: SyncBigDealFundFlowRequest) -> No
         monitor.update("big_deal_fund_flow", message="Collecting big deal fund flow data")
         try:
             result = sync_big_deal_fund_flow(progress_callback=progress_callback)
+            indicator_rows: Optional[int] = None
+            try:
+                indicator_result = sync_indicator_screening(indicator_code=BIG_DEAL_INDICATOR_CODE)
+                if isinstance(indicator_result, dict):
+                    indicator_rows = indicator_result.get("rows")
+                logger.info(
+                    "Indicator %s snapshot refreshed after big_deal_fund_flow sync (rows=%s)",
+                    BIG_DEAL_INDICATOR_CODE,
+                    indicator_rows,
+                )
+            except Exception as indicator_exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "Failed to refresh %s indicator snapshot: %s",
+                    BIG_DEAL_INDICATOR_CODE,
+                    indicator_exc,
+                )
             stats = BigDealFundFlowDAO(load_settings().postgres).stats()
             elapsed = time.perf_counter() - started
             total_rows = stats.get("count") if isinstance(stats, dict) else None
@@ -5956,6 +5996,14 @@ async def start_performance_forecast_job(payload: SyncPerformanceForecastRequest
     monitor.start("performance_forecast", message="Syncing performance forecast data")
     monitor.update("performance_forecast", progress=0.0)
     asyncio.create_task(_run_performance_forecast_job(payload))
+
+
+async def start_profit_forecast_job(payload: SyncProfitForecastRequest) -> None:
+    if _job_running("profit_forecast"):
+        raise HTTPException(status_code=409, detail="Profit forecast sync already running")
+    monitor.start("profit_forecast", message="Syncing profit forecast data")
+    monitor.update("profit_forecast", progress=0.0)
+    asyncio.create_task(_run_profit_forecast_job(payload))
 
 
 async def start_market_insight_job(payload: SyncMarketInsightRequest) -> None:
@@ -9122,6 +9170,12 @@ def list_indicator_screenings_endpoint(
     net_income_qoq_min: Optional[float] = Query(None, alias="netIncomeQoqMin", description="Minimum net income QoQ."),
     pe_min: Optional[float] = Query(None, alias="peMin", description="Minimum PE ratio."),
     pe_max: Optional[float] = Query(None, alias="peMax", description="Maximum PE ratio."),
+    turnover_rate_min: Optional[float] = Query(None, alias="turnoverRateMin", description="Minimum daily turnover rate."),
+    turnover_rate_max: Optional[float] = Query(None, alias="turnoverRateMax", description="Maximum daily turnover rate."),
+    daily_change_min: Optional[float] = Query(None, alias="dailyChangeMin", description="Minimum daily price change."),
+    daily_change_max: Optional[float] = Query(None, alias="dailyChangeMax", description="Maximum daily price change."),
+    pct_change_1w_max: Optional[float] = Query(None, alias="pctChange1WMax", description="Maximum 1-week change."),
+    pct_change_1m_max: Optional[float] = Query(None, alias="pctChange1MMax", description="Maximum 1-month change."),
     has_big_deal_inflow: Optional[bool] = Query(
         None,
         alias="hasBigDealInflow",
@@ -9138,7 +9192,17 @@ def list_indicator_screenings_endpoint(
         net_income_qoq_min=net_income_qoq_min,
         pe_min=pe_min,
         pe_max=pe_max,
+        turnover_rate_min=turnover_rate_min,
+        turnover_rate_max=turnover_rate_max,
+        daily_change_min=daily_change_min,
+        daily_change_max=daily_change_max,
+        pct_change_1w_max=pct_change_1w_max,
+        pct_change_1m_max=pct_change_1m_max,
         has_big_deal_inflow=has_big_deal_inflow,
+    )
+    indicator_code_value = result.get("indicatorCode") or "all"
+    indicator_codes_value = result.get("indicatorCodes") or (
+        [] if indicator_code_value == "all" else [indicator_code_value]
     )
     items = [
         IndicatorScreeningRecord(
@@ -9162,6 +9226,10 @@ def list_indicator_screenings_endpoint(
             turnoverAmountText=entry.get("turnoverAmountText"),
             highPrice=entry.get("highPrice"),
             lowPrice=entry.get("lowPrice"),
+            bigDealNetAmount=entry.get("bigDealNetAmount"),
+            bigDealBuyAmount=entry.get("bigDealBuyAmount"),
+            bigDealSellAmount=entry.get("bigDealSellAmount"),
+            bigDealTradeCount=entry.get("bigDealTradeCount"),
             netIncomeYoyLatest=entry.get("netIncomeYoyLatest"),
             netIncomeQoqLatest=entry.get("netIncomeQoqLatest"),
             peRatio=entry.get("peRatio"),
@@ -9174,8 +9242,8 @@ def list_indicator_screenings_endpoint(
         for entry in result.get("items", [])
     ]
     return IndicatorScreeningListResponse(
-        indicatorCode=result.get("indicatorCode", "continuous_volume"),
-        indicatorCodes=result.get("indicatorCodes") or [result.get("indicatorCode", "continuous_volume")],
+        indicatorCode=indicator_code_value,
+        indicatorCodes=indicator_codes_value,
         indicatorName=result.get("indicatorName"),
         capturedAt=result.get("capturedAt"),
         total=int(result.get("total", 0)),

@@ -97,6 +97,12 @@ let filters = {
   netIncomeQoqRatio: null,
   peMin: null,
   peMax: null,
+  turnoverMin: null,
+  turnoverMax: null,
+  dailyChangeMin: null,
+  dailyChangeMax: null,
+  pctChange1WMax: null,
+  pctChange1MMax: null,
 };
 let filterDebounceTimer = null;
 const FILTER_DEBOUNCE_MS = 500;
@@ -128,6 +134,12 @@ const elements = {
   filterNetIncomeQoq: document.getElementById("filter-netincome-qoq"),
   filterPeMin: document.getElementById("filter-pe-min"),
   filterPeMax: document.getElementById("filter-pe-max"),
+  filterTurnoverMin: document.getElementById("filter-turnover-min"),
+  filterTurnoverMax: document.getElementById("filter-turnover-max"),
+  filterDailyChangeMin: document.getElementById("filter-daily-change-min"),
+  filterDailyChangeMax: document.getElementById("filter-daily-change-max"),
+  filterWeekChangeMax: document.getElementById("filter-week-change-max"),
+  filterMonthChangeMax: document.getElementById("filter-month-change-max"),
   snapshotButton: document.getElementById("indicator-snapshot-btn"),
 };
 
@@ -540,10 +552,6 @@ function getTrendClass(value) {
 
 async function fetchIndicatorData(page = currentPage) {
   const dict = getDict();
-  if (!hasActiveIndicatorSelection()) {
-    resetIndicatorResults(dict.noIndicatorSelected || "");
-    return;
-  }
   try {
     const limit = PAGE_SIZE;
     const offset = (page - 1) * PAGE_SIZE;
@@ -562,6 +570,24 @@ async function fetchIndicatorData(page = currentPage) {
     }
     if (filters.peMax !== null) {
       params.set("peMax", String(filters.peMax));
+    }
+    if (filters.turnoverMin !== null) {
+      params.set("turnoverRateMin", String(filters.turnoverMin));
+    }
+    if (filters.turnoverMax !== null) {
+      params.set("turnoverRateMax", String(filters.turnoverMax));
+    }
+    if (filters.dailyChangeMin !== null) {
+      params.set("dailyChangeMin", String(filters.dailyChangeMin));
+    }
+    if (filters.dailyChangeMax !== null) {
+      params.set("dailyChangeMax", String(filters.dailyChangeMax));
+    }
+    if (filters.pctChange1WMax !== null) {
+      params.set("pctChange1WMax", String(filters.pctChange1WMax));
+    }
+    if (filters.pctChange1MMax !== null) {
+      params.set("pctChange1MMax", String(filters.pctChange1MMax));
     }
     const response = await fetch(`${API_BASE}/indicator-screenings?${params.toString()}`);
     if (!response.ok) {
@@ -741,6 +767,24 @@ function bindEvents() {
   if (elements.filterPeMax) {
     elements.filterPeMax.addEventListener("input", updateFilterState);
   }
+  if (elements.filterTurnoverMin) {
+    elements.filterTurnoverMin.addEventListener("input", updateFilterState);
+  }
+  if (elements.filterTurnoverMax) {
+    elements.filterTurnoverMax.addEventListener("input", updateFilterState);
+  }
+  if (elements.filterDailyChangeMin) {
+    elements.filterDailyChangeMin.addEventListener("input", updateFilterState);
+  }
+  if (elements.filterDailyChangeMax) {
+    elements.filterDailyChangeMax.addEventListener("input", updateFilterState);
+  }
+  if (elements.filterWeekChangeMax) {
+    elements.filterWeekChangeMax.addEventListener("input", updateFilterState);
+  }
+  if (elements.filterMonthChangeMax) {
+    elements.filterMonthChangeMax.addEventListener("input", updateFilterState);
+  }
 }
 
 async function handleBigdealRefresh() {
@@ -866,30 +910,14 @@ function resetIndicatorResults(message) {
   }
 }
 
-function hasActiveIndicatorSelection() {
-  return selectedIndicators.length > 0;
-}
-
 function toggleIndicator(code) {
   if (!code) {
     return;
   }
-  const dict = getDict();
-  let shouldFetch = true;
   if (selectedIndicators.includes(code)) {
     selectedIndicators = selectedIndicators.filter((item) => item !== code);
-    if (selectedIndicators.length === 0) {
-      shouldFetch = hasActiveIndicatorSelection();
-      if (!shouldFetch) {
-        resetIndicatorResults(dict.noIndicatorSelected || "");
-      }
-    }
   } else {
     selectedIndicators = [...selectedIndicators, code];
-  }
-  if (!shouldFetch) {
-    renderIndicatorTags();
-    return;
   }
   renderIndicatorTags();
   currentPage = 1;
@@ -924,6 +952,28 @@ function updateFilterState() {
   filters.netIncomeQoqRatio = qoqValue !== null && Number.isFinite(qoqValue) ? qoqValue / 100 : null;
   filters.peMin = elements.filterPeMin?.value ? Number(elements.filterPeMin.value) : null;
   filters.peMax = elements.filterPeMax?.value ? Number(elements.filterPeMax.value) : null;
+  const turnoverMinValue = elements.filterTurnoverMin?.value ? Number(elements.filterTurnoverMin.value) : null;
+  filters.turnoverMin = turnoverMinValue !== null && Number.isFinite(turnoverMinValue) ? turnoverMinValue : null;
+  const turnoverMaxValue = elements.filterTurnoverMax?.value ? Number(elements.filterTurnoverMax.value) : null;
+  filters.turnoverMax = turnoverMaxValue !== null && Number.isFinite(turnoverMaxValue) ? turnoverMaxValue : null;
+  const dailyChangeMinValue = elements.filterDailyChangeMin?.value
+    ? Number(elements.filterDailyChangeMin.value)
+    : null;
+  filters.dailyChangeMin =
+    dailyChangeMinValue !== null && Number.isFinite(dailyChangeMinValue) ? dailyChangeMinValue : null;
+  const dailyChangeMaxValue = elements.filterDailyChangeMax?.value
+    ? Number(elements.filterDailyChangeMax.value)
+    : null;
+  filters.dailyChangeMax =
+    dailyChangeMaxValue !== null && Number.isFinite(dailyChangeMaxValue) ? dailyChangeMaxValue : null;
+  const weekChangeMaxValue = elements.filterWeekChangeMax?.value ? Number(elements.filterWeekChangeMax.value) : null;
+  filters.pctChange1WMax =
+    weekChangeMaxValue !== null && Number.isFinite(weekChangeMaxValue) ? weekChangeMaxValue : null;
+  const monthChangeMaxValue = elements.filterMonthChangeMax?.value
+    ? Number(elements.filterMonthChangeMax.value)
+    : null;
+  filters.pctChange1MMax =
+    monthChangeMaxValue !== null && Number.isFinite(monthChangeMaxValue) ? monthChangeMaxValue : null;
   scheduleFilterRefresh();
 }
 
@@ -933,10 +983,6 @@ function scheduleFilterRefresh() {
   }
   filterDebounceTimer = setTimeout(() => {
     currentPage = 1;
-    if (!hasActiveIndicatorSelection()) {
-      resetIndicatorResults(getDict().noIndicatorSelected || "");
-      return;
-    }
     fetchIndicatorData(1);
   }, FILTER_DEBOUNCE_MS);
 }
@@ -953,6 +999,42 @@ function getIndicatorOption(code) {
 }
 
 function getColumnsForSelection() {
+  const option = getIndicatorOption(primaryIndicator());
+  const indicatorColumns = (option?.columns || []).map((column, index) => ({
+    id: `${option?.code || "indicator"}-${column.key}-${index}`,
+    labelKey: column.labelKey,
+    renderer: (record, detail) => formatColumnValue(detail?.[column.key], column.type),
+  }));
+  const indicatorIncludesPriceChange = indicatorColumns.some((col) => col.labelKey === "colChange");
+  const includeBigDealColumns =
+    selectedIndicators.includes(BIG_DEAL_INFLOW_CODE) && option?.code !== BIG_DEAL_INFLOW_CODE;
+  const extraBigDealColumns = includeBigDealColumns
+    ? [
+        {
+          id: "bigDealNetAmount",
+          labelKey: "colBigDealNet",
+          renderer: (record) => formatColumnValue(record.bigDealNetAmount, "amount"),
+        },
+        {
+          id: "bigDealBuyAmount",
+          labelKey: "colBigDealBuy",
+          renderer: (record) => formatColumnValue(record.bigDealBuyAmount, "amount"),
+        },
+        {
+          id: "bigDealSellAmount",
+          labelKey: "colBigDealSell",
+          renderer: (record) => formatColumnValue(record.bigDealSellAmount, "amount"),
+        },
+        {
+          id: "bigDealTradeCount",
+          labelKey: "colBigDealTrades",
+          renderer: (record) => {
+            const value = Number(record.bigDealTradeCount);
+            return Number.isFinite(value) ? value : "--";
+          },
+        },
+      ]
+    : [];
   const baseColumns = [
     {
       id: "rank",
@@ -975,18 +1057,14 @@ function getColumnsForSelection() {
       renderer: (record) =>
         formatNumber(record.lastPrice, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     },
-    {
+  ];
+  if (!indicatorIncludesPriceChange) {
+    baseColumns.push({
       id: "pctChange",
       labelKey: "colChange",
       renderer: (record) => formatPercent(record.priceChangePercent),
-    },
-  ];
-  const option = getIndicatorOption(primaryIndicator());
-  const indicatorColumns = (option?.columns || []).map((column, index) => ({
-    id: `${option?.code || "indicator"}-${column.key}-${index}`,
-    labelKey: column.labelKey,
-    renderer: (record, detail) => formatColumnValue(detail?.[column.key], column.type),
-  }));
+    });
+  }
   const tailColumns = [
     {
       id: "industry",
@@ -999,7 +1077,7 @@ function getColumnsForSelection() {
       renderer: (record) => renderBigDealCell(record),
     },
   ];
-  return [...baseColumns, ...indicatorColumns, ...tailColumns];
+  return [...baseColumns, ...indicatorColumns, ...extraBigDealColumns, ...tailColumns];
 }
 
 function formatColumnValue(value, type) {

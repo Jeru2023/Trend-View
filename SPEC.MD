@@ -25,6 +25,25 @@ Frontend assets (HTML/CSS/JS) must be saved as UTF-8 without BOM to avoid render
 ## Documentation Standards
 Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, even if requirements are delivered in another language.
 
+## Indicator Screening Real-Time Refactor Plan (2025-11-11)
+1. **Stage 1 – Persist local indicators in the shared snapshot (Complete)**  
+   - After daily trade and big-deal fund-flow syncs finish, immediately call `sync_indicator_screening` for 爆量启动 and 大单流入 so both metrics land in `indicator_screening`.  
+   - No schema delta; goal is to keep third-party and self-computed indicators in one table for downstream joins.
+2. **Stage 2 – Switch screening queries to database joins (In Progress)**  
+   - Use `daily_trade` (latest trading date) as the base dataset to guarantee the full A-share universe, LEFT JOIN to `indicator_screening` for the indicators requested in filters, and include `daily_trade_metric`/`fundamental` tables as needed for existing knobs.  
+   - Implement pagination in SQL (limit/offset) so the endpoint can scan >500 rows. Preserve current response schema but ensure deduped stock codes.  
+   - Add targeted DAO tests covering “no indicator filters”, “only second-row filters”, and the two local indicators.
+3. **Stage 3 – Expand indicator persistence coverage**  
+   - Move remaining third-party-only filters (e.g., 连板、爆量资金) into the same `indicator_screening` ingestion so UI filters always read from the DB snapshot.  
+   - Introduce a lightweight metadata table enumerating indicator codes → latest trade date + data provenance to simplify sync orchestration.
+4. **Stage 4 – Real-time enrichments & performance**  
+   - For indicators that rely on intra-day calculations, add incremental writers that update `indicator_screening` in near real time (e.g., via `sync_indicator_screening` partial updates or materialized views).  
+   - Add covering indexes across `indicator_screening (trade_date, indicator_code, stock_code)` and `daily_trade (trade_date, stock_code)` plus composite indexes for frequent filters (turnover, percent change).  
+   - Implement caching / snapshot versioning so the frontend knows when datasets refresh mid-session.
+5. **Stage 5 – Frontend alignment & monitoring**  
+   - Update the indicator screening UI to reflect the new pagination model, show the total universe count, and enforce deduped stock cards.  
+   - Add monitoring hooks/logging around the job chain so deadlocks/long-running indicator syncs are surfaced immediately.
+
 ## Feature Log
 - 2025-10-20 (FEATURE frontend-002): Added control panel with scheduled sync automation, runtime configuration toggles, and manual job triggers.
 - 2025-10-28 (FEATURE frontend-009): Refreshed stock detail experience with hero metrics, localized summaries, ECharts-powered candlestick visualization (last-year scope with volume bars and empty-state fallback), and removal of the trading snapshot card.

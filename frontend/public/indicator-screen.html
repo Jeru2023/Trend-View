@@ -111,6 +111,44 @@
                     <label for="filter-pe-max" data-i18n="indicatorScreen.filterPeMax">PE 最大</label>
                     <input type="number" id="filter-pe-max" placeholder="-" step="0.1" />
                   </div>
+                  <div class="indicator-filter__field indicator-filter__field--suffix">
+                    <label data-i18n="indicatorScreen.filterTurnoverRange">当日换手率范围</label>
+                    <div class="indicator-filter__input-suffix">
+                      <input type="number" id="filter-turnover-min" placeholder="0" step="0.1" />
+                      <span class="input-suffix">%</span>
+                    </div>
+                    <span>~</span>
+                    <div class="indicator-filter__input-suffix">
+                      <input type="number" id="filter-turnover-max" placeholder="100" step="0.1" />
+                      <span class="input-suffix">%</span>
+                    </div>
+                  </div>
+                  <div class="indicator-filter__field indicator-filter__field--suffix">
+                    <label data-i18n="indicatorScreen.filterDailyChangeRange">当日涨跌幅区间</label>
+                    <div class="indicator-filter__input-suffix">
+                      <input type="number" id="filter-daily-change-min" placeholder="-5" step="0.1" />
+                      <span class="input-suffix">%</span>
+                    </div>
+                    <span>~</span>
+                    <div class="indicator-filter__input-suffix">
+                      <input type="number" id="filter-daily-change-max" placeholder="5" step="0.1" />
+                      <span class="input-suffix">%</span>
+                    </div>
+                  </div>
+                  <div class="indicator-filter__field indicator-filter__field--suffix">
+                    <label for="filter-week-change-max" data-i18n="indicatorScreen.filterWeekChangeLt">1周涨跌幅 &lt;</label>
+                    <div class="indicator-filter__input-suffix">
+                      <input type="number" id="filter-week-change-max" placeholder="0" step="0.1" />
+                      <span class="input-suffix">%</span>
+                    </div>
+                  </div>
+                  <div class="indicator-filter__field indicator-filter__field--suffix">
+                    <label for="filter-month-change-max" data-i18n="indicatorScreen.filterMonthChangeLt">1个月涨跌幅 &lt;</label>
+                    <div class="indicator-filter__input-suffix">
+                      <input type="number" id="filter-month-change-max" placeholder="0" step="0.1" />
+                      <span class="input-suffix">%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

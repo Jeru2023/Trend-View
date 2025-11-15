@@ -334,7 +334,7 @@ class BigDealFundFlowDAO(PostgresDAOBase):
         self,
         stock_codes: Sequence[str],
         trade_date: Optional[date] = None,
-    ) -> dict[str, float]:
+    ) -> dict[str, dict[str, float | int]]:
         unique_codes = sorted({(code or "").strip() for code in stock_codes if code})
         if not unique_codes:
             return {}
@@ -348,7 +348,8 @@ class BigDealFundFlowDAO(PostgresDAOBase):
             """
             SELECT stock_code,
                    COALESCE(SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END), 0) AS buy_amount,
-                   COALESCE(SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END), 0) AS sell_amount
+                   COALESCE(SUM(CASE WHEN trade_side LIKE %s THEN trade_amount ELSE 0 END), 0) AS sell_amount,
+                   COUNT(*) AS trade_count
             FROM {schema}.{table}
             WHERE stock_code IN ({codes})
               AND trade_time >= %s
@@ -365,12 +366,12 @@ class BigDealFundFlowDAO(PostgresDAOBase):
         params.extend(unique_codes)
         params.extend([start, end])
 
-        results: dict[str, float] = {}
+        results: dict[str, dict[str, float | int]] = {}
         with self.connect() as conn:
             self.ensure_table(conn)
             with conn.cursor() as cur:
                 cur.execute(query, params)
-                for stock_code, buy_amount, sell_amount in cur.fetchall():
+                for stock_code, buy_amount, sell_amount, trade_count in cur.fetchall():
                     try:
                         buy_numeric = float(buy_amount or 0.0)
                     except (TypeError, ValueError):
@@ -379,7 +380,17 @@ class BigDealFundFlowDAO(PostgresDAOBase):
                         sell_numeric = float(sell_amount or 0.0)
                     except (TypeError, ValueError):
                         sell_numeric = 0.0
-                    results[str(stock_code).strip()] = buy_numeric - sell_numeric
+                    try:
+                        trade_count_value = int(trade_count or 0)
+                    except (TypeError, ValueError):
+                        trade_count_value = 0
+                    stock_code_key = str(stock_code).strip()
+                    results[stock_code_key] = {
+                        "netAmount": buy_numeric - sell_numeric,
+                        "buyAmount": buy_numeric,
+                        "sellAmount": sell_numeric,
+                        "tradeCount": trade_count_value,
+                    }
         return results
 
 

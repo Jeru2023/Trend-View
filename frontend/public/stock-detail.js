@@ -66,6 +66,8 @@ const detailState = {
   },
 };
 
+const DEFAULT_CANDLE_WINDOW_DAYS = 90;
+
 const newsCache = new Map();
 const volumeCache = new Map();
 const volumeHistoryCache = new Map();
@@ -521,9 +523,11 @@ function updateMainCompositionCard(composition) {
   }
 
   const dict = translations[currentLang];
-  const latestDate = composition.latestReportDate ? formatDate(composition.latestReportDate) : "";
+  const rawLatestDate = composition.latestReportDate;
+  const latestDate = rawLatestDate ? formatDate(rawLatestDate) : "";
+  const hasReportDate = Boolean(rawLatestDate && latestDate && latestDate !== "--");
   if (dateElement) {
-    if (latestDate) {
+    if (hasReportDate) {
       const template = dict.mainCompositionReportDate || "Latest report: {date}";
       dateElement.textContent = template.replace("{date}", latestDate);
       dateElement.classList.remove("hidden");
@@ -2061,7 +2065,7 @@ function formatDate(value) {
   }
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) {
-    return value;
+    return "--";
   }
   return date.toISOString().slice(0, 10);
 }
@@ -4017,6 +4021,41 @@ function limitCandlestickRange(data) {
   return data.slice(-252);
 }
 
+function calculateCandlestickZoomStart(data, windowDays = DEFAULT_CANDLE_WINDOW_DAYS) {
+  if (!Array.isArray(data) || data.length <= 1) {
+    return 0;
+  }
+  let latestDate = null;
+  for (let i = data.length - 1; i >= 0; i -= 1) {
+    const parsed = parseTradeDate(data[i]?.time);
+    if (parsed) {
+      latestDate = parsed;
+      break;
+    }
+  }
+  if (!latestDate) {
+    const fallbackIndex = Math.max(0, data.length - windowDays);
+    const denom = Math.max(data.length - 1, 1);
+    return Math.min(100, Math.max(0, (fallbackIndex / denom) * 100));
+  }
+  const cutoff = new Date(latestDate);
+  cutoff.setUTCDate(cutoff.getUTCDate() - windowDays);
+  let startIndex = null;
+  for (let i = 0; i < data.length; i += 1) {
+    const parsed = parseTradeDate(data[i]?.time);
+    if (parsed && parsed >= cutoff) {
+      startIndex = i;
+      break;
+    }
+  }
+  if (startIndex === null) {
+    startIndex = Math.max(0, data.length - windowDays);
+  }
+  const denom = Math.max(data.length - 1, 1);
+  const startPercent = (startIndex / denom) * 100;
+  return Math.min(100, Math.max(0, startPercent));
+}
+
 function ensureCandlestickChart() {
   if (!window.echarts || !elements.candlestickContainer) {
     return null;
@@ -4113,6 +4152,7 @@ function renderCandlestickChart() {
       itemStyle: { color: rising ? upColor : downColor },
     };
   });
+  const zoomStartPercent = calculateCandlestickZoomStart(candlestickData);
 
   chart.setOption(
     {
@@ -4199,8 +4239,8 @@ function renderCandlestickChart() {
         },
       },
       grid: [
-        { left: 40, right: 16, top: 16, height: "56%" },
-        { left: 40, right: 16, top: "76%", height: "18%" },
+        { left: 40, right: 16, top: 16, height: "48%" },
+        { left: 40, right: 16, top: "68%", height: "28%" },
       ],
       xAxis: [
         {
@@ -4245,13 +4285,13 @@ function renderCandlestickChart() {
         },
       ],
       dataZoom: [
-        { type: "inside", xAxisIndex: [0, 1], start: 60, end: 100, minSpan: 5 },
         {
           type: "slider",
-          start: 60,
+          start: zoomStartPercent,
           end: 100,
           height: 24,
           bottom: 12,
+          minSpan: 5,
           borderColor: "rgba(148, 163, 184, 0.4)",
           handleSize: 16,
           xAxisIndex: [0, 1],

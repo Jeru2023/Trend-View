@@ -159,12 +159,16 @@ class DailyTradeDAO(PostgresDAOBase):
 
         return affected
 
-    def fetch_latest_metrics(self, codes: Sequence[str]) -> Dict[str, dict]:
+    def fetch_latest_metrics(self, codes: Sequence[str], *, include_intraday: bool = False) -> Dict[str, dict]:
         """
         Return the latest trade metrics for the provided security codes.
         """
         if not codes:
             return {}
+
+        where_clause = sql.SQL("WHERE ts_code = ANY(%s)")
+        if not include_intraday:
+            where_clause += sql.SQL(" AND is_intraday = FALSE")
 
         query = sql.SQL(
             """
@@ -175,12 +179,13 @@ class DailyTradeDAO(PostgresDAOBase):
                    pct_chg,
                    vol
             FROM {schema}.{table}
-            WHERE ts_code = ANY(%s) AND is_intraday = FALSE
-            ORDER BY ts_code, trade_date DESC
+            {where_clause}
+            ORDER BY ts_code, trade_date DESC, is_intraday DESC, updated_at DESC
             """
         ).format(
             schema=sql.Identifier(self.config.schema),
             table=sql.Identifier(self._table_name),
+            where_clause=where_clause,
         )
 
         with self.connect() as conn:
@@ -198,6 +203,75 @@ class DailyTradeDAO(PostgresDAOBase):
                 "volume": float(vol) if vol is not None else None,
             }
         return metrics
+
+    def fetch_pct_change_windows(
+        self,
+        codes: Sequence[str],
+        *,
+        windows: Sequence[int] = (5, 20),
+    ) -> Dict[str, Dict[str, float | None]]:
+        if not codes or not windows:
+            return {}
+        max_rank = max(window + 1 for window in windows)
+        window_columns = []
+        for window in windows:
+            window_columns.append(
+                sql.SQL("MAX(CASE WHEN rn = %s THEN close END) AS {alias}").format(
+                    alias=sql.Identifier(f"close_w{window}")
+                )
+            )
+        columns_sql = sql.SQL(", ").join(window_columns)
+        query = sql.SQL(
+            """
+            WITH ranked AS (
+                SELECT ts_code,
+                       trade_date,
+                       close,
+                       ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
+                FROM {schema}.{table}
+                WHERE ts_code = ANY(%s) AND is_intraday = FALSE
+            )
+            SELECT ts_code,
+                   MAX(CASE WHEN rn = 1 THEN close END) AS close_latest,
+                   {columns}
+            FROM ranked
+            WHERE rn <= %s
+            GROUP BY ts_code
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+            columns=columns_sql,
+        )
+
+        params: list[object] = [list(codes)]
+        params.extend(window + 1 for window in windows)
+        params.append(max_rank)
+
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, tuple(params))
+                rows = cur.fetchall()
+
+        pct_changes: Dict[str, Dict[str, float | None]] = {}
+        for row in rows:
+            ts_code = row[0]
+            latest_close = row[1]
+            if latest_close is None:
+                continue
+            latest_close = float(latest_close)
+            change_map: Dict[str, float | None] = {}
+            for idx, window in enumerate(windows, start=2):
+                historical_close = row[idx]
+                if historical_close in (None, 0):
+                    change_map[f"pct_change_{window}"] = None
+                else:
+                    historical_close = float(historical_close)
+                    pct_change = ((latest_close - historical_close) / historical_close) * 100
+                    change_map[f"pct_change_{window}"] = pct_change
+            pct_changes[ts_code] = change_map
+        return pct_changes
 
     def fetch_close_prices(
         self,

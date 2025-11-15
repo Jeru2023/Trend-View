@@ -128,7 +128,8 @@ class DailyTradeMetricsDAO(PostgresDAOBase):
 
         query = sql.SQL(
             """
-            SELECT ts_code,
+            SELECT DISTINCT ON (ts_code)
+                   ts_code,
                    pct_change_1y,
                    pct_change_6m,
                    pct_change_3m,
@@ -141,6 +142,7 @@ class DailyTradeMetricsDAO(PostgresDAOBase):
                    volume_spike
             FROM {schema}.{table}
             WHERE ts_code = ANY(%s)
+            ORDER BY ts_code, trade_date DESC
             """
         ).format(
             schema=sql.Identifier(self.config.schema),
