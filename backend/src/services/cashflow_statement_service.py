@@ -15,7 +15,7 @@ from ..dao import CashflowStatementDAO, StockBasicDAO
 
 logger = logging.getLogger(__name__)
 
-INITIAL_PERIOD_COUNT = 8
+INITIAL_PERIOD_COUNT = 32
 RATE_LIMIT_PER_MINUTE = 180
 MAX_FETCH_RETRIES = 3
 

@@ -59,6 +59,7 @@
         "stock_valuation_analysis_table": "stock_valuation_analysis",
         "cashflow_statement_table": "cashflow_statements",
         "balance_sheet_table": "balance_sheet_statements",
+        "research_report_table": "research_reports",
         "investment_journal_table": "investment_journal",
         "indicator_screening_table": "indicator_screening",
         "peripheral_insight_table": "peripheral_insights",

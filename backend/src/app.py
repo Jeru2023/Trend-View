@@ -81,6 +81,7 @@ from .dao import (
     StockMainCompositionDAO,
     CashflowStatementDAO,
     BalanceSheetDAO,
+    ResearchReportDAO,
 )
 from .services import (
     get_stock_detail,
@@ -95,6 +96,9 @@ from .services import (
     list_profit_forecast,
     list_cashflow_statements,
     list_balance_sheets,
+    list_research_reports,
+    analyze_research_reports,
+    list_research_report_distillation,
     list_global_indices,
     list_global_index_history,
     list_realtime_indices,
@@ -151,6 +155,7 @@ from .services import (
     sync_income_statements,
     sync_cashflow_statements,
     sync_balance_sheets,
+    sync_research_reports,
     sync_daily_trade,
     sync_daily_trade_metrics,
     sync_fundamental_metrics,
@@ -946,9 +951,9 @@ class SyncCashflowRequest(BaseModel):
         None, description="Optional list of ts_code identifiers to refresh."
     )
     limit: int = Field(
-        8,
+        32,
         ge=1,
-        le=16,
+        le=64,
         description="Number of recent cash flow entries to fetch per security.",
     )
 
@@ -971,9 +976,9 @@ class SyncBalanceSheetRequest(BaseModel):
         None, description="Optional list of ts_code identifiers to refresh."
     )
     limit: int = Field(
-        8,
+        32,
         ge=1,
-        le=16,
+        le=64,
         description="Number of recent balance sheet entries to fetch per security.",
     )
 
@@ -989,6 +994,66 @@ class SyncBalanceSheetResponse(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+
+
+class SyncResearchReportRequest(BaseModel):
+    ts_code: str = Field(..., description="Stock ts_code, e.g. SZ300926 or 300926")
+    symbol: Optional[str] = Field(None, description="Optional query symbol for Sina (sz/sh prefix)")
+    lookback_years: int = Field(1, ge=0, le=5, description="Number of years to include when syncing")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ResearchReportRecord(BaseModel):
+    id: int
+    ts_code: str
+    report_id: str
+    title: str
+    report_type: Optional[str] = None
+    publish_date: Optional[date] = None
+    org: Optional[str] = None
+    analysts: Optional[str] = None
+    detail_url: Optional[str] = Field(None, alias="detailUrl")
+    created_at: Optional[datetime] = Field(None, alias="createdAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ResearchReportListResponse(BaseModel):
+    total: int
+    items: List[ResearchReportRecord]
+
+
+class ResearchReportAnalysisRequest(BaseModel):
+    ts_code: str
+    months: int = Field(3, ge=1, le=3, description="Number of months to include (max 3).")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ResearchReportDistillationRecord(BaseModel):
+    report_id: str = Field(..., alias="reportId")
+    title: str
+    publish_date: Optional[date] = Field(None, alias="publishDate")
+    org: Optional[str] = None
+    report_type: Optional[str] = Field(None, alias="reportType")
+    rating: Optional[str] = None
+    target_price: Optional[str] = Field(None, alias="targetPrice")
+    detail_url: Optional[str] = Field(None, alias="detailUrl")
+    distillation: Optional[dict] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ResearchReportAnalysisResponse(BaseModel):
+    total: int
+    processed: int
+    items: List[ResearchReportDistillationRecord]
+    summary: Optional[dict] = None
 
 
 class SyncFinanceBreakfastRequest(BaseModel):
@@ -8012,6 +8077,59 @@ def list_balance_sheet_entries(
     return BalanceSheetListResponse(total=int(result.get("total", 0)), items=items)
 
 
+@app.get("/stocks/{ts_code}/research-reports", response_model=ResearchReportListResponse)
+def get_research_reports(
+    ts_code: str = Path(..., description="Stock ts_code"),
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> ResearchReportListResponse:
+    try:
+        result = list_research_reports(ts_code=ts_code, limit=limit, offset=offset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    items = [
+        ResearchReportRecord(
+            id=entry.get("id"),
+            ts_code=entry.get("ts_code"),
+            report_id=entry.get("report_id"),
+            title=entry.get("title"),
+            report_type=entry.get("report_type"),
+            publish_date=entry.get("publish_date"),
+            org=entry.get("org"),
+            analysts=entry.get("analysts"),
+            detailUrl=entry.get("detail_url"),
+            createdAt=entry.get("created_at"),
+        )
+        for entry in result.get("items", [])
+    ]
+    return ResearchReportListResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.post("/stocks/research-reports/analyze", response_model=ResearchReportAnalysisResponse)
+def run_research_report_analysis(
+    payload: ResearchReportAnalysisRequest = Body(...),
+) -> ResearchReportAnalysisResponse:
+    try:
+        result = analyze_research_reports(ts_code=payload.ts_code, months=payload.months)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return ResearchReportAnalysisResponse(**result)
+
+
+@app.get("/stocks/{ts_code}/research-reports/distillation", response_model=ResearchReportAnalysisResponse)
+def get_research_report_distillation(
+    ts_code: str = Path(..., description="Stock ts_code"),
+    months: int = Query(3, ge=1, le=3),
+) -> ResearchReportAnalysisResponse:
+    try:
+        result = list_research_report_distillation(ts_code=ts_code, months=months)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ResearchReportAnalysisResponse(**result)
+
+
 @app.get("/profit-forecast", response_model=ProfitForecastListResponse)
 def list_profit_forecast_entries(
     limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
@@ -11005,6 +11123,22 @@ def trigger_balance_sheet_sync(payload: SyncBalanceSheetRequest) -> SyncBalanceS
         code_count=int(result.get("codeCount", result.get("code_count", 0))),
         elapsed_seconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
     )
+
+
+@app.post("/stocks/research-reports/sync")
+async def trigger_research_report_sync(payload: SyncResearchReportRequest) -> dict[str, object]:
+    try:
+        result = sync_research_reports(
+            ts_code=payload.ts_code,
+            symbol=payload.symbol,
+            lookback_years=payload.lookback_years,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "rows": int(result.get("rows", 0)),
+        "reports": result.get("reports", []),
+    }
 
 
 @app.post("/sync/finance-breakfast", response_model=SyncFinanceBreakfastResponse)

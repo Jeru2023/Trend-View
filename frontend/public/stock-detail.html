@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="pageTitle">Trend View - Stock Detail</title>
-    <link rel="stylesheet" href="styles.css?v=20261113" />
+    <link rel="stylesheet" href="styles.css?v=20261116" />
     <script>
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
@@ -151,6 +151,9 @@
           </button>
           <button class="detail-tabs__btn" type="button" data-tab="valuation">
             <span data-i18n="tabValuation">Valuation</span>
+          </button>
+          <button class="detail-tabs__btn" type="button" data-tab="research">
+            <span data-i18n="tabResearch">Research</span>
           </button>
           <button class="detail-tabs__btn" type="button" data-tab="notes">
             <span data-i18n="tabNotes">Notes</span>
@@ -392,6 +395,76 @@
             </article>
           </section>
 
+          <section class="detail-tab-panel" data-tab-panel="research">
+            <article class="detail-card detail-card--wide" id="research-report-card">
+              <header class="detail-card__header detail-card__header--row">
+                <h2 data-i18n="tabResearch">研报分析</h2>
+                <div class="detail-card__actions">
+                  <button class="secondary-btn" type="button" id="research-report-export" data-i18n="researchExportImage">
+                    Export Image
+                  </button>
+                  <button class="primary-btn" type="button" id="research-report-analyze" data-i18n="researchAnalyze">
+                    Run Reasoning
+                  </button>
+                  <button class="secondary-btn" type="button" id="research-report-sync" data-i18n="researchSync">
+                    Update
+                  </button>
+                </div>
+              </header>
+              <div class="research-analysis" id="research-analysis-section">
+                <div class="research-banner" id="research-banner-header">
+                  <div>
+                    <p class="research-banner__title" id="research-banner-title">--</p>
+                    <p class="research-banner__date" id="research-banner-date">--</p>
+                  </div>
+                </div>
+                <div class="research-analysis__summary hidden" id="research-analysis-summary-block">
+                  <pre class="research-analysis__summary-text" id="research-analysis-summary"></pre>
+                </div>
+                <div class="research-analysis__header">
+                  <h3 data-i18n="researchAnalysisTitle">Research Distillation</h3>
+                  <p class="research-analysis__status hidden" id="research-analysis-status"></p>
+                </div>
+                <p class="detail-error hidden" id="research-analysis-error"></p>
+                <div class="table-wrapper hidden" id="research-analysis-highlights-wrapper">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th data-i18n="researchTitle">Title</th>
+                        <th data-i18n="researchDate">Published</th>
+                        <th data-i18n="researchRating">Rating</th>
+                        <th data-i18n="researchTargetPrice">Target Price</th>
+                        <th data-i18n="researchReportType">Report Type</th>
+                        <th data-i18n="researchOrg">Broker</th>
+                        <th data-i18n="researchViewSummary">Summary</th>
+                      </tr>
+                    </thead>
+                    <tbody id="research-analysis-highlights"></tbody>
+                  </table>
+                </div>
+                <p class="detail-empty" id="research-analysis-empty" data-i18n="researchAnalysisEmpty">
+                  Click Run Reasoning to summarize each recent report.
+                </p>
+              </div>
+              <div class="table-wrapper" id="research-report-table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th data-i18n="researchDate">Published</th>
+                      <th data-i18n="researchOrg">Broker</th>
+                      <th data-i18n="researchAnalyst">Analyst</th>
+                      <th data-i18n="tabResearch">Title</th>
+                    </tr>
+                  </thead>
+                  <tbody id="research-report-list"></tbody>
+                </table>
+              </div>
+              <p class="detail-empty hidden" id="research-report-empty" data-i18n="researchEmpty">
+                No research reports yet. Click Update to sync.
+              </p>
+            </article>
+          </section>
+
           <section class="detail-tab-panel" data-tab-panel="notes">
             <article class="detail-card detail-card--wide" id="stock-notes-card">
               <header class="detail-card__header">
@@ -431,6 +504,20 @@
       </main>
     </div>
 
+    <div class="modal hidden" id="research-summary-modal" role="dialog" aria-modal="true">
+      <div class="modal__overlay" id="research-summary-modal-overlay"></div>
+      <div class="modal__content">
+        <header class="modal__header">
+          <h3 id="research-summary-modal-title" data-i18n="researchSummaryTitle">Consensus Summary</h3>
+          <button class="modal__close" type="button" id="research-summary-modal-close" aria-label="Close">×</button>
+        </header>
+        <div class="modal__body">
+          <pre class="research-analysis__summary-text" id="research-summary-modal-body"></pre>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" crossorigin="anonymous"></script>
     <script src="i18n.js?v=20270421"></script>
     <script src="sidebar.js?v=20270478"></script>
     <script type="module" src="stock-detail.js?v=20261113"></script>

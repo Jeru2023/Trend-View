@@ -79,6 +79,7 @@ from .akshare_api import (
     fetch_global_flash_news,
     fetch_stock_news,
 )
+from .sina_reports import fetch_sina_reports, fetch_sina_report_detail
 from .yahoo_finance_api import fetch_yahoo_daily_history, fetch_yahoo_daily_history_range
 from .eastmoney_news import EastmoneyNewsDetail, fetch_eastmoney_detail
 from .deepseek_api import generate_finance_analysis
@@ -164,4 +165,6 @@ __all__ = [
     "fetch_fed_press_releases",
     "fetch_yahoo_daily_history",
     "fetch_yahoo_daily_history_range",
+    "fetch_sina_reports",
+    "fetch_sina_report_detail",
 ]

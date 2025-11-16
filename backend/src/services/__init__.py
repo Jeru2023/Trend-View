@@ -82,6 +82,12 @@ from .balance_sheet_service import (
     sync_balance_sheets,
     list_balance_sheets,
 )
+from .research_report_service import (
+    sync_research_reports,
+    list_research_reports,
+    analyze_research_reports,
+    list_research_report_distillation,
+)
 from .industry_directory_service import (
     list_industry_directory,
     resolve_industry_label,
@@ -336,4 +342,7 @@ __all__ = [
     "list_cashflow_statements",
     "sync_balance_sheets",
     "list_balance_sheets",
+    "sync_research_reports",
+    "list_research_reports",
+    "analyze_research_reports",
 ]

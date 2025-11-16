@@ -72,6 +72,19 @@ const detailState = {
     running: false,
     error: null,
   },
+  research: {
+    code: null,
+    items: [],
+    loading: false,
+    syncing: false,
+    error: null,
+    analysisLoading: false,
+    analysisRows: [],
+    analysisError: null,
+    analysisRan: false,
+    analysisRequestId: 0,
+    analysisSummary: null,
+  },
 };
 
 const DEFAULT_CANDLE_WINDOW_DAYS = 90;
@@ -312,6 +325,27 @@ const elements = {
   valuationEmpty: document.getElementById("valuation-empty"),
   valuationError: document.getElementById("valuation-error"),
   valuationRunButton: document.getElementById("stock-valuation-run"),
+  researchCard: document.getElementById("research-report-card"),
+  researchList: document.getElementById("research-report-list"),
+  researchEmpty: document.getElementById("research-report-empty"),
+  researchSyncButton: document.getElementById("research-report-sync"),
+  researchAnalyzeButton: document.getElementById("research-report-analyze"),
+  researchAnalysisStatus: document.getElementById("research-analysis-status"),
+  researchAnalysisError: document.getElementById("research-analysis-error"),
+  researchAnalysisHighlightsWrapper: document.getElementById("research-analysis-highlights-wrapper"),
+  researchAnalysisHighlights: document.getElementById("research-analysis-highlights"),
+  researchAnalysisEmpty: document.getElementById("research-analysis-empty"),
+  researchAnalysisSection: document.getElementById("research-analysis-section"),
+  researchListWrapper: document.getElementById("research-report-table-wrapper"),
+  researchSummaryBlock: document.getElementById("research-analysis-summary-block"),
+  researchSummary: document.getElementById("research-analysis-summary"),
+  researchBannerTitle: document.getElementById("research-banner-title"),
+  researchBannerDate: document.getElementById("research-banner-date"),
+  researchExportButton: document.getElementById("research-report-export"),
+  researchSummaryModal: document.getElementById("research-summary-modal"),
+  researchSummaryModalOverlay: document.getElementById("research-summary-modal-overlay"),
+  researchSummaryModalClose: document.getElementById("research-summary-modal-close"),
+  researchSummaryModalBody: document.getElementById("research-summary-modal-body"),
 };
 
 const favoriteState = {
@@ -337,6 +371,9 @@ const stockNotesState = {
   loading: false,
   submitting: false,
 };
+
+let researchExportInProgress = false;
+let researchStatusTimer = null;
 
 function ensureEchartsLoaded() {
   if (window.echarts) {
@@ -393,6 +430,37 @@ function normalizeCode(value) {
   }
 
   return raw;
+}
+
+function toTsCode(value) {
+  const normalized = normalizeCode(value)
+    .replace(/\s+/g, "")
+    .toUpperCase();
+  if (!normalized) {
+    return "";
+  }
+  if (/^(SH|SZ|BJ)\d{6}$/.test(normalized)) {
+    return normalized;
+  }
+  if (normalized.includes(".")) {
+    const [symbolPart, suffixPart] = normalized.split(".", 2);
+    const digits = symbolPart.padStart(6, "0");
+    const suffix = suffixPart ? suffixPart.toUpperCase() : "";
+    return suffix ? `${suffix}${digits}` : digits;
+  }
+  if (/^\d{6}$/.test(normalized)) {
+    const first = normalized[0];
+    let prefix = "";
+    if (normalized.startsWith("43") || normalized.startsWith("83") || normalized.startsWith("87") || first === "4" || first === "8") {
+      prefix = "BJ";
+    } else if (first === "6" || first === "9" || first === "5") {
+      prefix = "SH";
+    } else if (first === "0" || first === "2" || first === "3") {
+      prefix = "SZ";
+    }
+    return prefix ? `${prefix}${normalized}` : normalized;
+  }
+  return normalized;
 }
 
 function deriveCodeParts(value) {
@@ -2151,6 +2219,502 @@ function renderTrendBadge(value) {
   return `<span class="${cls}">${formatPercentFlexible(numeric)}</span>`;
 }
 
+function formatResearchSummary(summary) {
+  if (!summary) {
+    return "";
+  }
+  if (typeof summary === "string") {
+    return summary;
+  }
+
+  const sections = [];
+  const addSection = (title, lines) => {
+    if (lines && lines.length) {
+      sections.push(`【${title}】\n${lines.join("\n")}`);
+    }
+  };
+  const joinList = (items, separator = "，") =>
+    Array.isArray(items) ? items.filter(Boolean).join(separator) : "";
+
+  const consensus = summary.consensus_analysis || {};
+  const rating = consensus.rating_consensus || {};
+  const price = consensus.price_consensus || {};
+  const consensusLines = [];
+  if (rating.most_common_rating) {
+    consensusLines.push(`最常见评级：${rating.most_common_rating}`);
+  }
+  if (rating.rating_distribution) {
+    const dist = Object.entries(rating.rating_distribution)
+      .filter(([, count]) => Number(count) > 0)
+      .map(([label, count]) => `${label}${count}家`)
+      .join(" / ");
+    if (dist) {
+      consensusLines.push(`评级分布：${dist}`);
+    }
+  }
+  if (rating.rating_trend) {
+    consensusLines.push(`评级趋势：${rating.rating_trend}`);
+  }
+  if (price.price_range || price.avg_target_price) {
+    consensusLines.push(
+      `目标价区间：${price.price_range || "--"}，均值：${price.avg_target_price || "--"}`
+    );
+  }
+  if (price.upside_potential) {
+    consensusLines.push(`平均上涨空间：${price.upside_potential}`);
+  }
+  addSection("评级与目标价", consensusLines);
+
+  const productAnalysis = summary.product_market_analysis || {};
+  const productLines = [];
+  const portfolio = productAnalysis.product_portfolio || {};
+  if (portfolio.core_products && portfolio.core_products.length) {
+    productLines.push(`核心产品：${joinList(portfolio.core_products)}`);
+  }
+  if (portfolio.product_lifecycle) {
+    productLines.push(`产品生命周期：${portfolio.product_lifecycle}`);
+  }
+  if (portfolio.product_pipeline) {
+    productLines.push(`产品管线：${portfolio.product_pipeline}`);
+  }
+  const market = productAnalysis.market_analysis || {};
+  if (market.target_markets && market.target_markets.length) {
+    productLines.push(`目标市场：${joinList(market.target_markets)}`);
+  }
+  if (market.market_share) {
+    productLines.push(`市场份额：${market.market_share}`);
+  }
+  if (market.market_growth) {
+    productLines.push(`市场增长：${market.market_growth}`);
+  }
+  if (market.customer_segments) {
+    productLines.push(`客户群体：${market.customer_segments}`);
+  }
+  const compete = productAnalysis.competitive_landscape || {};
+  if (compete.competitive_position) {
+    productLines.push(`竞争地位：${compete.competitive_position}`);
+  }
+  if (compete.key_competitors && compete.key_competitors.length) {
+    productLines.push(`主要竞争对手：${joinList(compete.key_competitors)}`);
+  }
+  if (compete.barriers_to_entry) {
+    productLines.push(`进入壁垒：${compete.barriers_to_entry}`);
+  }
+  addSection("产品与市场", productLines);
+
+  const opportunity = summary.opportunity_analysis || {};
+  const opportunityLines = [];
+  if (Array.isArray(opportunity.growth_opportunities)) {
+    const formatted = opportunity.growth_opportunities
+      .filter(Boolean)
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        return `机会：${item.opportunity || "--"}｜影响：${item.potential_impact || "--"}｜周期：${item.timeframe || "--"}`;
+      })
+      .filter(Boolean);
+    if (formatted.length) {
+      opportunityLines.push(...formatted);
+    }
+  }
+  const expansion = opportunity.market_expansion || {};
+  if (expansion.geographic_opportunities) {
+    opportunityLines.push(`地域扩张：${expansion.geographic_opportunities}`);
+  }
+  if (expansion.product_expansion) {
+    opportunityLines.push(`产品扩张：${expansion.product_expansion}`);
+  }
+  if (expansion.new_applications) {
+    opportunityLines.push(`新应用：${expansion.new_applications}`);
+  }
+  if (Array.isArray(opportunity.industry_tailwinds) && opportunity.industry_tailwinds.length) {
+    opportunityLines.push(`行业顺风：${joinList(opportunity.industry_tailwinds)}`);
+  }
+  if (opportunity.addressable_market) {
+    opportunityLines.push(`可触达市场：${opportunity.addressable_market}`);
+  }
+  addSection("机会分析", opportunityLines);
+
+  const valuation = summary.valuation_analysis || {};
+  const valuationLines = [];
+  const relative = valuation.relative_valuation || {};
+  if (relative.pe_percentile) {
+    valuationLines.push(`PE分位：${relative.pe_percentile}`);
+  }
+  if (relative.pb_percentile) {
+    valuationLines.push(`PB分位：${relative.pb_percentile}`);
+  }
+  if (relative.industry_comparison) {
+    valuationLines.push(`行业对比：${relative.industry_comparison}`);
+  }
+  const absolute = valuation.absolute_valuation || {};
+  if (absolute.dcf_range) {
+    valuationLines.push(`DCF区间：${absolute.dcf_range}`);
+  }
+  if (absolute.nav_valuation) {
+    valuationLines.push(`NAV估值：${absolute.nav_valuation}`);
+  }
+  if (absolute.sum_of_parts) {
+    valuationLines.push(`SOTP估值：${absolute.sum_of_parts}`);
+  }
+  const attractive = valuation.valuation_attractiveness || {};
+  if (attractive.current_level) {
+    valuationLines.push(`估值水平：${attractive.current_level}`);
+  }
+  if (attractive.historical_comparison) {
+    valuationLines.push(`历史对比：${attractive.historical_comparison}`);
+  }
+  if (attractive.margin_of_safety) {
+    valuationLines.push(`安全边际：${attractive.margin_of_safety}`);
+  }
+  addSection("估值分析", valuationLines);
+
+  const fundamental = summary.fundamental_synthesis || {};
+  const growth = fundamental.growth_consensus || {};
+  const advantage = fundamental.competitive_position || {};
+  const fundamentalLines = [];
+  if (growth.revenue_growth_forecast) {
+    fundamentalLines.push(`营收增长共识：${growth.revenue_growth_forecast}`);
+  }
+  if (growth.profit_growth_forecast) {
+    fundamentalLines.push(`利润增长共识：${growth.profit_growth_forecast}`);
+  }
+  if (Array.isArray(growth.growth_drivers)) {
+    const drivers = joinList(growth.growth_drivers);
+    if (drivers) {
+      fundamentalLines.push(`增长驱动：${drivers}`);
+    }
+  }
+  if (Array.isArray(advantage.core_advantages)) {
+    const advantages = joinList(advantage.core_advantages);
+    if (advantages) {
+      fundamentalLines.push(`核心优势：${advantages}`);
+    }
+  }
+  if (advantage.industry_trends) {
+    fundamentalLines.push(`行业趋势：${advantage.industry_trends}`);
+  }
+  if (advantage.market_position) {
+    fundamentalLines.push(`行业地位：${advantage.market_position}`);
+  }
+  addSection("基本面共识", fundamentalLines);
+
+  const risk = summary.risk_assessment || {};
+  const riskLines = [];
+  if (Array.isArray(risk.common_risks)) {
+    const riskList = joinList(risk.common_risks);
+    if (riskList) {
+      riskLines.push(`核心风险：${riskList}`);
+    }
+  }
+  if (risk.risk_severity) {
+    riskLines.push(`风险程度：${risk.risk_severity}`);
+  }
+  if (risk.risk_trend) {
+    riskLines.push(`风险趋势：${risk.risk_trend}`);
+  }
+  addSection("风险评估", riskLines);
+
+  const conclusion = summary.investment_conclusion || {};
+  const conclusionLines = [];
+  if (conclusion.overall_rating) {
+    conclusionLines.push(`综合评级：${conclusion.overall_rating}`);
+  }
+  if (conclusion.investment_thesis) {
+    conclusionLines.push(`投资逻辑：${conclusion.investment_thesis}`);
+  }
+  if (conclusion.time_horizon) {
+    conclusionLines.push(`投资期限：${conclusion.time_horizon}`);
+  }
+  if (conclusion.position_suggestion) {
+    conclusionLines.push(`仓位建议：${conclusion.position_suggestion}`);
+  }
+  if (conclusion.entry_timing) {
+    conclusionLines.push(`入场时机：${conclusion.entry_timing}`);
+  }
+  if (Array.isArray(conclusion.key_catalysts)) {
+    const catalysts = joinList(conclusion.key_catalysts);
+    if (catalysts) {
+      conclusionLines.push(`关键催化剂：${catalysts}`);
+    }
+  }
+  addSection("投资结论", conclusionLines);
+
+  const divergence = summary.divergence_analysis || {};
+  const divergenceLines = [];
+  if (Array.isArray(divergence.major_disagreements)) {
+    const disagreements = joinList(divergence.major_disagreements, "；");
+    if (disagreements) {
+      divergenceLines.push(`主要分歧：${disagreements}`);
+    }
+  }
+  if (divergence.bull_case) {
+    divergenceLines.push(`乐观情景：${divergence.bull_case}`);
+  }
+  if (divergence.base_case) {
+    divergenceLines.push(`基准情景：${divergence.base_case}`);
+  }
+  if (divergence.bear_case) {
+    divergenceLines.push(`悲观情景：${divergence.bear_case}`);
+  }
+  addSection("分歧与情景", divergenceLines);
+
+  const quality = summary.data_quality || {};
+  const qualityLines = [];
+  if (quality.report_coverage) {
+    qualityLines.push(`覆盖范围：${quality.report_coverage}`);
+  }
+  if (quality.analyst_consistency) {
+    qualityLines.push(`分析师一致性：${quality.analyst_consistency}`);
+  }
+  if (quality.confidence_level) {
+    qualityLines.push(`结论置信度：${quality.confidence_level}`);
+  }
+  addSection("数据质量", qualityLines);
+
+  if (sections.length) {
+    return sections.join("\n\n");
+  }
+  try {
+    return JSON.stringify(summary, null, 2);
+  } catch (error) {
+    return String(summary);
+  }
+}
+
+function formatDistillationDetail(distillation) {
+  if (!distillation || typeof distillation !== "object") {
+    try {
+      return typeof distillation === "string" ? distillation : JSON.stringify(distillation || {}, null, 2);
+    } catch (error) {
+      return String(distillation || "");
+    }
+  }
+  const sections = [];
+  const metadata = distillation.report_metadata || {};
+  if (metadata.report_title || metadata.issuer) {
+    const lines = [];
+    if (metadata.report_title) lines.push(`标题：${metadata.report_title}`);
+    if (metadata.issuer) lines.push(`机构：${metadata.issuer}`);
+    if (metadata.report_date) lines.push(`发布日期：${metadata.report_date}`);
+    if (metadata.report_type) lines.push(`类型：${metadata.report_type}`);
+    if (metadata.rating) lines.push(`评级：${metadata.rating}`);
+    if (metadata.target_price) lines.push(`目标价：${metadata.target_price}`);
+    sections.push(`【研报信息】\n${lines.join("\n")}`);
+  }
+  const core = distillation.core_analysis || {};
+  if (core.investment_thesis || core.key_drivers || core.risk_factors || core.catalysts) {
+    const lines = [];
+    if (core.investment_thesis) lines.push(`投资逻辑：${core.investment_thesis}`);
+    if (Array.isArray(core.key_drivers) && core.key_drivers.length) {
+      lines.push(`关键驱动：${core.key_drivers.filter(Boolean).join("，")}`);
+    }
+    if (Array.isArray(core.catalysts) && core.catalysts.length) {
+      lines.push(`催化剂：${core.catalysts.filter(Boolean).join("，")}`);
+    }
+    if (Array.isArray(core.risk_factors) && core.risk_factors.length) {
+      lines.push(`风险提示：${core.risk_factors.filter(Boolean).join("，")}`);
+    }
+    if (lines.length) sections.push(`【核心观点】\n${lines.join("\n")}`);
+  }
+  const fin = distillation.financial_data || {};
+  if (Object.keys(fin).length) {
+    try {
+      sections.push(`【财务预测】\n${JSON.stringify(fin, null, 2)}`);
+    } catch (error) {
+      sections.push(`【财务预测】\n${String(fin)}`);
+    }
+  }
+  const business = distillation.business_analysis || {};
+  if (Object.keys(business).length) {
+    const lines = [];
+    if (business.main_business) lines.push(`主营业务：${business.main_business}`);
+    if (business.competitive_advantage) lines.push(`竞争优势：${business.competitive_advantage}`);
+    if (business.industry_position) lines.push(`行业地位：${business.industry_position}`);
+    if (business.growth_prospects) lines.push(`成长前景：${business.growth_prospects}`);
+    if (lines.length) sections.push(`【业务分析】\n${lines.join("\n")}`);
+  }
+  if (Array.isArray(distillation.key_highlights) && distillation.key_highlights.length) {
+    sections.push(`【要点】\n${distillation.key_highlights.filter(Boolean).join("\n")}`);
+  }
+  if (!sections.length) {
+    try {
+      return JSON.stringify(distillation, null, 2);
+    } catch (error) {
+      return String(distillation);
+    }
+  }
+  return sections.join("\n\n");
+}
+
+function showResearchSummaryModal(rowData) {
+  const summaryModal = elements.researchSummaryModal;
+  const summaryBody = elements.researchSummaryModalBody;
+  if (!summaryModal || !summaryBody) return;
+  const content = rowData?.distillation ? formatDistillationDetail(rowData.distillation) : "暂无蒸馏内容";
+  summaryBody.textContent = content;
+  summaryModal.classList.remove("hidden");
+}
+
+function hideResearchSummaryModal() {
+  if (elements.researchSummaryModal) {
+    elements.researchSummaryModal.classList.add("hidden");
+  }
+}
+
+function initResearchSummaryModal() {
+  if (elements.researchSummaryModalClose) {
+    elements.researchSummaryModalClose.addEventListener("click", hideResearchSummaryModal);
+  }
+  if (elements.researchSummaryModalOverlay) {
+    elements.researchSummaryModalOverlay.addEventListener("click", hideResearchSummaryModal);
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !elements.researchSummaryModal?.classList.contains("hidden")) {
+      hideResearchSummaryModal();
+    }
+  });
+}
+
+function initResearchExport() {
+  if (elements.researchExportButton) {
+    elements.researchExportButton.addEventListener("click", exportResearchAnalysisImage);
+  }
+}
+
+function updateResearchBanner(summary) {
+  const dict = getDict();
+  if (elements.researchBannerTitle) {
+    const code = currentDetail?.profile?.code || "";
+    const name = currentDetail?.profile?.name || "";
+    const titleSuffix = dict.researchBannerTitleSuffix || "研报推理";
+    const composed = [name, code].filter(Boolean).join(" · ") || "--";
+    elements.researchBannerTitle.textContent = `${composed} ${titleSuffix}`;
+  }
+  if (elements.researchBannerDate) {
+    const generated = summary?._meta?.generated_at || summary?.generated_at || null;
+    elements.researchBannerDate.textContent = generated
+      ? formatDateTime(generated)
+      : dict.researchBannerDatePending || "--";
+  }
+}
+
+function showResearchStatusMessage(message, duration = 0) {
+  if (!elements.researchAnalysisStatus) return;
+  if (researchStatusTimer) {
+    clearTimeout(researchStatusTimer);
+    researchStatusTimer = null;
+  }
+  if (message) {
+    elements.researchAnalysisStatus.textContent = message;
+    elements.researchAnalysisStatus.classList.remove("hidden");
+    if (duration > 0) {
+      researchStatusTimer = setTimeout(() => {
+        if (!detailState.research.analysisLoading) {
+          elements.researchAnalysisStatus.classList.add("hidden");
+        }
+        researchStatusTimer = null;
+      }, duration);
+    }
+  } else if (!detailState.research.analysisLoading) {
+    elements.researchAnalysisStatus.textContent = "";
+    elements.researchAnalysisStatus.classList.add("hidden");
+  }
+}
+
+function prepareResearchExportClone(target, exportWidth, dict, extraClass, options = {}) {
+  const { isMobile } = options;
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "fixed";
+  wrapper.style.top = "-10000px";
+  wrapper.style.left = "-10000px";
+  wrapper.style.width = `${exportWidth}px`;
+  wrapper.className = "insight-export-wrapper";
+
+  const clone = target.cloneNode(true);
+  clone.classList.add("insight-export-clone");
+  if (extraClass) {
+    clone.classList.add(extraClass);
+  }
+  clone.style.width = "100%";
+  clone.setAttribute(
+    "data-export-mode",
+    exportWidth <= 520 ? "mobile" : "desktop"
+  );
+  const baseFontSize = isMobile ? 32 : 36;
+  clone.style.fontSize = `${baseFontSize}px`;
+  clone.style.lineHeight = isMobile ? "1.9" : "2";
+
+  const banner = document.createElement("div");
+  banner.className = "insight-export-banner insight-export-banner--bottom";
+  banner.textContent = dict.exportDisclaimer || "AI-generated content. For reference only.";
+  clone.appendChild(banner);
+
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
+
+  return {
+    node: wrapper,
+    cleanup() {
+      wrapper.remove();
+    },
+  };
+}
+
+async function exportResearchAnalysisImage() {
+  if (researchExportInProgress) {
+    return;
+  }
+  const target = elements.researchAnalysisSection;
+  if (!target) {
+    return;
+  }
+  if (typeof window.html2canvas !== "function") {
+    console.error("html2canvas is not available");
+    return;
+  }
+  const dict = getDict();
+  researchExportInProgress = true;
+  if (elements.researchExportButton) {
+    elements.researchExportButton.disabled = true;
+  }
+  showResearchStatusMessage(dict.exporting || "Preparing export...", 0);
+  try {
+    const isMobile = window.innerWidth <= 768;
+    const exportWidth = isMobile
+      ? Math.min(520, Math.max(380, target.offsetWidth + 80))
+      : Math.min(1200, Math.max(900, target.offsetWidth + 120));
+    const { node: exportNode, cleanup } = prepareResearchExportClone(
+      target,
+      exportWidth,
+      dict,
+      "research-export-clone",
+      { isMobile }
+    );
+    const canvas = await window.html2canvas(exportNode, {
+      backgroundColor: getComputedStyle(document.body).backgroundColor || "#0f172a",
+      scale: 2,
+      width: exportWidth,
+      windowWidth: exportWidth,
+    });
+    cleanup();
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    const filename = `${detailState.research.code || "research"}-distillation.png`;
+    link.href = dataUrl;
+    link.download = filename;
+    link.click();
+    showResearchStatusMessage(dict.exportReady || "Export ready.", 2200);
+  } catch (error) {
+    console.error("Failed to export research analysis image:", error);
+    showResearchStatusMessage(dict.exportFailed || "Export failed", 4000);
+  } finally {
+    researchExportInProgress = false;
+    if (elements.researchExportButton) {
+      elements.researchExportButton.disabled = !(Array.isArray(detailState.research.analysisRows) && detailState.research.analysisRows.length);
+    }
+  }
+}
+
 function formatDate(value) {
   if (!value) {
     return "--";
@@ -2838,6 +3402,184 @@ async function loadStockNotes(code, { force = false } = {}) {
   }
 }
 
+async function ensureResearchReportsLoaded({ force = false } = {}) {
+  const code = currentDetail?.profile?.code;
+  if (!code) return;
+  if (
+    !force &&
+    detailState.research.code === normalizeCode(code) &&
+    detailState.research.items.length
+  ) {
+    return;
+  }
+  await loadResearchReports(code, { force });
+}
+
+async function loadResearchReports(code, { force = false } = {}) {
+  const tsCode = toTsCode(code);
+  if (!tsCode || !elements.researchCard) {
+    resetResearchState();
+    return;
+  }
+  if (!force && detailState.research.code === tsCode && detailState.research.loading) {
+    return;
+  }
+  const previousCode = detailState.research.code;
+  const isNewCode = previousCode !== tsCode;
+  detailState.research.code = tsCode;
+  if (isNewCode) {
+    detailState.research.analysisRows = [];
+    detailState.research.analysisError = null;
+    detailState.research.analysisRan = false;
+    detailState.research.analysisLoading = false;
+    detailState.research.analysisRequestId = 0;
+    detailState.research.analysisSummary = null;
+  }
+  detailState.research.loading = true;
+  detailState.research.error = null;
+  renderResearchReports();
+  try {
+    const response = await fetch(
+      `${API_BASE}/stocks/${encodeURIComponent(tsCode)}/research-reports?limit=200`
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    detailState.research.items = Array.isArray(data.items)
+      ? data.items.map((item) => ({
+          title: item.title,
+          publish_date: item.publish_date,
+          org: item.org,
+          analysts: item.analysts,
+          detail_url: item.detailUrl || item.detail_url,
+        }))
+      : [];
+    detailState.research.error = null;
+
+    // Also load existing distillation rows if not already present.
+    if (!detailState.research.analysisRows.length) {
+      try {
+        const distillResp = await fetch(
+          `${API_BASE}/stocks/${encodeURIComponent(tsCode)}/research-reports/distillation?months=3`
+        );
+        if (distillResp.ok) {
+          const distillData = await distillResp.json();
+          const distillItems = Array.isArray(distillData.items) ? distillData.items : [];
+          detailState.research.analysisRows = distillItems.map((entry) => ({
+            title: entry?.title || "",
+            org: entry?.org || "",
+            publishDate: entry?.publishDate || entry?.publish_date || null,
+            rating: entry?.rating || "",
+            targetPrice: entry?.targetPrice || entry?.target_price || "",
+            reportType: entry?.reportType || entry?.report_type || "",
+            detailUrl: entry?.detailUrl || entry?.detail_url,
+            distillation: entry?.distillation,
+          }));
+          detailState.research.analysisRan = detailState.research.analysisRows.length > 0;
+          detailState.research.analysisSummary = distillData.summary || null;
+        }
+      } catch (error) {
+        console.warn("Failed to load distillation cache:", error);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to load research reports:", error);
+    detailState.research.items = [];
+    detailState.research.error =
+      getDict().newsError || "Unable to load research reports. Please retry.";
+  } finally {
+    detailState.research.loading = false;
+    renderResearchReports();
+  }
+}
+
+async function syncResearchReports() {
+  const code = currentDetail?.profile?.code;
+  if (!code || detailState.research.syncing) {
+    return;
+  }
+  const tsCode = toTsCode(code);
+  if (!tsCode) {
+    return;
+  }
+  detailState.research.syncing = true;
+  renderResearchReports();
+  try {
+    await fetch(`${API_BASE}/stocks/research-reports/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ts_code: tsCode,
+        lookback_years: 1,
+      }),
+    });
+  } catch (error) {
+    console.error("Failed to sync research reports:", error);
+  } finally {
+    detailState.research.syncing = false;
+    renderResearchReports();
+    loadResearchReports(tsCode, { force: true });
+  }
+}
+
+async function analyzeResearchReports() {
+  const code = currentDetail?.profile?.code;
+  if (!code || detailState.research.analysisLoading) {
+    return;
+  }
+  const tsCode = toTsCode(code);
+  if (!tsCode) {
+    return;
+  }
+  const requestId = detailState.research.analysisRequestId + 1;
+  detailState.research.analysisRequestId = requestId;
+  detailState.research.analysisLoading = true;
+  detailState.research.analysisError = null;
+  detailState.research.analysisRan = true;
+  renderResearchReports();
+  try {
+    const response = await fetch(`${API_BASE}/stocks/research-reports/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ts_code: tsCode, months: 3 }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    if (requestId !== detailState.research.analysisRequestId) {
+      return;
+    }
+    const items = Array.isArray(data.items) ? data.items : [];
+    detailState.research.analysisRows = items.map((entry) => ({
+      title: entry?.title || "",
+      org: entry?.org || "",
+      publishDate: entry?.publishDate || entry?.publish_date || null,
+      rating: entry?.rating || "",
+      targetPrice: entry?.targetPrice || entry?.target_price || "",
+      reportType: entry?.reportType || entry?.report_type || "",
+      detailUrl: entry?.detailUrl || entry?.detail_url,
+      distillation: entry?.distillation,
+    }));
+    detailState.research.analysisSummary = data.summary || null;
+    detailState.research.analysisError = null;
+  } catch (error) {
+    console.error("Failed to analyze research reports:", error);
+    if (requestId !== detailState.research.analysisRequestId) {
+      return;
+    }
+    detailState.research.analysisError =
+      error?.message || getDict().researchAnalysisError || "分析失败，请稍后再试。";
+  } finally {
+    if (requestId === detailState.research.analysisRequestId) {
+      detailState.research.analysisLoading = false;
+      renderResearchReports();
+    }
+  }
+}
+
 function initStockNotesForm() {
   if (!elements.stockNotesForm) {
     return;
@@ -3047,6 +3789,8 @@ function setActiveTab(tab, { force = false } = {}) {
     ensureStockIntegratedLoaded();
   } else if (tab === "valuation") {
     ensureStockValuationLoaded();
+  } else if (tab === "research") {
+    ensureResearchReportsLoaded();
   } else if (tab === "notes") {
     const code = currentDetail?.profile?.code;
     if (code) {
@@ -3511,6 +4255,221 @@ function resetValuationState() {
   detailState.valuation.running = false;
   detailState.valuation.error = null;
   renderStockValuationPanel();
+}
+
+function resetResearchState() {
+  detailState.research.code = null;
+  detailState.research.items = [];
+  detailState.research.loading = false;
+  detailState.research.syncing = false;
+  detailState.research.error = null;
+  detailState.research.analysisLoading = false;
+  detailState.research.analysisRows = [];
+  detailState.research.analysisError = null;
+  detailState.research.analysisRan = false;
+  detailState.research.analysisRequestId = 0;
+  detailState.research.analysisSummary = null;
+  renderResearchReports();
+}
+
+function renderResearchReports() {
+  if (!elements.researchCard) return;
+  const dict = getDict();
+  const {
+    items,
+    loading,
+    syncing,
+    error,
+    analysisLoading,
+    analysisRows,
+    analysisError,
+    analysisRan,
+    analysisSummary,
+  } = detailState.research;
+  const hasCode = Boolean(currentDetail?.profile?.code);
+  if (elements.researchSyncButton) {
+    elements.researchSyncButton.disabled = !hasCode || syncing || loading;
+    elements.researchSyncButton.textContent = syncing
+      ? dict.newsSyncing || "同步中…"
+      : dict.researchSync || "更新数据";
+  }
+  if (elements.researchAnalyzeButton) {
+    elements.researchAnalyzeButton.disabled = !hasCode || analysisLoading || loading || syncing;
+    elements.researchAnalyzeButton.textContent = analysisLoading
+      ? dict.researchAnalyzing || "推理中…"
+      : dict.researchAnalyze || "推理";
+  }
+  if (elements.researchAnalysisStatus) {
+    if (analysisLoading) {
+      elements.researchAnalysisStatus.textContent =
+        dict.researchAnalysisLoading || "研报推理进行中…";
+      elements.researchAnalysisStatus.classList.remove("hidden");
+    } else {
+      elements.researchAnalysisStatus.textContent = "";
+      elements.researchAnalysisStatus.classList.add("hidden");
+    }
+  }
+  if (elements.researchAnalysisError) {
+    if (analysisError) {
+      elements.researchAnalysisError.textContent = analysisError;
+      elements.researchAnalysisError.classList.remove("hidden");
+    } else {
+      elements.researchAnalysisError.textContent = "";
+      elements.researchAnalysisError.classList.add("hidden");
+    }
+  }
+  if (elements.researchSummaryBlock && elements.researchSummary) {
+    if (analysisSummary) {
+      elements.researchSummary.textContent = formatResearchSummary(analysisSummary);
+      elements.researchSummaryBlock.classList.remove("hidden");
+    } else {
+      elements.researchSummary.textContent = "";
+      elements.researchSummaryBlock.classList.add("hidden");
+    }
+  }
+  updateResearchBanner(analysisSummary);
+  if (elements.researchAnalysisHighlights) {
+    elements.researchAnalysisHighlights.innerHTML = "";
+    if (Array.isArray(analysisRows) && analysisRows.length) {
+      analysisRows.forEach((rowData) => {
+        const row = document.createElement("tr");
+        const titleCell = document.createElement("td");
+        const detailUrl = rowData.detailUrl || rowData.detail_url;
+        if (rowData.title && detailUrl) {
+          const link = document.createElement("a");
+          link.textContent = rowData.title;
+          link.href = detailUrl;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          titleCell.appendChild(link);
+        } else if (rowData.title) {
+          titleCell.textContent = rowData.title;
+        } else {
+          titleCell.textContent = "--";
+        }
+        const dateCell = document.createElement("td");
+        const publishDate =
+          rowData.publishDate || rowData.publish_date || rowData.date || "";
+        dateCell.textContent = publishDate ? formatDate(publishDate) : "--";
+        const ratingCell = document.createElement("td");
+        ratingCell.textContent = rowData.rating || "--";
+        const targetCell = document.createElement("td");
+        targetCell.textContent = rowData.targetPrice || rowData.target_price || "--";
+        const typeCell = document.createElement("td");
+        typeCell.textContent = rowData.reportType || rowData.report_type || "--";
+        const orgCell = document.createElement("td");
+        orgCell.textContent = rowData.org || "--";
+        const actionCell = document.createElement("td");
+        const viewButton = document.createElement("button");
+        viewButton.type = "button";
+        viewButton.className = "link-btn";
+        viewButton.textContent = dict.researchViewSummary || "查看";
+        if (rowData.distillation) {
+          viewButton.addEventListener("click", () => showResearchSummaryModal(rowData));
+        } else {
+          viewButton.disabled = true;
+        }
+        actionCell.appendChild(viewButton);
+        row.appendChild(titleCell);
+        row.appendChild(dateCell);
+        row.appendChild(ratingCell);
+        row.appendChild(targetCell);
+        row.appendChild(typeCell);
+        row.appendChild(orgCell);
+        row.appendChild(actionCell);
+        elements.researchAnalysisHighlights.appendChild(row);
+      });
+      if (elements.researchAnalysisHighlightsWrapper) {
+        elements.researchAnalysisHighlightsWrapper.classList.remove("hidden");
+      }
+    } else if (elements.researchAnalysisHighlightsWrapper) {
+      elements.researchAnalysisHighlightsWrapper.classList.add("hidden");
+    }
+  }
+  if (elements.researchAnalysisEmpty) {
+    if (analysisLoading || (Array.isArray(analysisRows) && analysisRows.length)) {
+      elements.researchAnalysisEmpty.classList.add("hidden");
+    } else {
+      elements.researchAnalysisEmpty.textContent = analysisRan
+        ? dict.researchAnalysisNoHighlights || "近期研报不足以生成要点。"
+        : dict.researchAnalysisEmpty || "点击“推理”生成摘要。";
+      elements.researchAnalysisEmpty.classList.remove("hidden");
+    }
+  }
+  const hasRows = Array.isArray(analysisRows) && analysisRows.length;
+  if (elements.researchListWrapper) {
+    if (Array.isArray(analysisRows) && analysisRows.length >= 10) {
+      elements.researchListWrapper.classList.add("hidden");
+    } else {
+      elements.researchListWrapper.classList.remove("hidden");
+    }
+  }
+  if (elements.researchExportButton) {
+    elements.researchExportButton.disabled = !hasRows || researchExportInProgress;
+  }
+  if (!elements.researchList) {
+    return;
+  }
+  elements.researchList.innerHTML = "";
+  if (loading) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.className = "detail-empty";
+    cell.textContent = dict.newsLoading || "加载资讯中…";
+    row.appendChild(cell);
+    elements.researchList.appendChild(row);
+    if (elements.researchEmpty) {
+      elements.researchEmpty.classList.add("hidden");
+    }
+    return;
+  }
+  if (error) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.className = "detail-error";
+    cell.textContent = error;
+    row.appendChild(cell);
+    elements.researchList.appendChild(row);
+    if (elements.researchEmpty) {
+      elements.researchEmpty.classList.add("hidden");
+    }
+    return;
+  }
+  if (!items.length) {
+    if (elements.researchEmpty) {
+      elements.researchEmpty.classList.remove("hidden");
+    }
+    return;
+  }
+  if (elements.researchEmpty) {
+    elements.researchEmpty.classList.add("hidden");
+  }
+  items.forEach((report) => {
+    const row = document.createElement("tr");
+    const dateCell = document.createElement("td");
+    dateCell.textContent = report.publish_date ? formatDate(report.publish_date) : "--";
+    const orgCell = document.createElement("td");
+    orgCell.textContent = report.org || "--";
+    const analystCell = document.createElement("td");
+    analystCell.textContent = report.analysts || "--";
+    const titleCell = document.createElement("td");
+    const link = document.createElement("a");
+    link.href = report.detail_url || "#";
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = report.title || dict.tabResearch || "Research";
+    if (!report.detail_url) {
+      link.classList.add("is-disabled");
+    }
+    titleCell.appendChild(link);
+    row.appendChild(dateCell);
+    row.appendChild(orgCell);
+    row.appendChild(analystCell);
+    row.appendChild(titleCell);
+    elements.researchList.appendChild(row);
+  });
 }
 
 function renderStockIntegratedPanel() {
@@ -4724,6 +5683,7 @@ function renderDetail(detail) {
   resetVolumeState();
   resetIntegratedState();
   resetValuationState();
+  resetResearchState();
   const dict = translations[currentLang];
   favoriteState.code = normalizeCode(detail.profile.code);
   favoriteState.group = normalizeFavoriteGroupValue(
@@ -5130,6 +6090,12 @@ function initNewsAndVolumeActions() {
   if (elements.integratedHistoryClose) {
     elements.integratedHistoryClose.addEventListener("click", () => toggleIntegratedHistoryPanel(false));
   }
+if (elements.researchSyncButton) {
+  elements.researchSyncButton.addEventListener("click", syncResearchReports);
+}
+if (elements.researchAnalyzeButton) {
+  elements.researchAnalyzeButton.addEventListener("click", analyzeResearchReports);
+}
 }
 
 function initialize() {
@@ -5141,6 +6107,8 @@ function initialize() {
   initDetailTabs();
   initNewsAndVolumeActions();
   initStockNotesForm();
+  initResearchSummaryModal();
+  initResearchExport();
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
   if (!code) {
