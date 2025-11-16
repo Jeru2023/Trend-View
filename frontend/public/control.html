@@ -912,6 +912,46 @@
                 <p class="job-message" id="cashflow-statement-message"></p>
               </div>
 
+              <div class="card" id="balance-sheet-card">
+                <div class="card__header">
+                  <div>
+                    <h3 data-i18n="balanceSheetTitle">Balance Sheet Statements</h3>
+                    <p class="card__subtitle" data-i18n="balanceSheetSubtitle">
+                      Collect core asset, liability, and equity snapshots via the Tushare balancesheet API.
+                    </p>
+                  </div>
+                  <button class="primary-btn" id="run-balance-sheet" data-i18n="runNow">
+                    Run
+                  </button>
+                </div>
+                <div class="progress" aria-hidden="true">
+                  <div class="progress__bar" id="balance-sheet-progress"></div>
+                </div>
+                <div class="job-meta">
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="lastStatus">Status</span>
+                      <strong id="balance-sheet-status">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="records">Records</span>
+                      <strong id="balance-sheet-rows">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="job-meta__row">
+                    <div class="job-meta__item">
+                      <span data-i18n="dataUpdated">Data Updated</span>
+                      <strong id="balance-sheet-updated">&mdash;</strong>
+                    </div>
+                    <div class="job-meta__item">
+                      <span data-i18n="lastDuration">Last Duration</span>
+                      <strong id="balance-sheet-duration">&mdash;</strong>
+                    </div>
+                  </div>
+                </div>
+                <p class="job-message" id="balance-sheet-message"></p>
+              </div>
+
               <div class="card" id="financial-indicator-card">
                 <div class="card__header">
                   <div>

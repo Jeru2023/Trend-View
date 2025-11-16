@@ -61,6 +61,7 @@ from .stock_news_dao import StockNewsDAO
 from .stock_integrated_analysis_dao import StockIntegratedAnalysisDAO
 from .stock_valuation_analysis_dao import StockValuationAnalysisDAO
 from .cashflow_statement_dao import CashflowStatementDAO
+from .balance_sheet_dao import BalanceSheetDAO
 from .stock_note_dao import StockNoteDAO
 from .intraday_volume_profile_daily_dao import IntradayVolumeProfileDailyDAO
 from .intraday_volume_profile_avg_dao import IntradayVolumeProfileAverageDAO
@@ -129,6 +130,7 @@ __all__ = [
     "StockIntegratedAnalysisDAO",
     "StockValuationAnalysisDAO",
     "CashflowStatementDAO",
+    "BalanceSheetDAO",
     "StockNoteDAO",
     "IntradayVolumeProfileDailyDAO",
     "IntradayVolumeProfileAverageDAO",

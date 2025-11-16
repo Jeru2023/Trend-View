@@ -29,6 +29,7 @@ Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, 
 - Persist the core 18 cash-flow metrics from Tushare (operating, investing, financing, net change, cash balances, free cash flow) for all tracked stocks and expose them via `/financial/cashflow`.
 - Surface a Finance → Cash Flow page plus a Control Panel card so operators can search the dataset and manually trigger the sync job.
 - When adding new Control Panel cards, ensure the JS is defensive (null-safe DOM lookups) and bump the script query string so browsers download the updated bundle immediately.
+- Mirror the same pipeline for balance sheet data (21 core asset/liability/equity metrics) with `/financial/balance-sheet`, a dedicated Finance page, and a Control Panel trigger wired into the monitor.
 
 ## Indicator Screening Real-Time Refactor Plan (2025-11-11)
 1. **Stage 1 – Persist local indicators in the shared snapshot (Complete)**  

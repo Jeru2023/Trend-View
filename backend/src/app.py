@@ -80,6 +80,7 @@ from .dao import (
     StockMainBusinessDAO,
     StockMainCompositionDAO,
     CashflowStatementDAO,
+    BalanceSheetDAO,
 )
 from .services import (
     get_stock_detail,
@@ -93,6 +94,7 @@ from .services import (
     list_performance_forecast,
     list_profit_forecast,
     list_cashflow_statements,
+    list_balance_sheets,
     list_global_indices,
     list_global_index_history,
     list_realtime_indices,
@@ -148,6 +150,7 @@ from .services import (
     sync_trade_calendar,
     sync_income_statements,
     sync_cashflow_statements,
+    sync_balance_sheets,
     sync_daily_trade,
     sync_daily_trade_metrics,
     sync_fundamental_metrics,
@@ -954,6 +957,31 @@ class SyncCashflowRequest(BaseModel):
 
 
 class SyncCashflowResponse(BaseModel):
+    rows: int
+    codes: List[str]
+    code_count: int = Field(..., alias="codeCount")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncBalanceSheetRequest(BaseModel):
+    codes: Optional[List[str]] = Field(
+        None, description="Optional list of ts_code identifiers to refresh."
+    )
+    limit: int = Field(
+        8,
+        ge=1,
+        le=16,
+        description="Number of recent balance sheet entries to fetch per security.",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncBalanceSheetResponse(BaseModel):
     rows: int
     codes: List[str]
     code_count: int = Field(..., alias="codeCount")
@@ -2246,6 +2274,43 @@ class CashflowRecord(BaseModel):
 class CashflowListResponse(BaseModel):
     total: int
     items: List[CashflowRecord]
+
+
+class BalanceSheetRecord(BaseModel):
+    ts_code: Optional[str] = Field(None, alias="tsCode")
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    ann_date: Optional[date] = Field(None, alias="annDate")
+    end_date: Optional[date] = Field(None, alias="endDate")
+    money_cap: Optional[float] = Field(None, alias="moneyCap")
+    accounts_receiv: Optional[float] = Field(None, alias="accountsReceiv")
+    inventories: Optional[float] = None
+    fix_assets: Optional[float] = Field(None, alias="fixAssets")
+    total_cur_assets: Optional[float] = Field(None, alias="totalCurAssets")
+    total_nca: Optional[float] = Field(None, alias="totalNca")
+    total_assets: Optional[float] = Field(None, alias="totalAssets")
+    st_borr: Optional[float] = Field(None, alias="stBorr")
+    lt_borr: Optional[float] = Field(None, alias="ltBorr")
+    acct_payable: Optional[float] = Field(None, alias="acctPayable")
+    total_cur_liab: Optional[float] = Field(None, alias="totalCurLiab")
+    total_ncl: Optional[float] = Field(None, alias="totalNcl")
+    total_liab: Optional[float] = Field(None, alias="totalLiab")
+    total_share: Optional[float] = Field(None, alias="totalShare")
+    cap_rese: Optional[float] = Field(None, alias="capRese")
+    surplus_rese: Optional[float] = Field(None, alias="surplusRese")
+    undistr_porfit: Optional[float] = Field(None, alias="undistrPorfit")
+    total_hldr_eqy_exc_min_int: Optional[float] = Field(None, alias="totalHldrEqyExcMinInt")
+    total_liab_hldr_eqy: Optional[float] = Field(None, alias="totalLiabHldrEqy")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class BalanceSheetListResponse(BaseModel):
+    total: int
+    items: List[BalanceSheetRecord]
 
 
 class ProfitForecastRating(BaseModel):
@@ -4027,6 +4092,50 @@ async def _run_cashflow_statement_job(request: SyncCashflowRequest) -> None:
             elapsed = time.perf_counter() - started
             monitor.finish(
                 "cashflow_statements",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_balance_sheet_job(request: SyncBalanceSheetRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        try:
+            result = sync_balance_sheets(
+                codes=request.codes,
+                limit=request.limit,
+            )
+            stats: Dict[str, object] = {}
+            try:
+                stats = BalanceSheetDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh balance sheet stats: %s", stats_exc)
+            elapsed = time.perf_counter() - started
+            total_rows = None
+            finished_at = None
+            if isinstance(stats, dict):
+                total_rows = stats.get("count")
+                finished_at = stats.get("updated_at")
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "balance_sheet_statements",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} balance rows",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "balance_sheet_statements",
                 success=False,
                 error=str(exc),
                 last_duration=elapsed,
@@ -6117,6 +6226,14 @@ async def start_cashflow_statement_job(payload: SyncCashflowRequest) -> None:
     asyncio.create_task(_run_cashflow_statement_job(payload))
 
 
+async def start_balance_sheet_job(payload: SyncBalanceSheetRequest) -> None:
+    if _job_running("balance_sheet_statements"):
+        return
+    monitor.start("balance_sheet_statements", message="Syncing balance sheets")
+    monitor.update("balance_sheet_statements", progress=0.0)
+    asyncio.create_task(_run_balance_sheet_job(payload))
+
+
 async def start_financial_indicator_job(payload: SyncFinancialIndicatorRequest) -> None:
     if _job_running("financial_indicator"):
         raise HTTPException(status_code=409, detail="Financial indicator sync already running")
@@ -6551,6 +6668,13 @@ async def safe_start_cashflow_statement_job(payload: SyncCashflowRequest) -> Non
         await start_cashflow_statement_job(payload)
     except HTTPException as exc:
         logger.info("Cashflow statement sync skipped: %s", exc.detail)
+
+
+async def safe_start_balance_sheet_job(payload: SyncBalanceSheetRequest) -> None:
+    try:
+        await start_balance_sheet_job(payload)
+    except HTTPException as exc:
+        logger.info("Balance sheet sync skipped: %s", exc.detail)
 
 
 async def safe_start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> None:
@@ -7868,6 +7992,24 @@ def list_cashflow_entries(
     )
     items = [CashflowRecord(**entry) for entry in result.get("items", [])]
     return CashflowListResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.get("/financial/balance-sheet", response_model=BalanceSheetListResponse)
+def list_balance_sheet_entries(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    keyword: Optional[str] = Query(None, description="Keyword filtering ts_code or stock name."),
+    ts_code: Optional[str] = Query(None, description="Exact ts_code filter."),
+) -> BalanceSheetListResponse:
+    normalized_keyword = keyword.strip() if keyword else None
+    result = list_balance_sheets(
+        limit=limit,
+        offset=offset,
+        keyword=normalized_keyword,
+        ts_code=ts_code,
+    )
+    items = [BalanceSheetRecord(**entry) for entry in result.get("items", [])]
+    return BalanceSheetListResponse(total=int(result.get("total", 0)), items=items)
 
 
 @app.get("/profit-forecast", response_model=ProfitForecastListResponse)
@@ -9845,6 +9987,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect cashflow_statements stats: %s", exc)
         stats_map["cashflow_statements"] = {}
     try:
+        stats_map["balance_sheet_statements"] = BalanceSheetDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect balance_sheet_statements stats: %s", exc)
+        stats_map["balance_sheet_statements"] = {}
+    try:
         stats_map["performance_express"] = PerformanceExpressDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect performance_express stats: %s", exc)
@@ -10457,6 +10604,12 @@ async def control_sync_cashflow_statements(payload: SyncCashflowRequest) -> dict
     return {"status": "started"}
 
 
+@app.post("/control/sync/balance-sheet-statements")
+async def control_sync_balance_sheet_statements(payload: SyncBalanceSheetRequest) -> dict[str, str]:
+    await start_balance_sheet_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/performance-express")
 async def control_sync_performance_express(payload: SyncPerformanceExpressRequest) -> dict[str, str]:
     await start_performance_express_job(payload)
@@ -10833,6 +10986,20 @@ def trigger_cashflow_statement_sync(payload: SyncCashflowRequest) -> SyncCashflo
         limit=payload.limit,
     )
     return SyncCashflowResponse(
+        rows=int(result.get("rows", 0)),
+        codes=[str(code) for code in result.get("codes", [])],
+        code_count=int(result.get("codeCount", result.get("code_count", 0))),
+        elapsed_seconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
+    )
+
+
+@app.post("/sync/balance-sheet-statements", response_model=SyncBalanceSheetResponse)
+def trigger_balance_sheet_sync(payload: SyncBalanceSheetRequest) -> SyncBalanceSheetResponse:
+    result = sync_balance_sheets(
+        codes=payload.codes,
+        limit=payload.limit,
+    )
+    return SyncBalanceSheetResponse(
         rows=int(result.get("rows", 0)),
         codes=[str(code) for code in result.get("codes", [])],
         code_count=int(result.get("codeCount", result.get("code_count", 0))),

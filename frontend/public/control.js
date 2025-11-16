@@ -165,6 +165,15 @@ const elements = {
     progress: document.getElementById("cashflow-statement-progress"),
     button: document.getElementById("run-cashflow-statement"),
   },
+  balanceSheet: {
+    status: document.getElementById("balance-sheet-status"),
+    updated: document.getElementById("balance-sheet-updated"),
+    duration: document.getElementById("balance-sheet-duration"),
+    rows: document.getElementById("balance-sheet-rows"),
+    message: document.getElementById("balance-sheet-message"),
+    progress: document.getElementById("balance-sheet-progress"),
+    button: document.getElementById("run-balance-sheet"),
+  },
   performanceExpress: {
     status: document.getElementById("performance-express-status"),
     updated: document.getElementById("performance-express-updated"),
@@ -765,6 +774,10 @@ async function loadStatus() {
       status: "idle",
       progress: 0,
     };
+    const balanceSheetSnapshot = jobs.balance_sheet_statements || {
+      status: "idle",
+      progress: 0,
+    };
     const financialSnapshot = jobs.financial_indicator || {
       status: "idle",
       progress: 0,
@@ -926,6 +939,7 @@ async function loadStatus() {
     updateJobCard(elements.peripheralAggregate, peripheralAggregateSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
     updateJobCard(elements.cashflowStatement, cashflowSnapshot);
+    updateJobCard(elements.balanceSheet, balanceSheetSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.performanceExpress, expressSnapshot);
     updateJobCard(elements.performanceForecast, forecastSnapshot);
@@ -1256,6 +1270,11 @@ function initActions() {
   if (elements.cashflowStatement?.button) {
     elements.cashflowStatement.button.addEventListener("click", () =>
       triggerJob("/control/sync/cashflow-statements", {})
+    );
+  }
+  if (elements.balanceSheet?.button) {
+    elements.balanceSheet.button.addEventListener("click", () =>
+      triggerJob("/control/sync/balance-sheet-statements", {})
     );
   }
   elements.financialIndicator.button.addEventListener("click", () =>

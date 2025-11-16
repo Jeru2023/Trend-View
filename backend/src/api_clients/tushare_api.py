@@ -142,6 +142,31 @@ CASHFLOW_FIELDS: Sequence[str] = (
     "free_cashflow",
 )
 
+BALANCE_SHEET_FIELDS: Sequence[str] = (
+    "ts_code",
+    "ann_date",
+    "end_date",
+    "money_cap",
+    "accounts_receiv",
+    "inventories",
+    "fix_assets",
+    "total_cur_assets",
+    "total_nca",
+    "total_assets",
+    "st_borr",
+    "lt_borr",
+    "acct_payable",
+    "total_cur_liab",
+    "total_ncl",
+    "total_liab",
+    "total_share",
+    "cap_rese",
+    "surplus_rese",
+    "undistr_porfit",
+    "total_hldr_eqy_exc_min_int",
+    "total_liab_hldr_eqy",
+)
+
 PERFORMANCE_EXPRESS_FIELDS: Sequence[str] = (
     "ts_code",
     "ann_date",
@@ -589,6 +614,44 @@ def get_cashflow_statements(
     return df.loc[:, list(CASHFLOW_FIELDS)]
 
 
+def get_balance_sheets(
+    pro: ts.pro_api,
+    *,
+    ts_code: str,
+    limit: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Fetch balance sheet statements for the provided security using ``pro.balancesheet``.
+    """
+    if not ts_code:
+        raise ValueError("ts_code is required to fetch balance sheet statements.")
+
+    fields = ",".join(BALANCE_SHEET_FIELDS)
+    params: dict[str, object] = {
+        "fields": fields,
+        "ts_code": ts_code,
+    }
+    if limit is not None:
+        params["limit"] = limit
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
+
+    df = pro.balancesheet(**params)
+    if df is None or df.empty:
+        logger.warning("No balance sheet data returned for ts_code=%s", ts_code)
+        return pd.DataFrame(columns=BALANCE_SHEET_FIELDS)
+
+    missing_columns = [col for col in BALANCE_SHEET_FIELDS if col not in df.columns]
+    for column in missing_columns:
+        df[column] = None
+
+    return df.loc[:, list(BALANCE_SHEET_FIELDS)]
+
+
 def get_realtime_quotes(
     ts_codes: Sequence[str],
     *,
@@ -726,6 +789,7 @@ __all__ = [
     "INCOME_STATEMENT_FIELDS",
     "FINANCIAL_INDICATOR_FIELDS",
     "CASHFLOW_FIELDS",
+    "BALANCE_SHEET_FIELDS",
     "STOCK_BASIC_FIELDS",
     "MACRO_M2_COLUMN_MAP",
     "LPR_COLUMN_MAP",
@@ -740,5 +804,6 @@ __all__ = [
     "get_income_statements",
     "get_financial_indicators",
     "get_cashflow_statements",
+    "get_balance_sheets",
     "TRADE_CALENDAR_FIELDS",
 ]

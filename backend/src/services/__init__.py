@@ -78,6 +78,10 @@ from .cashflow_statement_service import (
     sync_cashflow_statements,
     list_cashflow_statements,
 )
+from .balance_sheet_service import (
+    sync_balance_sheets,
+    list_balance_sheets,
+)
 from .industry_directory_service import (
     list_industry_directory,
     resolve_industry_label,
@@ -330,4 +334,6 @@ __all__ = [
     "run_indicator_realtime_refresh",
     "sync_cashflow_statements",
     "list_cashflow_statements",
+    "sync_balance_sheets",
+    "list_balance_sheets",
 ]

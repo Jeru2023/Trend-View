@@ -84,6 +84,7 @@ class PostgresSettings:
     stock_integrated_analysis_table: str
     stock_valuation_analysis_table: str
     cashflow_statement_table: str
+    balance_sheet_table: str
     intraday_volume_profile_daily_table: str
     intraday_volume_profile_avg_table: str
     stock_notes_table: str
@@ -332,6 +333,9 @@ def load_settings(path: Optional[str] = None) -> AppSettings:
             ),
             cashflow_statement_table=str(
                 postgres_config.get("cashflow_statement_table", "cashflow_statements")
+            ),
+            balance_sheet_table=str(
+                postgres_config.get("balance_sheet_table", "balance_sheet_statements")
             ),
             peripheral_insight_table=str(
                 postgres_config.get("peripheral_insight_table", "peripheral_insights")
