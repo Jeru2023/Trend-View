@@ -25,6 +25,11 @@ Frontend assets (HTML/CSS/JS) must be saved as UTF-8 without BOM to avoid render
 ## Documentation Standards
 Keep all Markdown files (e.g., README.md, SPEC.MD) written entirely in English, even if requirements are delivered in another language.
 
+## Cash Flow Sync Enhancements (2025-11-16)
+- Persist the core 18 cash-flow metrics from Tushare (operating, investing, financing, net change, cash balances, free cash flow) for all tracked stocks and expose them via `/financial/cashflow`.
+- Surface a Finance → Cash Flow page plus a Control Panel card so operators can search the dataset and manually trigger the sync job.
+- When adding new Control Panel cards, ensure the JS is defensive (null-safe DOM lookups) and bump the script query string so browsers download the updated bundle immediately.
+
 ## Indicator Screening Real-Time Refactor Plan (2025-11-11)
 1. **Stage 1 – Persist local indicators in the shared snapshot (Complete)**  
    - After daily trade and big-deal fund-flow syncs finish, immediately call `sync_indicator_screening` for 爆量启动 and 大单流入 so both metrics land in `indicator_screening`.  

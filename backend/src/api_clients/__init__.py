@@ -6,6 +6,7 @@ from .tushare_api import (
     DATE_COLUMNS,
     INCOME_STATEMENT_FIELDS,
     FINANCIAL_INDICATOR_FIELDS,
+    CASHFLOW_FIELDS,
     STOCK_BASIC_FIELDS,
     MACRO_M2_COLUMN_MAP,
     LPR_COLUMN_MAP,
@@ -19,6 +20,7 @@ from .tushare_api import (
     get_daily_trade,
     get_income_statements,
     get_financial_indicators,
+    get_cashflow_statements,
     get_realtime_quotes,
     TRADE_CALENDAR_FIELDS,
 )

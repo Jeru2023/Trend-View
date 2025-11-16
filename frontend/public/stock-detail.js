@@ -64,6 +64,14 @@ const detailState = {
     error: null,
     visible: false,
   },
+  valuation: {
+    code: null,
+    summary: null,
+    meta: null,
+    loading: false,
+    running: false,
+    error: null,
+  },
 };
 
 const DEFAULT_CANDLE_WINDOW_DAYS = 90;
@@ -73,6 +81,7 @@ const volumeCache = new Map();
 const volumeHistoryCache = new Map();
 const integratedCache = new Map();
 const integratedHistoryCache = new Map();
+const valuationCache = new Map();
 
 const SEARCH_RESULT_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 260;
@@ -297,6 +306,12 @@ const elements = {
   integratedHistoryPanel: document.getElementById("stock-integrated-history"),
   integratedHistoryList: document.getElementById("stock-integrated-history-list"),
   integratedHistoryClose: document.getElementById("stock-integrated-history-close"),
+  valuationCard: document.getElementById("valuation-card"),
+  valuationSummary: document.getElementById("valuation-summary"),
+  valuationMeta: document.getElementById("valuation-meta"),
+  valuationEmpty: document.getElementById("valuation-empty"),
+  valuationError: document.getElementById("valuation-error"),
+  valuationRunButton: document.getElementById("stock-valuation-run"),
 };
 
 const favoriteState = {
@@ -1787,6 +1802,29 @@ function normalizeStockIntegratedRecord(record) {
   };
 }
 
+function normalizeStockValuationRecord(record) {
+  if (!record) {
+    return null;
+  }
+  let summary = record.summary;
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    summary = parseJSON(record.rawText || record.raw_text) || {};
+  }
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    summary = {};
+  }
+  return {
+    id: Number(record.id) || 0,
+    code: record.code || record.stockCode || "",
+    name: record.name || record.stockName || "",
+    summary,
+    rawText: record.rawText || record.raw_text || "",
+    model: record.model || null,
+    generatedAt: record.generatedAt || record.generated_at || null,
+    context: record.context || record.context_json || null,
+  };
+}
+
 function applyTranslations() {
   const dict = translations[currentLang];
   document.title = dict.pageTitle;
@@ -1976,6 +2014,7 @@ function renderMarkdownToHtml(markdown) {
   const lines = String(markdown).split(/\r?\n/);
   const blocks = [];
   let currentList = null;
+  let currentTable = null;
 
   const flushList = () => {
     if (!currentList) {
@@ -1995,19 +2034,69 @@ function renderMarkdownToHtml(markdown) {
     currentList.items.push(renderMarkdownInline(content));
   };
 
+  const flushTable = () => {
+    if (!currentTable) {
+      return;
+    }
+    const rows = currentTable.rows || [];
+    const hasHeader = currentTable.headerSeparator && rows.length;
+    const headerRow = hasHeader ? rows[0] : null;
+    const bodyRows = hasHeader ? rows.slice(1) : rows;
+    let tableHtml = "<table>";
+    if (headerRow) {
+      tableHtml += `<thead><tr>${headerRow
+        .map((cell) => `<th>${renderMarkdownInline(cell)}</th>`)
+        .join("")}</tr></thead>`;
+    }
+    if (bodyRows.length) {
+      tableHtml += "<tbody>";
+      bodyRows.forEach((row) => {
+        tableHtml += `<tr>${row.map((cell) => `<td>${renderMarkdownInline(cell)}</td>`).join("")}</tr>`;
+      });
+      tableHtml += "</tbody>";
+    }
+    tableHtml += "</table>";
+    blocks.push(tableHtml);
+    currentTable = null;
+  };
+
+  const parseTableRow = (line) => {
+    const stripped = line.replace(/^\|/, "").replace(/\|$/, "");
+    return stripped.split("|").map((cell) => cell.trim());
+  };
+
+  const isSeparatorRow = (cells) => cells.length && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+
   lines.forEach((line) => {
     const trimmed = line.trim();
     if (!trimmed) {
       flushList();
+      flushTable();
       return;
     }
     const headingMatch = trimmed.match(/^#{1,6}\s+(.*)$/);
     if (headingMatch) {
       flushList();
+      flushTable();
       const level = Math.min(6, trimmed.replace(/(\s.*)$/, "").length);
       blocks.push(`<h${level}>${renderMarkdownInline(headingMatch[1])}</h${level}>`);
       return;
     }
+    const tableMatch = trimmed.startsWith("|") && trimmed.split("|").length > 2;
+    if (tableMatch) {
+      const cells = parseTableRow(trimmed);
+      if (!currentTable) {
+        flushList();
+        currentTable = { rows: [], headerSeparator: false };
+      }
+      if (isSeparatorRow(cells)) {
+        currentTable.headerSeparator = true;
+        return;
+      }
+      currentTable.rows.push(cells);
+      return;
+    }
+    flushTable();
     const bulletMatch = trimmed.match(/^[-*+]\s+(.*)$/);
     if (bulletMatch) {
       pushListItem("ul", bulletMatch[1]);
@@ -2021,13 +2110,16 @@ function renderMarkdownToHtml(markdown) {
     const quoteMatch = trimmed.match(/^>\s?(.*)$/);
     if (quoteMatch) {
       flushList();
+      flushTable();
       blocks.push(`<blockquote>${renderMarkdownInline(quoteMatch[1])}</blockquote>`);
       return;
     }
     flushList();
+    flushTable();
     blocks.push(`<p>${renderMarkdownInline(trimmed)}</p>`);
   });
   flushList();
+  flushTable();
   if (!blocks.length) {
     return `<p>${renderMarkdownInline(markdown)}</p>`;
   }
@@ -2953,6 +3045,8 @@ function setActiveTab(tab, { force = false } = {}) {
     ensureStockVolumeLoaded();
   } else if (tab === "analysis") {
     ensureStockIntegratedLoaded();
+  } else if (tab === "valuation") {
+    ensureStockValuationLoaded();
   } else if (tab === "notes") {
     const code = currentDetail?.profile?.code;
     if (code) {
@@ -3409,6 +3503,16 @@ function resetIntegratedState() {
   resetIntegratedHistoryState();
 }
 
+function resetValuationState() {
+  detailState.valuation.code = null;
+  detailState.valuation.summary = null;
+  detailState.valuation.meta = null;
+  detailState.valuation.loading = false;
+  detailState.valuation.running = false;
+  detailState.valuation.error = null;
+  renderStockValuationPanel();
+}
+
 function renderStockIntegratedPanel() {
   if (!elements.integratedCard) {
     return;
@@ -3678,6 +3782,176 @@ function toggleIntegratedHistoryPanel(force) {
   }
 }
 
+function renderStockValuationPanel() {
+  if (!elements.valuationCard) {
+    return;
+  }
+  const dict = getDict();
+  const { summary, meta, loading, running, error } = detailState.valuation;
+  const hasCode = Boolean(currentDetail?.profile?.code);
+  if (elements.valuationRunButton) {
+    elements.valuationRunButton.disabled = running || loading || !hasCode;
+    elements.valuationRunButton.textContent = running
+      ? dict.valuationRunning || "正在生成估值分析…"
+      : dict.valuationRunButton || "生成估值分析";
+  }
+  if (elements.valuationMeta) {
+    if (meta?.generatedAt || meta?.model) {
+      const parts = [];
+      if (meta.generatedAt) {
+        parts.push(`${dict.integratedMetaGenerated || "生成时间"}：${formatDateTime(meta.generatedAt)}`);
+      }
+      if (meta.model) {
+        parts.push(`${dict.integratedMetaModel || "模型"}：${meta.model}`);
+      }
+      elements.valuationMeta.textContent = parts.join(" · ");
+    } else {
+      elements.valuationMeta.textContent = "";
+    }
+  }
+  if (elements.valuationError) {
+    if (error) {
+      elements.valuationError.textContent = error;
+      elements.valuationError.classList.remove("hidden");
+    } else {
+      elements.valuationError.textContent = "";
+      elements.valuationError.classList.add("hidden");
+    }
+  }
+  const summaryContainer = elements.valuationSummary;
+  if (!summaryContainer) {
+    return;
+  }
+  summaryContainer.classList.remove("valuation-markdown");
+  if (loading) {
+    summaryContainer.innerHTML = `<p class="integrated-placeholder">${escapeHTML(
+      dict.valuationLoading || "估值分析加载中…"
+    )}</p>`;
+    if (elements.valuationEmpty) {
+      elements.valuationEmpty.classList.add("hidden");
+    }
+    return;
+  }
+  const markdownSource =
+    detailState.valuation.meta?.rawText ||
+    detailState.valuation.meta?.raw_text ||
+    (typeof summary?.valuationSummary === "string" ? summary.valuationSummary : null) ||
+    null;
+  const markdownHtml = markdownSource ? renderMarkdownToHtml(markdownSource) : "";
+  const shouldRenderMarkdown =
+    markdownHtml &&
+    (!summary ||
+      !Object.keys(summary).length ||
+      /(^|\n)#|\|[^\n]*\|/.test(markdownSource) ||
+      (Object.keys(summary).length === 1 && typeof summary.valuationSummary === "string"));
+
+  if (shouldRenderMarkdown) {
+    summaryContainer.classList.add("valuation-markdown");
+    summaryContainer.innerHTML = `<div class="valuation-markdown__content">${markdownHtml}</div>`;
+    if (elements.valuationEmpty) {
+      elements.valuationEmpty.classList.add("hidden");
+    }
+    return;
+  }
+
+  if (!summary || !Object.keys(summary).length) {
+    summaryContainer.innerHTML = "";
+    if (elements.valuationEmpty) {
+      elements.valuationEmpty.classList.toggle("hidden", Boolean(error));
+      if (!error) {
+        elements.valuationEmpty.textContent = dict.valuationEmpty || "尚未生成估值分析。";
+      }
+    }
+    return;
+  }
+  if (elements.valuationEmpty) {
+    elements.valuationEmpty.classList.add("hidden");
+  }
+  summaryContainer.classList.remove("valuation-markdown");
+  summaryContainer.innerHTML = buildValuationSummaryHtml(summary, dict);
+}
+
+function buildValuationSummaryHtml(summary, dict) {
+  const sections = [];
+  const overview = summary.valuationSummary || summary.overview || "";
+  if (overview) {
+    sections.push(
+      `<section class="integrated-section"><h3>${escapeHTML(
+        dict.valuationSummaryTitle || "估值观点"
+      )}</h3><p>${escapeHTML(overview)}</p></section>`
+    );
+  }
+  const range = summary.valuationRange || {};
+  const rangeItems = [];
+  if (range.bear) {
+    rangeItems.push(`${escapeHTML(dict.valuationRangeBear || "悲观")}: ${escapeHTML(String(range.bear))}`);
+  }
+  if (range.base) {
+    rangeItems.push(`${escapeHTML(dict.valuationRangeBase || "基准")}: ${escapeHTML(String(range.base))}`);
+  }
+  if (range.bull) {
+    rangeItems.push(`${escapeHTML(dict.valuationRangeBull || "乐观")}: ${escapeHTML(String(range.bull))}`);
+  }
+  if (rangeItems.length) {
+    sections.push(
+      `<section class="integrated-section"><h3>${escapeHTML(
+        dict.valuationRangeTitle || "估值区间"
+      )}</h3><ul>${rangeItems.map((item) => `<li>${item}</li>`).join("")}</ul></section>`
+    );
+  }
+  sections.push(
+    buildValuationListSection(dict.valuationMethodsTitle || "估值方法", summary.valuationMethods || summary.methods)
+  );
+  sections.push(
+    buildValuationListSection(dict.valuationPeersTitle || "可比公司", summary.peerComparison || summary.peers)
+  );
+  sections.push(buildValuationListSection(dict.valuationDriversTitle || "催化剂", summary.drivers));
+  sections.push(buildValuationListSection(dict.valuationRisksTitle || "风险提示", summary.risks));
+
+  const recommendation = summary.recommendation || {};
+  const recommendationParts = [];
+  if (recommendation.stance) {
+    recommendationParts.push(`${dict.valuationRecommendationStance || "建议"}：${escapeHTML(recommendation.stance)}`);
+  }
+  if (recommendation.targetPrice) {
+    recommendationParts.push(
+      `${dict.valuationRecommendationTarget || "目标价"}：${escapeHTML(recommendation.targetPrice)}`
+    );
+  }
+  const actions = Array.isArray(recommendation.actions) ? recommendation.actions : [];
+  if (recommendationParts.length || actions.length) {
+    const actionHtml = actions.length
+      ? `<ul>${actions.map((item) => `<li>${escapeHTML(String(item))}</li>`).join("")}</ul>`
+      : "";
+    sections.push(
+      `<section class="integrated-section"><h3>${escapeHTML(
+        dict.valuationRecommendationTitle || "操作建议"
+      )}</h3><p>${recommendationParts.join(" · ")}</p>${actionHtml}</section>`
+    );
+  }
+
+  const confidenceValue = Number(summary.confidence);
+  if (Number.isFinite(confidenceValue)) {
+    const percent = Math.round(Math.max(0, Math.min(1, confidenceValue)) * 100);
+    sections.push(
+      `<section class="integrated-section integrated-section--confidence"><h3>${escapeHTML(
+        dict.valuationConfidenceTitle || "置信度"
+      )}</h3><div class="integrated-confidence">${percent}%</div></section>`
+    );
+  }
+
+  return sections.filter(Boolean).join("") || `<p>${escapeHTML(dict.valuationEmpty || "尚未生成估值分析。")}</p>`;
+}
+
+function buildValuationListSection(title, items) {
+  if (!items || !items.length) {
+    return "";
+  }
+  return `<section class="integrated-section"><h3>${escapeHTML(title)}</h3><ul>${items
+    .map((item) => `<li>${escapeHTML(String(item))}</li>`)
+    .join("")}</ul></section>`;
+}
+
 async function fetchStockIntegratedHistory(code, { force = false } = {}) {
   if (!code) {
     detailState.integratedHistory.code = null;
@@ -3860,6 +4134,117 @@ async function runStockIntegratedAnalysis() {
   } finally {
     detailState.integrated.running = false;
     renderStockIntegratedPanel();
+  }
+}
+
+function ensureStockValuationLoaded({ force = false } = {}) {
+  const code = currentDetail?.profile?.code;
+  if (!code) {
+    resetValuationState();
+    return;
+  }
+  if (!force) {
+    const cached = valuationCache.get(code);
+    if (cached) {
+      detailState.valuation.code = code;
+      detailState.valuation.summary = cached.summary;
+      detailState.valuation.meta = cached;
+      detailState.valuation.error = null;
+      detailState.valuation.loading = false;
+      renderStockValuationPanel();
+      return;
+    }
+    if (detailState.valuation.code === code && detailState.valuation.summary) {
+      renderStockValuationPanel();
+      return;
+    }
+  }
+  fetchStockValuationAnalysis(code);
+}
+
+async function fetchStockValuationAnalysis(code) {
+  if (!code) {
+    resetValuationState();
+    return;
+  }
+  detailState.valuation.code = code;
+  detailState.valuation.loading = true;
+  detailState.valuation.error = null;
+  renderStockValuationPanel();
+  try {
+    const response = await fetch(
+      `${API_BASE}/stocks/valuation-analysis/latest?code=${encodeURIComponent(code)}`
+    );
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    }
+    if (!response.ok) {
+      throw new Error((data && data.detail) || `HTTP ${response.status}`);
+    }
+    const normalized = normalizeStockValuationRecord(data);
+    detailState.valuation.summary = normalized?.summary || null;
+    detailState.valuation.meta = normalized;
+    detailState.valuation.error = null;
+    if (normalized?.code) {
+      valuationCache.set(normalized.code, normalized);
+    }
+  } catch (error) {
+    console.error("Failed to load valuation analysis:", error);
+    const dict = getDict();
+    detailState.valuation.summary = null;
+    detailState.valuation.meta = null;
+    detailState.valuation.error = dict.valuationError || "估值分析加载失败。";
+  } finally {
+    detailState.valuation.loading = false;
+    renderStockValuationPanel();
+  }
+}
+
+async function runStockValuationAnalysis() {
+  const code = currentDetail?.profile?.code;
+  if (!code || detailState.valuation.running) {
+    return;
+  }
+  detailState.valuation.code = code;
+  detailState.valuation.running = true;
+  detailState.valuation.error = null;
+  renderStockValuationPanel();
+  const payload = { code, runLlm: true, force: true };
+  try {
+    const response = await fetch(`${API_BASE}/stocks/valuation-analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    }
+    if (!response.ok) {
+      throw new Error((data && data.detail) || `HTTP ${response.status}`);
+    }
+    const normalized = normalizeStockValuationRecord(data);
+    detailState.valuation.summary = normalized?.summary || null;
+    detailState.valuation.meta = normalized;
+    detailState.valuation.error = null;
+    if (normalized?.code) {
+      valuationCache.set(normalized.code, normalized);
+    }
+  } catch (error) {
+    console.error("Failed to run valuation analysis:", error);
+    detailState.valuation.error = error.message || getDict().valuationError || "生成估值分析失败。";
+  } finally {
+    detailState.valuation.running = false;
+    renderStockValuationPanel();
   }
 }
 
@@ -4338,6 +4723,7 @@ function renderDetail(detail) {
   resetNewsState();
   resetVolumeState();
   resetIntegratedState();
+  resetValuationState();
   const dict = translations[currentLang];
   favoriteState.code = normalizeCode(detail.profile.code);
   favoriteState.group = normalizeFavoriteGroupValue(
@@ -4603,6 +4989,9 @@ function renderDetail(detail) {
   if (detailState.activeTab === "analysis") {
     ensureStockIntegratedLoaded({ force: true });
   }
+  if (detailState.activeTab === "valuation") {
+    ensureStockValuationLoaded({ force: true });
+  }
   if (detailState.integratedHistory.visible && currentDetail?.profile?.code) {
     fetchStockIntegratedHistory(currentDetail.profile.code, { force: true });
   }
@@ -4618,6 +5007,7 @@ function setStatus(messageKey, isError = false) {
   resetNewsState();
   resetVolumeState();
   resetIntegratedState();
+  resetValuationState();
   resetStockNotesPanel();
   if (elements.performanceCard) {
     elements.performanceCard.classList.add("hidden");
@@ -4730,6 +5120,9 @@ function initNewsAndVolumeActions() {
   }
   if (elements.integratedRunButton) {
     elements.integratedRunButton.addEventListener("click", runStockIntegratedAnalysis);
+  }
+  if (elements.valuationRunButton) {
+    elements.valuationRunButton.addEventListener("click", runStockValuationAnalysis);
   }
   if (elements.integratedHistoryToggle) {
     elements.integratedHistoryToggle.addEventListener("click", () => toggleIntegratedHistoryPanel());

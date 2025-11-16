@@ -1732,6 +1732,40 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+.integrated-summary.valuation-markdown {
+    display: block;
+}
+
+.valuation-markdown__content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+}
+
+.valuation-markdown__content th,
+.valuation-markdown__content td {
+    border: 1px solid #e2e8f0;
+    padding: 6px 8px;
+}
+
+.valuation-markdown__content h1,
+.valuation-markdown__content h2,
+.valuation-markdown__content h3,
+.valuation-markdown__content h4,
+.valuation-markdown__content h5,
+.valuation-markdown__content h6 {
+    margin: 16px 0 8px;
+}
+
+.valuation-markdown__content p {
+    margin: 8px 0;
+}
+
+.valuation-markdown__content ul,
+.valuation-markdown__content ol {
+    margin: 8px 0 8px 20px;
+}
+
 .integrated-summary .integrated-section:first-child {
     grid-column: 1 / -1;
 }

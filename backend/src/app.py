@@ -79,6 +79,7 @@ from .dao import (
     StockBasicDAO,
     StockMainBusinessDAO,
     StockMainCompositionDAO,
+    CashflowStatementDAO,
 )
 from .services import (
     get_stock_detail,
@@ -91,6 +92,7 @@ from .services import (
     list_performance_express,
     list_performance_forecast,
     list_profit_forecast,
+    list_cashflow_statements,
     list_global_indices,
     list_global_index_history,
     list_realtime_indices,
@@ -145,6 +147,7 @@ from .services import (
     classify_impact_batch,
     sync_trade_calendar,
     sync_income_statements,
+    sync_cashflow_statements,
     sync_daily_trade,
     sync_daily_trade_metrics,
     sync_fundamental_metrics,
@@ -204,6 +207,9 @@ from .services import (
     generate_stock_integrated_analysis,
     get_latest_stock_integrated_analysis,
     list_stock_integrated_analysis_history,
+    generate_stock_valuation_analysis,
+    get_latest_stock_valuation_analysis,
+    list_stock_valuation_analysis_history,
     sync_indicator_continuous_volume,
     sync_indicator_screening,
     sync_all_indicator_screenings,
@@ -241,6 +247,16 @@ from .state import monitor
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 INTEGRATED_NEWS_DAYS_DEFAULT = 10
 INTEGRATED_TRADE_DAYS_DEFAULT = 10
+DEFAULT_VALUATION_SUMMARY = {
+    "valuationSummary": "尚未生成估值分析。",
+    "valuationRange": {"bear": None, "base": None, "bull": None},
+    "valuationMethods": [],
+    "peerComparison": [],
+    "drivers": [],
+    "risks": [],
+    "recommendation": {"stance": "", "targetPrice": "", "actions": []},
+    "confidence": 0,
+}
 
 scheduler = AsyncIOScheduler(timezone=LOCAL_TZ)
 scheduler_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -916,6 +932,31 @@ class SyncFinancialIndicatorResponse(BaseModel):
     codes: List[str]
     code_count: int = Field(..., alias="codeCount")
     total_codes: int = Field(..., alias="totalCodes")
+    elapsed_seconds: float = Field(..., alias="elapsedSeconds")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncCashflowRequest(BaseModel):
+    codes: Optional[List[str]] = Field(
+        None, description="Optional list of ts_code identifiers to refresh."
+    )
+    limit: int = Field(
+        8,
+        ge=1,
+        le=16,
+        description="Number of recent cash flow entries to fetch per security.",
+    )
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class SyncCashflowResponse(BaseModel):
+    rows: int
+    codes: List[str]
+    code_count: int = Field(..., alias="codeCount")
     elapsed_seconds: float = Field(..., alias="elapsedSeconds")
 
     class Config:
@@ -2175,6 +2216,38 @@ class PerformanceForecastListResponse(BaseModel):
     items: List[PerformanceForecastRecord]
 
 
+class CashflowRecord(BaseModel):
+    ts_code: Optional[str] = Field(None, alias="tsCode")
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    ann_date: Optional[date] = Field(None, alias="annDate")
+    end_date: Optional[date] = Field(None, alias="endDate")
+    c_fr_sale_sg: Optional[float] = Field(None, alias="cFrSaleSg")
+    c_paid_goods_s: Optional[float] = Field(None, alias="cPaidGoodsS")
+    c_paid_to_for_empl: Optional[float] = Field(None, alias="cPaidToForEmpl")
+    n_cashflow_act: Optional[float] = Field(None, alias="nCashflowAct")
+    c_pay_acq_const_fiolta: Optional[float] = Field(None, alias="cPayAcqConstFiolta")
+    n_cashflow_inv_act: Optional[float] = Field(None, alias="nCashflowInvAct")
+    c_recp_borrow: Optional[float] = Field(None, alias="cRecpBorrow")
+    c_prepay_amt_borr: Optional[float] = Field(None, alias="cPrepayAmtBorr")
+    c_pay_dist_dpcp_int_exp: Optional[float] = Field(None, alias="cPayDistDpcpIntExp")
+    n_cash_flows_fnc_act: Optional[float] = Field(None, alias="nCashFlowsFncAct")
+    n_incr_cash_cash_equ: Optional[float] = Field(None, alias="nIncrCashCashEqu")
+    c_cash_equ_beg_period: Optional[float] = Field(None, alias="cCashEquBegPeriod")
+    c_cash_equ_end_period: Optional[float] = Field(None, alias="cCashEquEndPeriod")
+    free_cashflow: Optional[float] = Field(None, alias="freeCashflow")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class CashflowListResponse(BaseModel):
+    total: int
+    items: List[CashflowRecord]
+
+
 class ProfitForecastRating(BaseModel):
     buy: Optional[float] = None
     add: Optional[float] = None
@@ -3043,6 +3116,34 @@ class StockIntegratedAnalysisHistoryResponse(BaseModel):
     items: List[StockIntegratedAnalysisRecord]
 
 
+class StockValuationAnalysisRequest(BaseModel):
+    code: str
+    run_llm: bool = Field(True, alias="runLlm")
+    force: bool = False
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockValuationAnalysisRecord(BaseModel):
+    id: int
+    code: str
+    name: Optional[str]
+    summary: Dict[str, Any]
+    raw_text: str = Field(..., alias="rawText")
+    model: Optional[str]
+    generated_at: datetime = Field(..., alias="generatedAt")
+    context: Optional[Dict[str, Any]] = None
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class StockValuationAnalysisHistoryResponse(BaseModel):
+    total: int
+    items: List[StockValuationAnalysisRecord]
+
+
 class StockNewsSyncRequest(BaseModel):
     code: str
 
@@ -3887,6 +3988,50 @@ async def _run_income_statement_job(request: SyncIncomeStatementRequest) -> None
                 last_duration=elapsed,
             )
             logger.error("Income statement sync failed: %s", error_message)
+
+    await loop.run_in_executor(None, job)
+
+
+async def _run_cashflow_statement_job(request: SyncCashflowRequest) -> None:
+    loop = asyncio.get_running_loop()
+
+    def job() -> None:
+        started = time.perf_counter()
+        try:
+            result = sync_cashflow_statements(
+                codes=request.codes,
+                limit=request.limit,
+            )
+            stats: Dict[str, object] = {}
+            try:
+                stats = CashflowStatementDAO(load_settings().postgres).stats()
+            except Exception as stats_exc:  # pragma: no cover - defensive
+                logger.warning("Failed to refresh cashflow stats: %s", stats_exc)
+            elapsed = time.perf_counter() - started
+            total_rows = None
+            finished_at = None
+            if isinstance(stats, dict):
+                total_rows = stats.get("count")
+                finished_at = stats.get("updated_at")
+            if total_rows is None:
+                total_rows = result.get("rows")
+            monitor.finish(
+                "cashflow_statements",
+                success=True,
+                total_rows=int(total_rows) if total_rows is not None else None,
+                message=f"Synced {result.get('rows', 0)} cashflow rows",
+                finished_at=finished_at,
+                last_duration=elapsed,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            elapsed = time.perf_counter() - started
+            monitor.finish(
+                "cashflow_statements",
+                success=False,
+                error=str(exc),
+                last_duration=elapsed,
+            )
+            raise
 
     await loop.run_in_executor(None, job)
 
@@ -5964,6 +6109,14 @@ async def start_income_statement_job(payload: SyncIncomeStatementRequest) -> Non
     asyncio.create_task(_run_income_statement_job(payload))
 
 
+async def start_cashflow_statement_job(payload: SyncCashflowRequest) -> None:
+    if _job_running("cashflow_statements"):
+        return
+    monitor.start("cashflow_statements", message="Syncing cash flow statements")
+    monitor.update("cashflow_statements", progress=0.0)
+    asyncio.create_task(_run_cashflow_statement_job(payload))
+
+
 async def start_financial_indicator_job(payload: SyncFinancialIndicatorRequest) -> None:
     if _job_running("financial_indicator"):
         raise HTTPException(status_code=409, detail="Financial indicator sync already running")
@@ -6391,6 +6544,13 @@ async def safe_start_financial_indicator_job(payload: SyncFinancialIndicatorRequ
         await start_financial_indicator_job(payload)
     except HTTPException as exc:
         logger.info("Financial indicator sync skipped: %s", exc.detail)
+
+
+async def safe_start_cashflow_statement_job(payload: SyncCashflowRequest) -> None:
+    try:
+        await start_cashflow_statement_job(payload)
+    except HTTPException as exc:
+        logger.info("Cashflow statement sync skipped: %s", exc.detail)
 
 
 async def safe_start_finance_breakfast_job(payload: SyncFinanceBreakfastRequest) -> None:
@@ -7692,6 +7852,24 @@ def list_performance_forecast_entries(
     return PerformanceForecastListResponse(total=int(result.get("total", 0)), items=items)
 
 
+@app.get("/financial/cashflow", response_model=CashflowListResponse)
+def list_cashflow_entries(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    keyword: Optional[str] = Query(None, description="Keyword filtering ts_code or stock name."),
+    ts_code: Optional[str] = Query(None, description="Exact ts_code filter."),
+) -> CashflowListResponse:
+    normalized_keyword = keyword.strip() if keyword else None
+    result = list_cashflow_statements(
+        limit=limit,
+        offset=offset,
+        keyword=normalized_keyword,
+        ts_code=ts_code,
+    )
+    items = [CashflowRecord(**entry) for entry in result.get("items", [])]
+    return CashflowListResponse(total=int(result.get("total", 0)), items=items)
+
+
 @app.get("/profit-forecast", response_model=ProfitForecastListResponse)
 def list_profit_forecast_entries(
     limit: int = Query(100, ge=1, le=500, description="Maximum number of entries to return."),
@@ -8842,6 +9020,52 @@ def run_stock_integrated_analysis(payload: StockIntegratedAnalysisRequest = Body
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     return StockIntegratedAnalysisRecord(**record)
 
+
+@app.get("/stocks/valuation-analysis/latest", response_model=StockValuationAnalysisRecord)
+def get_stock_valuation_analysis_latest(code: str = Query(..., min_length=1)) -> StockValuationAnalysisRecord:
+    record = get_latest_stock_valuation_analysis(code)
+    if not record:
+        now = datetime.now(LOCAL_TZ)
+        summary_dict = {**DEFAULT_VALUATION_SUMMARY}
+        payload = json.dumps(summary_dict, ensure_ascii=False)
+        return StockValuationAnalysisRecord(
+            id=0,
+            code=code,
+            name=None,
+            summary=summary_dict,
+            raw_text=payload,
+            model=None,
+            generated_at=now,
+            context=None,
+        )
+    return StockValuationAnalysisRecord(**record)
+
+
+@app.get("/stocks/valuation-analysis/history", response_model=StockValuationAnalysisHistoryResponse)
+def list_stock_valuation_analysis_history_api(
+    code: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+) -> StockValuationAnalysisHistoryResponse:
+    result = list_stock_valuation_analysis_history(code, limit=limit, offset=offset)
+    items = [StockValuationAnalysisRecord(**entry) for entry in result.get("items", []) if entry]
+    return StockValuationAnalysisHistoryResponse(total=int(result.get("total", 0)), items=items)
+
+
+@app.post("/stocks/valuation-analysis", response_model=StockValuationAnalysisRecord)
+def run_stock_valuation_analysis(payload: StockValuationAnalysisRequest = Body(...)) -> StockValuationAnalysisRecord:
+    try:
+        record = generate_stock_valuation_analysis(
+            payload.code,
+            run_llm=payload.run_llm,
+            force=payload.force,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    return StockValuationAnalysisRecord(**record)
+
 @app.get("/industries/volume-price-analysis/latest", response_model=IndustryVolumePriceRecord)
 def get_industry_volume_price_latest(industry: str = Query(..., min_length=1)) -> IndustryVolumePriceRecord:
     record = get_latest_industry_volume_price_reasoning(industry)
@@ -9616,6 +9840,11 @@ def get_control_status() -> ControlStatusResponse:
         logger.warning("Failed to collect financial_indicator stats: %s", exc)
         stats_map["financial_indicator"] = {}
     try:
+        stats_map["cashflow_statements"] = CashflowStatementDAO(settings.postgres).stats()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to collect cashflow_statements stats: %s", exc)
+        stats_map["cashflow_statements"] = {}
+    try:
         stats_map["performance_express"] = PerformanceExpressDAO(settings.postgres).stats()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to collect performance_express stats: %s", exc)
@@ -10222,6 +10451,12 @@ async def control_sync_financial_indicators(payload: SyncFinancialIndicatorReque
     return {"status": "started"}
 
 
+@app.post("/control/sync/cashflow-statements")
+async def control_sync_cashflow_statements(payload: SyncCashflowRequest) -> dict[str, str]:
+    await start_cashflow_statement_job(payload)
+    return {"status": "started"}
+
+
 @app.post("/control/sync/performance-express")
 async def control_sync_performance_express(payload: SyncPerformanceExpressRequest) -> dict[str, str]:
     await start_performance_express_job(payload)
@@ -10587,6 +10822,20 @@ def trigger_financial_indicator_sync(payload: SyncFinancialIndicatorRequest) -> 
         codes=[str(code) for code in result.get("codes", [])],
         code_count=int(result.get("code_count", len(result.get("codes", [])))),
         total_codes=int(result.get("total_codes", result.get("code_count", 0))),
+        elapsed_seconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
+    )
+
+
+@app.post("/sync/cashflow-statements", response_model=SyncCashflowResponse)
+def trigger_cashflow_statement_sync(payload: SyncCashflowRequest) -> SyncCashflowResponse:
+    result = sync_cashflow_statements(
+        codes=payload.codes,
+        limit=payload.limit,
+    )
+    return SyncCashflowResponse(
+        rows=int(result.get("rows", 0)),
+        codes=[str(code) for code in result.get("codes", [])],
+        code_count=int(result.get("codeCount", result.get("code_count", 0))),
         elapsed_seconds=float(result.get("elapsedSeconds", result.get("elapsed_seconds", 0.0))),
     )
 

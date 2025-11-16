@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = 90.0
 _CONNECT_TIMEOUT = 10.0
 _CHAT_POLL_INTERVAL_SECONDS = 1.0
-_CHAT_POLL_MAX_ATTEMPTS = 45
+_CHAT_POLL_MAX_ATTEMPTS = 120
 
 
 def run_coze_agent(
@@ -158,12 +158,34 @@ def run_coze_agent(
 
     answer_parts: List[str] = []
     fallback_parts: List[str] = []
+    def _extract_message_content(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, list):
+            parts: List[str] = []
+            for item in value:
+                if isinstance(item, dict):
+                    text = item.get("text") or item.get("content") or item.get("value")
+                    if isinstance(text, str) and text.strip():
+                        parts.append(text.strip())
+                elif isinstance(item, str) and item.strip():
+                    parts.append(item.strip())
+            return "\n".join(parts).strip()
+        if isinstance(value, dict):
+            for key in ("text", "content", "value"):
+                text = value.get(key)
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+        return str(value).strip()
+
     for message in messages:
         if not isinstance(message, dict):
             continue
         if message.get("role") != "assistant":
             continue
-        content = str(message.get("content") or "").strip()
+        content = _extract_message_content(message.get("content"))
         if not content:
             continue
         message_type = (message.get("type") or "").lower()

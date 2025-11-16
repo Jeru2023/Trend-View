@@ -122,6 +122,26 @@ FINANCIAL_INDICATOR_FIELDS: Sequence[str] = (
     "q_profit_qoq",
 )
 
+CASHFLOW_FIELDS: Sequence[str] = (
+    "ts_code",
+    "ann_date",
+    "end_date",
+    "c_fr_sale_sg",
+    "c_paid_goods_s",
+    "c_paid_to_for_empl",
+    "n_cashflow_act",
+    "c_pay_acq_const_fiolta",
+    "n_cashflow_inv_act",
+    "c_recp_borrow",
+    "c_prepay_amt_borr",
+    "c_pay_dist_dpcp_int_exp",
+    "n_cash_flows_fnc_act",
+    "n_incr_cash_cash_equ",
+    "c_cash_equ_beg_period",
+    "c_cash_equ_end_period",
+    "free_cashflow",
+)
+
 PERFORMANCE_EXPRESS_FIELDS: Sequence[str] = (
     "ts_code",
     "ann_date",
@@ -531,6 +551,44 @@ def get_financial_indicators(
     return df.loc[:, list(FINANCIAL_INDICATOR_FIELDS)]
 
 
+def get_cashflow_statements(
+    pro: ts.pro_api,
+    *,
+    ts_code: str,
+    limit: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Fetch cash flow statements for the provided security using ``pro.cashflow``.
+    """
+    if not ts_code:
+        raise ValueError("ts_code is required to fetch cash flow statements.")
+
+    fields = ",".join(CASHFLOW_FIELDS)
+    params: dict[str, object] = {
+        "fields": fields,
+        "ts_code": ts_code,
+    }
+    if limit is not None:
+        params["limit"] = limit
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
+
+    df = pro.cashflow(**params)
+    if df is None or df.empty:
+        logger.warning("No cash flow data returned for ts_code=%s", ts_code)
+        return pd.DataFrame(columns=CASHFLOW_FIELDS)
+
+    missing_columns = [col for col in CASHFLOW_FIELDS if col not in df.columns]
+    for column in missing_columns:
+        df[column] = None
+
+    return df.loc[:, list(CASHFLOW_FIELDS)]
+
+
 def get_realtime_quotes(
     ts_codes: Sequence[str],
     *,
@@ -667,6 +725,7 @@ __all__ = [
     "DAILY_INDICATOR_FIELDS",
     "INCOME_STATEMENT_FIELDS",
     "FINANCIAL_INDICATOR_FIELDS",
+    "CASHFLOW_FIELDS",
     "STOCK_BASIC_FIELDS",
     "MACRO_M2_COLUMN_MAP",
     "LPR_COLUMN_MAP",
@@ -680,5 +739,6 @@ __all__ = [
     "get_daily_indicator",
     "get_income_statements",
     "get_financial_indicators",
+    "get_cashflow_statements",
     "TRADE_CALENDAR_FIELDS",
 ]

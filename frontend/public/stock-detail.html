@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n="pageTitle">Trend View - Stock Detail</title>
-    <link rel="stylesheet" href="styles.css?v=20261112" />
+    <link rel="stylesheet" href="styles.css?v=20261113" />
     <script>
       window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
     </script>
@@ -148,6 +148,9 @@
           </button>
           <button class="detail-tabs__btn" type="button" data-tab="analysis">
             <span data-i18n="tabIntegrated">Integrated</span>
+          </button>
+          <button class="detail-tabs__btn" type="button" data-tab="valuation">
+            <span data-i18n="tabValuation">Valuation</span>
           </button>
           <button class="detail-tabs__btn" type="button" data-tab="notes">
             <span data-i18n="tabNotes">Notes</span>
@@ -365,6 +368,30 @@
               </article>
             </section>
 
+          <section class="detail-tab-panel" data-tab-panel="valuation">
+            <article class="detail-card detail-card--wide" id="valuation-card">
+              <header class="detail-card__header detail-card__header--row">
+                <div>
+                  <h2 data-i18n="valuationTabTitle">Valuation Analysis</h2>
+                  <p class="detail-card__subtitle" data-i18n="valuationTabSubtitle">
+                    Coze/DeepSeek generated valuation snapshot with comparable analysis.
+                  </p>
+                  <p class="detail-integrated-meta" id="valuation-meta"></p>
+                </div>
+                <div class="detail-card__actions">
+                  <button class="primary-btn" type="button" id="stock-valuation-run" data-i18n="valuationRunButton">
+                    Run Valuation Analysis
+                  </button>
+                </div>
+              </header>
+              <div class="integrated-summary" id="valuation-summary"></div>
+              <p class="detail-empty hidden" id="valuation-empty" data-i18n="valuationEmpty">
+                Generate a valuation report to review latest pricing view.
+              </p>
+              <p class="detail-error hidden" id="valuation-error"></p>
+            </article>
+          </section>
+
           <section class="detail-tab-panel" data-tab-panel="notes">
             <article class="detail-card detail-card--wide" id="stock-notes-card">
               <header class="detail-card__header">
@@ -406,6 +433,6 @@
 
     <script src="i18n.js?v=20270421"></script>
     <script src="sidebar.js?v=20270478"></script>
-    <script type="module" src="stock-detail.js?v=20261112"></script>
+    <script type="module" src="stock-detail.js?v=20261113"></script>
   </body>
 </html>

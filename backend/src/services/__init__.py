@@ -69,6 +69,15 @@ from .stock_integrated_analysis_service import (
     get_latest_stock_integrated_analysis,
     list_stock_integrated_analysis_history,
 )
+from .stock_valuation_analysis_service import (
+    generate_stock_valuation_analysis,
+    get_latest_stock_valuation_analysis,
+    list_stock_valuation_analysis_history,
+)
+from .cashflow_statement_service import (
+    sync_cashflow_statements,
+    list_cashflow_statements,
+)
 from .industry_directory_service import (
     list_industry_directory,
     resolve_industry_label,
@@ -254,6 +263,9 @@ __all__ = [
     "generate_stock_integrated_analysis",
     "get_latest_stock_integrated_analysis",
     "list_stock_integrated_analysis_history",
+    "generate_stock_valuation_analysis",
+    "get_latest_stock_valuation_analysis",
+    "list_stock_valuation_analysis_history",
     "list_concept_insights",
     "list_concept_news",
     "build_industry_snapshot",
@@ -316,4 +328,6 @@ __all__ = [
     "sync_all_indicator_screenings",
     "list_indicator_screenings",
     "run_indicator_realtime_refresh",
+    "sync_cashflow_statements",
+    "list_cashflow_statements",
 ]

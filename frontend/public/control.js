@@ -156,6 +156,15 @@ const elements = {
     progress: document.getElementById("income-statement-progress"),
     button: document.getElementById("run-income-statement"),
   },
+  cashflowStatement: {
+    status: document.getElementById("cashflow-statement-status"),
+    updated: document.getElementById("cashflow-statement-updated"),
+    duration: document.getElementById("cashflow-statement-duration"),
+    rows: document.getElementById("cashflow-statement-rows"),
+    message: document.getElementById("cashflow-statement-message"),
+    progress: document.getElementById("cashflow-statement-progress"),
+    button: document.getElementById("run-cashflow-statement"),
+  },
   performanceExpress: {
     status: document.getElementById("performance-express-status"),
     updated: document.getElementById("performance-express-updated"),
@@ -656,28 +665,44 @@ function jobStatusLabel(status) {
   }
 }
 function updateJobCard(cardElements, snapshot) {
+  if (!cardElements || !cardElements.status) {
+    return;
+  }
   cardElements.status.textContent = jobStatusLabel(snapshot.status);
-  cardElements.updated.textContent = formatDateTime(
-    snapshot.finishedAt || snapshot.startedAt
-  );
+  if (cardElements.updated) {
+    cardElements.updated.textContent = formatDateTime(
+      snapshot.finishedAt || snapshot.startedAt
+    );
+  }
   if (cardElements.duration) {
     cardElements.duration.textContent = formatDuration(snapshot.lastDuration);
   }
   if (cardElements.tradeDate) {
     cardElements.tradeDate.textContent = formatTradeDate(snapshot.lastMarket);
   }
-  cardElements.rows.textContent = formatNumber(snapshot.totalRows);
-  cardElements.message.textContent =
-    snapshot.message || translations[currentLang].messageNone;
+  if (cardElements.rows) {
+    cardElements.rows.textContent = formatNumber(snapshot.totalRows);
+  }
+  if (cardElements.message) {
+    cardElements.message.textContent =
+      snapshot.message || translations[currentLang].messageNone;
+  }
   const isRunning = snapshot.status === "running";
-  updateProgressBar(
-    cardElements.progress,
-    isRunning ? snapshot.progress : 0
-  );
-  cardElements.button.disabled = isRunning;
+  if (cardElements.progress) {
+    updateProgressBar(
+      cardElements.progress,
+      isRunning ? snapshot.progress : 0
+    );
+  }
+  if (cardElements.button) {
+    cardElements.button.disabled = isRunning;
+  }
 }
 
 function updateProgressBar(bar, progress) {
+  if (!bar) {
+    return;
+  }
   const clamped = Math.max(0, Math.min(1, progress ?? 0));
   bar.style.width = `${(clamped * 100).toFixed(0)}%`;
   if (clamped > 0) {
@@ -733,6 +758,10 @@ async function loadStatus() {
       progress: 0,
     };
     const incomeSnapshot = jobs.income_statement || {
+      status: "idle",
+      progress: 0,
+    };
+    const cashflowSnapshot = jobs.cashflow_statements || {
       status: "idle",
       progress: 0,
     };
@@ -896,6 +925,7 @@ async function loadStatus() {
     updateJobCard(elements.fundFlowAggregate, fundFlowAggregateSnapshot);
     updateJobCard(elements.peripheralAggregate, peripheralAggregateSnapshot);
     updateJobCard(elements.incomeStatement, incomeSnapshot);
+    updateJobCard(elements.cashflowStatement, cashflowSnapshot);
     updateJobCard(elements.financialIndicator, financialSnapshot);
     updateJobCard(elements.performanceExpress, expressSnapshot);
     updateJobCard(elements.performanceForecast, forecastSnapshot);
@@ -1041,7 +1071,7 @@ async function triggerJob(endpoint, payload) {
 }
 
 function setJobPending(cardElements) {
-  if (!cardElements) {
+  if (!cardElements || !cardElements.status) {
     return;
   }
   const dict = translations[currentLang];
@@ -1056,11 +1086,13 @@ function setJobPending(cardElements) {
   if (cardElements.button) {
     cardElements.button.disabled = true;
   }
-  updateProgressBar(cardElements.progress, 0.1);
+  if (cardElements.progress) {
+    updateProgressBar(cardElements.progress, 0.1);
+  }
 }
 
 function setJobError(cardElements, errorMessage) {
-  if (!cardElements) {
+  if (!cardElements || !cardElements.status) {
     return;
   }
   const dict = translations[currentLang];
@@ -1071,7 +1103,9 @@ function setJobError(cardElements, errorMessage) {
   if (cardElements.button) {
     cardElements.button.disabled = false;
   }
-  updateProgressBar(cardElements.progress, 0);
+  if (cardElements.progress) {
+    updateProgressBar(cardElements.progress, 0);
+  }
 }
 
 function triggerJobForCard(cardElements, endpoint, payload) {
@@ -1219,6 +1253,11 @@ function initActions() {
   elements.incomeStatement.button.addEventListener("click", () =>
     triggerJob("/control/sync/income-statements", {})
   );
+  if (elements.cashflowStatement?.button) {
+    elements.cashflowStatement.button.addEventListener("click", () =>
+      triggerJob("/control/sync/cashflow-statements", {})
+    );
+  }
   elements.financialIndicator.button.addEventListener("click", () =>
     triggerJob("/control/sync/financial-indicators", {})
   );
