@@ -1950,6 +1950,20 @@ function formatNumber(value, options = {}) {
   return new Intl.NumberFormat(locale, options).format(value);
 }
 
+function formatVolumeAxisLabel(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "--";
+  }
+  const absValue = Math.abs(value);
+  if (absValue >= 1e8) {
+    return `${(value / 1e8).toFixed(absValue >= 5e8 ? 0 : 1)}${currentLang === "zh" ? "亿" : "B"}`;
+  }
+  if (absValue >= 1e4) {
+    return `${(value / 1e4).toFixed(absValue >= 5e4 ? 0 : 1)}${currentLang === "zh" ? "万" : "K"}`;
+  }
+  return formatNumber(value, { maximumFractionDigits: 0 });
+}
+
 function formatCompactNumber(value) {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "--";
@@ -1959,6 +1973,87 @@ function formatCompactNumber(value) {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+function calculatePriceStats(dataset) {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  dataset.forEach((item) => {
+    const low = Number(item.low);
+    const high = Number(item.high);
+    if (!Number.isNaN(low)) {
+      min = Math.min(min, low);
+    }
+    if (!Number.isNaN(high)) {
+      max = Math.max(max, high);
+    }
+  });
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return { min: 0, max: 1 };
+  }
+  if (min === max) {
+    return { min: min - 0.5, max: max + 0.5 };
+  }
+  return { min, max };
+}
+
+function determinePriceStep(range) {
+  if (range <= 1) return 0.1;
+  if (range <= 2) return 0.2;
+  if (range <= 5) return 0.5;
+  if (range <= 10) return 1;
+  if (range <= 20) return 2;
+  if (range <= 50) return 5;
+  if (range <= 100) return 10;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(range)) - 1);
+  return magnitude;
+}
+
+function computePriceAxisBounds(minValue, maxValue) {
+  const range = Math.max(maxValue - minValue, 0.5);
+  const step = determinePriceStep(range);
+  let minBound = Math.floor(minValue / step) * step;
+  let maxBound = Math.ceil(maxValue / step) * step;
+
+  if (Math.abs(minValue - minBound) < 1e-8) {
+    minBound -= step;
+  }
+  if (Math.abs(maxBound - maxValue) < 1e-8) {
+    maxBound += step;
+  }
+
+  const excessBelow = minValue - minBound;
+  if (excessBelow > step) {
+    const stepsToTrim = Math.floor(excessBelow / step) - 1;
+    if (stepsToTrim > 0) {
+      minBound += stepsToTrim * step;
+    }
+  }
+
+  const excessAbove = maxBound - maxValue;
+  if (excessAbove > step) {
+    const stepsToTrim = Math.floor(excessAbove / step) - 1;
+    if (stepsToTrim > 0) {
+      maxBound -= stepsToTrim * step;
+    }
+  }
+
+  if (minValue - minBound <= step * 0.02) {
+    minBound -= step;
+  }
+  if (maxBound - maxValue <= step * 0.02) {
+    maxBound += step;
+  }
+
+  if (maxBound <= minBound) {
+    maxBound = minBound + step * 4;
+  }
+
+  return {
+    min: Number(minBound.toFixed(6)),
+    max: Number(maxBound.toFixed(6)),
+    interval: step,
+  };
 }
 
 function formatCurrency(value, { maximumFractionDigits = 0 } = {}) {
@@ -3934,7 +4029,13 @@ async function fetchStockNews(code) {
   detailState.news.error = null;
   renderStockNews();
   try {
-    const response = await fetch(`${API_BASE}/stocks/news?code=${encodeURIComponent(code)}&limit=120`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const response = await fetch(
+      `${API_BASE}/stocks/news?code=${encodeURIComponent(code)}&limit=120`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeout);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -3946,7 +4047,11 @@ async function fetchStockNews(code) {
   } catch (error) {
     console.error("Failed to load stock news:", error);
     detailState.news.items = [];
-    detailState.news.error = dict.newsError || "股票资讯加载失败。";
+    if (error?.name === "AbortError") {
+      detailState.news.error = dict.newsTimeout || "资讯加载超时，请稍后重试。";
+    } else {
+      detailState.news.error = dict.newsError || "股票资讯加载失败。";
+    }
   } finally {
     detailState.news.loading = false;
     renderStockNews();
@@ -5480,10 +5585,10 @@ function renderCandlestickChart() {
   const upColor = "#3066BE"; // blue for price increases
   const downColor = "#E07A1F"; // orange for price decreases
   const seriesData = candlestickData.map((item) => [
-    item.open,
-    item.close,
-    item.low,
-    item.high,
+    item.open ?? null,
+    item.close ?? null,
+    item.low ?? null,
+    item.high ?? null,
   ]);
   const volumeSeries = candlestickData.map((item) => {
     const volumeValue =
@@ -5497,6 +5602,17 @@ function renderCandlestickChart() {
     };
   });
   const zoomStartPercent = calculateCandlestickZoomStart(candlestickData);
+  const fallbackPriceStats = calculatePriceStats(candlestickData);
+  const resolvePriceAxisBounds = (value) => {
+    const hasValidRange =
+      value &&
+      Number.isFinite(value.min) &&
+      Number.isFinite(value.max) &&
+      value.max > value.min;
+    const minSource = hasValidRange ? value.min : fallbackPriceStats.min;
+    const maxSource = hasValidRange ? value.max : fallbackPriceStats.max;
+    return computePriceAxisBounds(minSource, maxSource);
+  };
 
   chart.setOption(
     {
@@ -5583,8 +5699,8 @@ function renderCandlestickChart() {
         },
       },
       grid: [
-        { left: 40, right: 16, top: 16, height: "48%" },
-        { left: 40, right: 16, top: "68%", height: "28%" },
+        { left: 64, right: 16, top: 12, height: "70%", containLabel: true },
+        { left: 64, right: 16, top: "78%", height: "18%", containLabel: true },
       ],
       xAxis: [
         {
@@ -5613,9 +5729,15 @@ function renderCandlestickChart() {
         {
           scale: true,
           axisLine: { show: false },
-          axisLabel: { color: "#64748b" },
+          axisLabel: {
+            color: "#64748b",
+            margin: 12,
+            formatter: (value) =>
+              formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          },
           splitLine: { lineStyle: { color: "#e5e7eb" } },
-          min: (value) => value.min,
+          min: (value) => resolvePriceAxisBounds(value).min,
+          max: (value) => resolvePriceAxisBounds(value).max,
         },
         {
           gridIndex: 1,
@@ -5623,7 +5745,8 @@ function renderCandlestickChart() {
           axisLine: { show: false },
           axisLabel: {
             color: "#94a3b8",
-            formatter: (value) => formatNumber(value, { notation: "compact" }),
+            margin: 8,
+            formatter: (value) => formatVolumeAxisLabel(value),
           },
           splitLine: { show: false },
         },

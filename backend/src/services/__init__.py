@@ -118,6 +118,7 @@ from .big_deal_fund_flow_service import list_big_deal_fund_flow, sync_big_deal_f
 from .stock_main_business_service import get_stock_main_business, sync_stock_main_business
 from .stock_main_composition_service import get_stock_main_composition, sync_stock_main_composition
 from .stock_news_service import list_stock_news, sync_stock_news
+from .observation_pool_service import generate_observation_pool
 from .stock_note_service import add_stock_note, list_stock_notes, list_recent_stock_notes
 from .intraday_volume_profile_service import sync_intraday_volume_profiles
 from .global_flash_service import sync_global_flash
@@ -311,6 +312,7 @@ __all__ = [
     "list_stock_notes",
     "list_recent_stock_notes",
     "sync_intraday_volume_profiles",
+    "generate_observation_pool",
     "add_stock_to_favorites",
     "remove_stock_from_favorites",
     "list_favorite_codes",

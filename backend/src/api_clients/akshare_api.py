@@ -5,6 +5,7 @@ Helpers for interacting with AkShare endpoints.
 from __future__ import annotations
 
 import logging
+import json
 import multiprocessing as mp
 import re
 import ssl
@@ -14,6 +15,7 @@ from functools import lru_cache
 from io import StringIO
 from queue import Empty
 from typing import Final, Optional, Tuple
+from urllib.parse import urlparse, urlunparse
 
 import pandas as pd
 
@@ -246,19 +248,88 @@ def fetch_market_fund_flow() -> pd.DataFrame:
 
 
 def fetch_stock_news(symbol: str) -> pd.DataFrame:
-    """Fetch Eastmoney stock news via AkShare."""
+    """Fetch Eastmoney stock news via the public JSONP endpoint."""
     columns = list(STOCK_NEWS_COLUMN_MAP.values())
+    cleaned = (symbol or "").strip()
+    if not cleaned:
+        return pd.DataFrame(columns=columns)
+
+    callback = f"jQuery3510{int(time.time()*1000)}_{int(time.time()*1000)}"
+    payload = {
+        "uid": "",
+        "keyword": cleaned,
+        "type": ["cmsArticle"],
+        "client": "web",
+        "clientType": "web",
+        "clientVersion": "curr",
+        "param": {
+            "cmsArticle": {
+                "searchScope": "default",
+                "sort": "default",
+                "pageIndex": 1,
+                "pageSize": 100,
+                "preTag": "<em>",
+                "postTag": "</em>",
+            }
+        },
+    }
+    params = {
+        "cb": callback,
+        "param": json.dumps(payload, ensure_ascii=False),
+    }
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        ),
+        "Referer": f"https://so.eastmoney.com/news/s?keyword={cleaned}",
+        "Accept": "*/*",
+    }
     try:
-        dataframe = ak.stock_news_em(symbol=symbol)
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch stock news via AkShare: %s", exc)
+        response = requests.get(
+            "https://search-api-web.eastmoney.com/search/jsonp",
+            params=params,
+            headers=headers,
+            timeout=12,
+        )
+        response.raise_for_status()
+        text = response.text.strip()
+        if not text:
+            logger.warning("Eastmoney stock news returned an empty payload for %s", cleaned)
+            return pd.DataFrame(columns=columns)
+        prefix = f"{callback}("
+        if text.startswith(prefix) and text.endswith(")"):
+            json_text = text[len(prefix) : -1]
+        else:
+            left = text.find("(")
+            json_text = text[left + 1 : -1] if left != -1 else text
+        data = json.loads(json_text)
+    except Exception as exc:  # pragma: no cover - network dependency
+        logger.error("Failed to fetch stock news via Eastmoney for %s: %s", cleaned, exc)
         return pd.DataFrame(columns=columns)
 
-    if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no stock news for %s.", symbol)
+    articles = data.get("result", {}).get("cmsArticle") or []
+    if not articles:
+        logger.warning("Eastmoney returned no stock news entries for %s.", cleaned)
         return pd.DataFrame(columns=columns)
 
-    frame = dataframe.copy()
+    frame = pd.DataFrame(articles)
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    frame = frame.rename(
+        columns={
+            "date": "发布时间",
+            "mediaName": "文章来源",
+            "title": "新闻标题",
+            "content": "新闻内容",
+        }
+    )
+    if "新闻链接" not in frame.columns:
+        frame["新闻链接"] = frame.get("code").apply(
+            lambda value: f"https://finance.eastmoney.com/a/{value}.html" if value else None
+        )
+    frame["关键词"] = cleaned
     canonical_map: dict[str, str] = {}
     for source, target in STOCK_NEWS_COLUMN_MAP.items():
         key = "".join(ch for ch in str(source).lower() if ch.isalnum())
@@ -277,6 +348,19 @@ def fetch_stock_news(symbol: str) -> pd.DataFrame:
         if column not in frame.columns:
             frame[column] = None
 
+    def _canonicalize_url(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        parsed = urlparse(text)
+        scheme = parsed.scheme.lower() if parsed.scheme else "https"
+        netloc = parsed.netloc.lower()
+        path = parsed.path.rstrip("/") or "/"
+        normalized = urlunparse((scheme, netloc, path, "", "", ""))
+        return normalized
+
     def _clean_text_local(value: object) -> Optional[str]:
         if value is None:
             return None
@@ -286,7 +370,9 @@ def fetch_stock_news(symbol: str) -> pd.DataFrame:
         lowered = text.lower()
         if lowered in {"nan", "none", "null"}:
             return None
-        return text
+        text = re.sub(r"</?em>", "", text, flags=re.IGNORECASE)
+        text = text.replace("\u3000", "").replace("\r\n", " ").replace("\n", " ").strip()
+        return text or None
 
     def _clean_optional_local(value: object) -> Optional[str]:
         text = _clean_text_local(value)
@@ -298,14 +384,15 @@ def fetch_stock_news(symbol: str) -> pd.DataFrame:
         frame["title"] = frame["title"].apply(_clean_text_local)
         frame["content"] = frame["content"].apply(_clean_optional_local)
         frame["url"] = frame["url"].apply(_clean_text_local)
+        frame["normalized_url"] = frame["url"].apply(_canonicalize_url)
         frame["source"] = frame["source"].apply(_clean_optional_local)
         frame["keyword"] = frame["keyword"].apply(_clean_optional_local)
         frame["published_at"] = pd.to_datetime(frame["published_at"], errors="coerce")
 
     prepared = (
-        frame.loc[:, columns]
+        frame.loc[:, columns + ["normalized_url"]]
         .dropna(subset=["title"])
-        .drop_duplicates(subset=["url", "title"], keep="last")
+        .drop_duplicates(subset=["normalized_url", "title"], keep="last")
         .reset_index(drop=True)
     )
     return prepared

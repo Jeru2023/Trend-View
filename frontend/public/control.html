@@ -51,6 +51,28 @@
             </div>
           </header>
 
+          <div class="card job-reset-card">
+            <div class="card__header">
+              <div>
+                <h3 data-i18n="jobResetTitle">Job Recovery</h3>
+                <p class="card__subtitle" data-i18n="jobResetSubtitle">
+                  Reset stalled tasks when a job is stuck in “running” status.
+                </p>
+              </div>
+            </div>
+            <div class="job-reset__controls">
+              <label class="sr-only" for="job-reset-select" data-i18n="jobResetSelectLabel">Select job</label>
+              <select id="job-reset-select" class="job-reset__select"></select>
+              <button class="ghost-btn" type="button" id="job-reset-button" data-i18n="jobResetButton">
+                Reset Selected
+              </button>
+              <button class="ghost-btn" type="button" id="job-reset-running" data-i18n="jobResetRunningButton">
+                Reset Running Jobs
+              </button>
+            </div>
+            <p class="job-message" id="job-reset-status" aria-live="polite"></p>
+          </div>
+
           <nav class="control-tabs" aria-label="Job category shortcuts">
             <a class="control-tabs__link" href="#group-reasoning" data-i18n="reasoningGroupTitle">
               推理任务
@@ -222,9 +244,11 @@
                       Sequentially run all peripheral data sync jobs (indices, FX, futures, Fed statements, insight).
                     </p>
                   </div>
-                  <button class="primary-btn" id="run-peripheral-aggregate" data-i18n="runNow">
-                    Run
-                  </button>
+                  <div class="card__actions">
+                    <button class="primary-btn" id="run-peripheral-aggregate" data-i18n="runNow">
+                      Run
+                    </button>
+                  </div>
                 </div>
                 <div class="progress" aria-hidden="true">
                   <div class="progress__bar" id="peripheral-aggregate-progress"></div>

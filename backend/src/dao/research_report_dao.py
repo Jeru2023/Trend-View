@@ -89,6 +89,24 @@ class ResearchReportDAO(PostgresDAOBase):
                 cur.execute(query, (ts_code,))
                 return [row[0] for row in cur.fetchall()]
 
+    def latest_publish_date(self, ts_code: str) -> Optional[datetime]:
+        query = sql.SQL(
+            """
+            SELECT MAX(publish_date)
+            FROM {schema}.{table}
+            WHERE ts_code = %s
+            """
+        ).format(
+            schema=sql.Identifier(self.config.schema),
+            table=sql.Identifier(self._table_name),
+        )
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(query, (ts_code,))
+                result = cur.fetchone()
+                return result[0] if result else None
+
     def list_reports(
         self,
         *,

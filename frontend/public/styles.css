@@ -2378,7 +2378,7 @@ body {
 
 .candlestick-chart {
     width: 100%;
-    height: 360px;
+    height: 540px;
 }
 
 #candlestick-card {
@@ -2418,7 +2418,7 @@ body {
     }
 
     .candlestick-chart {
-        height: 300px;
+        height: 460px;
     }
 }
 
@@ -2441,7 +2441,7 @@ body {
     }
 
     .candlestick-chart {
-        height: 260px;
+        height: 400px;
     }
 }
 
@@ -4293,6 +4293,27 @@ body {
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
 }
 
+.job-reset-card {
+  margin-bottom: 16px;
+}
+
+.job-reset__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.job-reset__select {
+  min-width: 220px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
 .card__header {
   display: flex;
   justify-content: space-between;
@@ -5410,6 +5431,14 @@ body {
 .concept-market__news-summary{margin:0;font-size:.95rem;color:var(--text);line-height:1.6}
 .concept-market__news-link{color:var(--primary);font-weight:600;text-decoration:none}
 .concept-market__news-link:hover{text-decoration:underline}
+.observation-strategy-list{display:flex;flex-direction:column;gap:20px}
+.observation-strategy{background:var(--bg-card);border:1px solid rgba(148,163,184,.2);border-radius:18px;padding:20px;box-shadow:0 10px 28px rgba(15,23,42,.08)}
+.observation-strategy__header{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+.observation-strategy__header h3{margin:0;font-size:1.1rem}
+.observation-strategy__header p{margin:4px 0 0;color:var(--text-muted);font-size:.9rem}
+.observation-strategy__stats{display:flex;flex-wrap:wrap;gap:18px;font-size:.9rem;color:var(--text-muted)}
+.observation-strategy__stats span strong{margin-left:4px;color:var(--text)}
+.observation-strategy__table{width:100%}
 .concept-market__volume-history-item{display:flex;align-items:center;justify-content:space-between;width:100%;background:#fff;border:1px solid rgba(148,163,184,.3);border-radius:12px;padding:8px 12px;cursor:pointer;transition:background .2s,border-color .2s}
 .concept-market__volume-history-item:hover{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.4)}
 .concept-market__volume-history-item-meta{display:flex;flex-direction:column;font-size:.85rem;color:var(--text-muted)}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import random
+import time
 from datetime import datetime
 from typing import Dict, List
 
@@ -67,6 +69,7 @@ def fetch_sina_reports(symbol: str) -> List[dict]:
 def fetch_sina_report_detail(detail_url: str) -> dict:
     """Fetch detail content from a Sina report detail page."""
 
+    time.sleep(random.uniform(1, 3))
     resp = requests.get(detail_url, headers=_build_headers(), timeout=15)
     resp.raise_for_status()
     resp.encoding = "gbk"

@@ -125,6 +125,7 @@ def normalize_concept_alias_map(raw_value: Any) -> Dict[str, List[str]]:
         concept = str(key).strip()
         if not concept:
             continue
+        concept_aliases: List[str] = []
         if isinstance(value, str):
             candidates = value.split()
         elif isinstance(value, (list, tuple, set)):
@@ -142,8 +143,23 @@ def normalize_concept_alias_map(raw_value: Any) -> Dict[str, List[str]]:
                 continue
             seen.add(lower)
             cleaned.append(alias)
-        if cleaned:
-            result[concept] = cleaned
+        # Automatically add stripped alias for concepts ending with “概念”
+        if concept.endswith("概念"):
+            stripped = concept[:-2].strip()
+            if stripped:
+                concept_aliases.append(stripped)
+        concept_aliases.extend(cleaned)
+        # Deduplicate with case-insensitive tracking
+        deduped: List[str] = []
+        seen_lower: set[str] = set()
+        for alias in concept_aliases:
+            lower = alias.lower()
+            if lower in seen_lower:
+                continue
+            seen_lower.add(lower)
+            deduped.append(alias)
+        if deduped:
+            result[concept] = deduped
     return result
 
 

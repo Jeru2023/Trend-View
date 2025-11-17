@@ -32,6 +32,32 @@ class StockNewsDAO(PostgresDAOBase):
             unique_idx=f"{self._table_name}_url_uniq_idx",
             stock_idx=f"{self._table_name}_stock_idx",
         )
+        with conn.cursor() as cur:
+            cur.execute(
+                sql.SQL(
+                    "ALTER TABLE {schema}.{table} "
+                    "ADD COLUMN IF NOT EXISTS normalized_url TEXT"
+                ).format(
+                    schema=sql.Identifier(self.config.schema),
+                    table=sql.Identifier(self._table_name),
+                )
+            )
+            cur.execute(
+                sql.SQL("DROP INDEX IF EXISTS {schema}.{index}").format(
+                    schema=sql.Identifier(self.config.schema),
+                    index=sql.Identifier(f"{self._table_name}_url_uniq_idx"),
+                )
+            )
+            cur.execute(
+                sql.SQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS {index} "
+                    "ON {schema}.{table} (stock_code, COALESCE(normalized_url, ''), COALESCE(title, ''))"
+                ).format(
+                    index=sql.Identifier(f"{self._table_name}_url_uniq_idx"),
+                    schema=sql.Identifier(self.config.schema),
+                    table=sql.Identifier(self._table_name),
+                )
+            )
 
     def upsert_many(self, records: List[Dict[str, Any]]) -> int:
         if not records:
@@ -43,6 +69,7 @@ class StockNewsDAO(PostgresDAOBase):
             "content",
             "source",
             "url",
+            "normalized_url",
             "published_at",
             "raw_payload",
         ]
@@ -56,6 +83,7 @@ class StockNewsDAO(PostgresDAOBase):
                     record.get("content"),
                     record.get("source"),
                     record.get("url"),
+                    record.get("normalized_url"),
                     record.get("published_at"),
                     Json(record.get("raw_payload") or {}),
                 ]
@@ -73,10 +101,11 @@ class StockNewsDAO(PostgresDAOBase):
                         content,
                         source,
                         url,
+                        normalized_url,
                         published_at,
                         raw_payload
                     ) VALUES %s
-                    ON CONFLICT (stock_code, COALESCE(url, ''), COALESCE(title, ''))
+                    ON CONFLICT (stock_code, COALESCE(normalized_url, ''), COALESCE(title, ''))
                     DO UPDATE SET
                         keyword = EXCLUDED.keyword,
                         content = EXCLUDED.content,
@@ -139,6 +168,28 @@ class StockNewsDAO(PostgresDAOBase):
             "updated_at",
         ]
         return [{column: value for column, value in zip(columns, row)} for row in rows]
+
+    def latest_published_at(self, stock_code: str) -> Optional[datetime]:
+        if not stock_code:
+            return None
+        with self.connect() as conn:
+            self.ensure_table(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL(
+                        """
+                        SELECT MAX(published_at)
+                        FROM {schema}.{table}
+                        WHERE stock_code = %s
+                        """
+                    ).format(
+                        schema=sql.Identifier(self.config.schema),
+                        table=sql.Identifier(self._table_name),
+                    ),
+                    (stock_code,),
+                )
+                row = cur.fetchone()
+        return row[0] if row else None
 
     def list_since(
         self,

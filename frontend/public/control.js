@@ -45,9 +45,16 @@ let configState = {
   includeDelisted: false,
   dailyTradeWindowDays: 420,
 };
+let jobSnapshots = {};
 
 const elements = {
   langButtons: document.querySelectorAll(".lang-btn"),
+  jobReset: {
+    select: document.getElementById("job-reset-select"),
+    status: document.getElementById("job-reset-status"),
+    button: document.getElementById("job-reset-button"),
+    runningButton: document.getElementById("job-reset-running"),
+  },
   stockBasic: {
     status: document.getElementById("stock-basic-status"),
     updated: document.getElementById("stock-basic-updated"),
@@ -726,6 +733,7 @@ async function loadStatus() {
     const response = await fetch(`${API_BASE}/control/status`);
     const data = await response.json();
     const jobs = data.jobs || {};
+    jobSnapshots = jobs;
     const stockSnapshot = jobs.stock_basic || {
       status: "idle",
       progress: 0,
@@ -977,6 +985,7 @@ async function loadStatus() {
     updateJobCard(elements.globalFlash, globalFlashSnapshot);
     updateJobCard(elements.globalFlashClassification, globalFlashClassifySnapshot);
     updateJobCard(elements.financeBreakfast, breakfastSnapshot);
+    updateJobResetControls(jobs);
 
     if (data.config) {
       configState.includeST = !!data.config.includeST;
@@ -1131,6 +1140,156 @@ function triggerJobForCard(cardElements, endpoint, payload) {
   });
 }
 
+async function resetJob(jobKey) {
+  const response = await fetch(`${API_BASE}/control/reset-job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job: jobKey }),
+  });
+  if (!response.ok) {
+    let errorMessage = response.statusText || `HTTP ${response.status}`;
+    try {
+      const payload = await response.json();
+      if (payload?.detail) {
+        errorMessage = payload.detail;
+      }
+    } catch (parseError) {
+      /* ignore */
+    }
+    throw new Error(errorMessage);
+  }
+}
+
+function updateJobResetControls(jobsSnapshot) {
+  const control = elements.jobReset;
+  if (!control || !control.select) {
+    return;
+  }
+  const dict = translations[currentLang] || translations.zh || translations.en;
+  const select = control.select;
+  const previousValue = select.value;
+  select.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = dict.jobResetSelectPlaceholder || "Select a job";
+  placeholder.disabled = true;
+  placeholder.selected = true;
+  select.appendChild(placeholder);
+
+  const entries = Object.entries(jobsSnapshot || {});
+  const runningEntries = entries.filter(([, snapshot]) => snapshot?.status === "running");
+  const orderedEntries = [
+    ...runningEntries,
+    ...entries.filter(([, snapshot]) => snapshot?.status !== "running"),
+  ];
+  const seen = new Set();
+  orderedEntries.forEach(([key, snapshot]) => {
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = `${key} (${snapshot?.status || "idle"})`;
+    select.appendChild(option);
+  });
+  if (previousValue && seen.has(previousValue)) {
+    select.value = previousValue;
+  }
+  if (control.button) {
+    control.button.disabled = select.options.length <= 1;
+  }
+  if (control.runningButton) {
+    control.runningButton.disabled = runningEntries.length === 0;
+  }
+  if (control.status) {
+    control.status.textContent = seen.size
+      ? ""
+      : (dict.jobResetNoJobs || "No jobs available.");
+  }
+}
+
+function initJobResetControls() {
+  const control = elements.jobReset;
+  if (!control) {
+    return;
+  }
+  const dict = translations[currentLang] || translations.zh || translations.en;
+  if (control.select && !control.select.options.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = dict.jobResetSelectPlaceholder || "Select a job";
+    opt.disabled = true;
+    opt.selected = true;
+    control.select.appendChild(opt);
+  }
+  if (control.button && control.select) {
+    control.button.addEventListener("click", async () => {
+      const jobKey = control.select.value;
+      if (!jobKey) {
+        if (control.status) {
+          control.status.textContent =
+            dict.jobResetSelectNotice || "Please select a job to reset.";
+        }
+        return;
+      }
+      if (control.status) {
+        control.status.textContent = dict.statusResetting || "Resetting job...";
+      }
+      control.button.disabled = true;
+      try {
+        await resetJob(jobKey);
+        if (control.status) {
+          control.status.textContent = dict.statusResetOk || "Job reset.";
+        }
+        setTimeout(loadStatus, 500);
+      } catch (error) {
+        console.error("Reset selected job failed:", error);
+        if (control.status) {
+          control.status.textContent =
+            (error && error.message) || dict.statusResetFailed || "Reset failed.";
+        }
+      } finally {
+        control.button.disabled = false;
+      }
+    });
+  }
+  if (control.runningButton) {
+    control.runningButton.addEventListener("click", async () => {
+      const runningKeys = Object.entries(jobSnapshots || {})
+        .filter(([, snapshot]) => snapshot?.status === "running")
+        .map(([key]) => key);
+      if (!runningKeys.length) {
+        if (control.status) {
+          control.status.textContent =
+            dict.jobResetNoRunning || "No running jobs detected.";
+        }
+        return;
+      }
+      control.runningButton.disabled = true;
+      if (control.status) {
+        control.status.textContent = dict.statusResetting || "Resetting job...";
+      }
+      const errors = [];
+      for (const jobKey of runningKeys) {
+        try {
+          await resetJob(jobKey);
+        } catch (error) {
+          console.error(`Failed to reset ${jobKey}`, error);
+          errors.push(`${jobKey}: ${error?.message || "Error"}`);
+        }
+      }
+      if (control.status) {
+        control.status.textContent =
+          errors.length === 0
+            ? dict.statusResetOk || "Job reset."
+            : `${dict.statusResetFailed || "Reset failed."} ${errors.join("; ")}`;
+      }
+      control.runningButton.disabled = false;
+      setTimeout(loadStatus, 500);
+    });
+  }
+}
 
 
 window.applyTranslations = applyTranslations;
@@ -1632,6 +1791,7 @@ async function prefillConceptIndexHistoryConcepts() {
 // Boot
 initLanguageSwitch();
 initControlTabs();
+initJobResetControls();
 initActions();
 setLang(currentLang);
 loadStatus();

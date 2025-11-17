@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="observationPool.title">趋势视图 - 策略观察池</title>
+    <link rel="stylesheet" href="styles.css?v=20270444" />
+    <script>
+      (function () {
+        var key = "trend-view-lang";
+        try {
+          var stored = window.localStorage.getItem(key);
+          if (stored) {
+            document.documentElement.lang = stored;
+            document.documentElement.setAttribute("data-pref-lang", stored);
+          } else {
+            document.documentElement.lang = "zh";
+            document.documentElement.setAttribute("data-pref-lang", "zh");
+          }
+        } catch (error) {
+          document.documentElement.lang = "zh";
+          document.documentElement.setAttribute("data-pref-lang", "zh");
+        }
+      })();
+      window.API_BASE_URL = window.API_BASE_URL || "http://localhost:8000";
+    </script>
+  </head>
+  <body data-active-nav="observation-pool">
+    <div class="layout">
+      <div data-sidebar-container></div>
+
+      <main class="content">
+        <header class="content__header">
+          <div>
+            <h1 class="page-heading" data-i18n="observationPool.pageTitle">策略观察池</h1>
+            <p class="page-subtitle" data-i18n="observationPool.pageSubtitle">
+              自动扫描横盘突破等量价策略，优先展示潜在的盘面机会。
+            </p>
+          </div>
+          <div class="header-actions">
+            <div class="language-switcher">
+              <button class="lang-btn" data-lang="zh">中文</button>
+              <button class="lang-btn" data-lang="en">EN</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="page" id="observation-pool-root">
+          <div class="insight-toolbar">
+            <div class="insight-toolbar__group insight-toolbar__group--actions">
+              <button id="observation-refresh" class="btn btn--primary">
+                <span class="btn__icon" aria-hidden="true">⟳</span>
+                <span class="btn__label" data-i18n="observationPool.refreshButton">刷新观察池</span>
+              </button>
+            </div>
+            <div class="insight-toolbar__group insight-toolbar__group--meta">
+              <div class="insight-toolbar__meta-item">
+                <span class="insight-toolbar__meta-label" data-i18n="observationPool.generatedLabel">生成时间</span>
+                <strong class="insight-toolbar__meta-value" id="observation-generated">--</strong>
+              </div>
+              <div class="insight-toolbar__meta-item">
+                <span class="insight-toolbar__meta-label" data-i18n="observationPool.tradeDateLabel">数据日期</span>
+                <strong class="insight-toolbar__meta-value" id="observation-trade-date">--</strong>
+              </div>
+              <div class="insight-toolbar__status" id="observation-status"></div>
+            </div>
+          </div>
+
+          <section class="insight-section">
+            <header class="insight-section__header">
+              <div>
+                <h2 class="insight-section__title" data-i18n="observationPool.summaryTitle">策略摘要</h2>
+                <p class="insight-section__subtitle" data-i18n="observationPool.summarySubtitle">
+                  覆盖范围、候选数量和重点提示。
+                </p>
+              </div>
+            </header>
+            <div
+              id="observation-summary"
+              class="insight-summary"
+              data-empty-zh="暂无可用观察池。"
+              data-empty-en="No observation data available."
+            ></div>
+          </section>
+
+          <section class="insight-section">
+            <header class="insight-section__header">
+              <div>
+                <h2 class="insight-section__title" data-i18n="observationPool.strategyTitle">策略列表</h2>
+                <p class="insight-section__subtitle" data-i18n="observationPool.strategySubtitle">
+                  展示每个策略的候选明细，可按量能与区间特征筛选。
+                </p>
+              </div>
+            </header>
+            <div
+              id="observation-strategies"
+              class="observation-strategy-list"
+              data-empty-zh="暂无策略候选。"
+              data-empty-en="No strategies available."
+            ></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="i18n.js?v=20270438"></script>
+    <script src="sidebar.js?v=20270478"></script>
+    <script type="module" src="observation-pool.js?v=20270444"></script>
+  </body>
+</html>

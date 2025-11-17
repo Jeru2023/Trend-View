@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 SNIPPET_CHAR_LIMIT = 1600
 MAX_DISTILLATION_REPORTS = 10
 DISTILLATION_LOOKBACK_MONTHS = 3
+REPORT_SYNC_LOOKBACK_DAYS = 90
 
 DISTILLATION_PROMPT_TEMPLATE = """
 # 角色
@@ -292,9 +293,14 @@ def sync_research_reports(
     if not list_items:
         return {"rows": 0, "reports": []}
 
-    cutoff_date: Optional[datetime] = None
+    requested_days = REPORT_SYNC_LOOKBACK_DAYS
     if lookback_years > 0:
-        cutoff_date = datetime.utcnow() - timedelta(days=lookback_years * 365)
+        requested_days = max(1, int(lookback_years * 365))
+    window_days = min(requested_days, REPORT_SYNC_LOOKBACK_DAYS)
+    cutoff_date = (datetime.utcnow() - timedelta(days=window_days)).date()
+    latest_publish_date = dao.latest_publish_date(normalized_ts)
+    if isinstance(latest_publish_date, datetime):
+        latest_publish_date = latest_publish_date.date()
 
     existing_ids = set(dao.existing_report_ids(normalized_ts))
     new_rows: List[dict] = []
@@ -312,8 +318,12 @@ def sync_research_reports(
                 publish_date = datetime.strptime(publish_date_str, "%Y-%m-%d").date()
             except ValueError:
                 publish_date = None
-        if cutoff_date and publish_date and publish_date < cutoff_date.date():
+        if publish_date is None:
             continue
+        if publish_date < cutoff_date:
+            break
+        if latest_publish_date and publish_date < latest_publish_date:
+            break
         try:
             detail = fetch_sina_report_detail(detail_url)
         except Exception as exc:  # pragma: no cover - external dependency
@@ -451,7 +461,7 @@ def analyze_research_reports(
             processed_count += 1
 
     summary_payload = None
-    if len(processed_items) >= MAX_DISTILLATION_REPORTS and distillation_payloads:
+    if distillation_payloads:
         summary_payload = _run_research_summary(distillation_payloads, settings)
         if summary_payload:
             stored_summary = dict(summary_payload)

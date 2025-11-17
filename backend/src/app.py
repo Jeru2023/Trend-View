@@ -189,6 +189,7 @@ from .services import (
     get_latest_concept_insight,
     build_concept_snapshot,
     list_concept_news,
+    generate_observation_pool,
     search_concepts,
     search_industries,
     list_all_concepts,
@@ -3137,6 +3138,47 @@ class IndustryNewsListResponse(BaseModel):
 
 class ConceptNewsListResponse(BaseModel):
     items: List[IndustryNewsArticle] = Field(default_factory=list)
+
+
+class ObservationStrategyCandidate(BaseModel):
+    ts_code: str = Field(..., alias="tsCode")
+    symbol: Optional[str] = None
+    name: Optional[str] = None
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+    close: Optional[float] = None
+    pct_change: Optional[float] = Field(None, alias="pctChange")
+    volume_ratio: Optional[float] = Field(None, alias="volumeRatio")
+    range_amplitude: Optional[float] = Field(None, alias="rangeAmplitude")
+    range_high: Optional[float] = Field(None, alias="rangeHigh")
+    range_low: Optional[float] = Field(None, alias="rangeLow")
+    breakout_level: Optional[float] = Field(None, alias="breakoutLevel")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ObservationStrategy(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    parameters: Dict[str, object]
+    candidate_count: int = Field(..., alias="candidateCount")
+    candidates: List[ObservationStrategyCandidate]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class ObservationPoolResponse(BaseModel):
+    generated_at: Optional[str] = Field(None, alias="generatedAt")
+    latest_trade_date: Optional[str] = Field(None, alias="latestTradeDate")
+    universe_total: int = Field(..., alias="universeTotal")
+    total_candidates: int = Field(..., alias="totalCandidates")
+    summary_notes: List[str] = Field(default_factory=list, alias="summaryNotes")
+    strategies: List[ObservationStrategy]
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class ConceptVolumePriceRecord(BaseModel):
@@ -9141,6 +9183,12 @@ def list_concept_news_api(
     return ConceptNewsListResponse(items=items)
 
 
+@app.get("/observation-pool", response_model=ObservationPoolResponse)
+def get_observation_pool() -> ObservationPoolResponse:
+    result = generate_observation_pool()
+    return ObservationPoolResponse(**result)
+
+
 @app.post("/concepts/volume-price-analysis")
 def stream_concept_volume_price_analysis(payload: ConceptVolumePriceRequest = Body(...)) -> StreamingResponse:
     def stream_generator():
@@ -11244,3 +11292,4 @@ def _build_industry_insight_response(
             snapshot_payload = None
 
     return IndustryInsightResponse(insight=summary_payload, snapshot=snapshot_payload)
+    generate_observation_pool,

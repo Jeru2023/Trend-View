@@ -63,11 +63,15 @@ def sync_stock_news(
         logger.info("Stock news sync for %s returned no rows.", symbol)
         return {"fetched": 0, "inserted": 0}
 
+    latest_published = dao.latest_published_at(normalized_code)
     prepared = dataframe.head(max(1, min(limit, DEFAULT_LIMIT * 2)))
     records: List[Dict[str, object]] = []
     for row in prepared.to_dict(orient="records"):
         title = (row.get("title") or "").strip()
         if not title:
+            continue
+        published_at = _as_naive(_coerce_datetime(row.get("published_at")))
+        if latest_published and published_at and published_at <= latest_published:
             continue
         sanitized_payload = {key: _sanitize_payload(value) for key, value in row.items()}
         record = {
@@ -77,7 +81,8 @@ def sync_stock_news(
             "content": row.get("content"),
             "source": row.get("source"),
             "url": row.get("url"),
-            "published_at": _as_naive(_coerce_datetime(row.get("published_at"))),
+            "normalized_url": row.get("normalized_url"),
+            "published_at": published_at,
             "raw_payload": sanitized_payload,
         }
         records.append(record)
