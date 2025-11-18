@@ -61,6 +61,16 @@ const configState = {
     dailyChangePercent: 7,
     maxRangePercent: 25,
   },
+  observationPool: {
+    lookbackDays: 60,
+    minHistory: 45,
+    breakoutBufferPercent: 0.5,
+    maxRangePercent: 15,
+    volumeRatioThreshold: 2,
+    volumeAverageWindow: 20,
+    maxWeeklyGainPercent: 3,
+    requireBigDealInflow: false,
+  },
 };
 
 const elements = {
@@ -77,6 +87,14 @@ const elements = {
   volumeSurgeBreakout: document.getElementById("config-volume-surge-breakout"),
   volumeSurgeDailyChange: document.getElementById("config-volume-surge-daily-change"),
   volumeSurgeRange: document.getElementById("config-volume-surge-range"),
+  observationLookback: document.getElementById("config-observation-lookback"),
+  observationMinHistory: document.getElementById("config-observation-min-history"),
+  observationBreakout: document.getElementById("config-observation-breakout"),
+  observationRange: document.getElementById("config-observation-range"),
+  observationVolumeRatio: document.getElementById("config-observation-volume-ratio"),
+  observationVolumeWindow: document.getElementById("config-observation-volume-window"),
+  observationWeeklyGain: document.getElementById("config-observation-weekly-gain"),
+  observationBigDeal: document.getElementById("config-observation-big-deal"),
   toastContainer: document.getElementById("config-toast-container"),
   toast: document.getElementById("config-toast"),
   toastMessage: document.getElementById("config-toast-message"),
@@ -524,6 +542,71 @@ async function loadConfig() {
     if (elements.volumeSurgeRange) {
       elements.volumeSurgeRange.value = maxRangePercent;
     }
+    const observation = config.observationStrategyConfig || {};
+    const obsDefaults = configState.observationPool;
+    configState.observationPool = {
+      lookbackDays: sanitizeNumber(observation.lookbackDays ?? observation.lookback_days, obsDefaults.lookbackDays, {
+        min: 20,
+        max: 360,
+      }),
+      minHistory: sanitizeNumber(observation.minHistory ?? observation.min_history, obsDefaults.minHistory, {
+        min: 10,
+        max: 360,
+      }),
+      breakoutBufferPercent: sanitizeNumber(
+        observation.breakoutBufferPercent ?? observation.breakout_buffer_percent,
+        obsDefaults.breakoutBufferPercent,
+        { min: 0, max: 20 }
+      ),
+      maxRangePercent: sanitizeNumber(
+        observation.maxRangePercent ?? observation.max_range_percent,
+        obsDefaults.maxRangePercent,
+        { min: 1, max: 200 }
+      ),
+      volumeRatioThreshold: sanitizeNumber(
+        observation.volumeRatioThreshold ?? observation.volume_ratio_threshold,
+        obsDefaults.volumeRatioThreshold,
+        { min: 0.5, max: 200 }
+      ),
+      volumeAverageWindow: sanitizeNumber(
+        observation.volumeAverageWindow ?? observation.volume_average_window,
+        obsDefaults.volumeAverageWindow,
+        { min: 5, max: 120 }
+      ),
+      maxWeeklyGainPercent: sanitizeNumber(
+        observation.maxWeeklyGainPercent ?? observation.max_weekly_gain_percent,
+        obsDefaults.maxWeeklyGainPercent,
+        { min: 0, max: 200 }
+      ),
+      requireBigDealInflow:
+        typeof observation.requireBigDealInflow === "boolean"
+          ? observation.requireBigDealInflow
+          : Boolean(observation.require_big_deal_inflow),
+    };
+    if (elements.observationLookback) {
+      elements.observationLookback.value = configState.observationPool.lookbackDays;
+    }
+    if (elements.observationMinHistory) {
+      elements.observationMinHistory.value = configState.observationPool.minHistory;
+    }
+    if (elements.observationBreakout) {
+      elements.observationBreakout.value = configState.observationPool.breakoutBufferPercent;
+    }
+    if (elements.observationRange) {
+      elements.observationRange.value = configState.observationPool.maxRangePercent;
+    }
+    if (elements.observationVolumeRatio) {
+      elements.observationVolumeRatio.value = configState.observationPool.volumeRatioThreshold;
+    }
+    if (elements.observationVolumeWindow) {
+      elements.observationVolumeWindow.value = configState.observationPool.volumeAverageWindow;
+    }
+    if (elements.observationWeeklyGain) {
+      elements.observationWeeklyGain.value = configState.observationPool.maxWeeklyGainPercent;
+    }
+    if (elements.observationBigDeal) {
+      elements.observationBigDeal.checked = configState.observationPool.requireBigDealInflow;
+    }
     resetAliasRows(configState.conceptAliasMap);
   } catch (error) {
     console.error("Failed to load configuration", error);
@@ -569,6 +652,42 @@ async function saveConfig() {
     configState.volumeSurge.maxRangePercent,
     { min: 1, max: 200 }
   );
+  const observationLookback = sanitizeNumber(
+    elements.observationLookback?.value,
+    configState.observationPool.lookbackDays,
+    { min: 20, max: 360 }
+  );
+  const observationMinHistory = sanitizeNumber(
+    elements.observationMinHistory?.value,
+    configState.observationPool.minHistory,
+    { min: 10, max: 360 }
+  );
+  const observationBreakout = sanitizeNumber(
+    elements.observationBreakout?.value,
+    configState.observationPool.breakoutBufferPercent,
+    { min: 0, max: 20 }
+  );
+  const observationRange = sanitizeNumber(
+    elements.observationRange?.value,
+    configState.observationPool.maxRangePercent,
+    { min: 1, max: 200 }
+  );
+  const observationVolumeRatio = sanitizeNumber(
+    elements.observationVolumeRatio?.value,
+    configState.observationPool.volumeRatioThreshold,
+    { min: 0.5, max: 200 }
+  );
+  const observationVolumeWindow = sanitizeNumber(
+    elements.observationVolumeWindow?.value,
+    configState.observationPool.volumeAverageWindow,
+    { min: 5, max: 120 }
+  );
+  const observationWeeklyGain = sanitizeNumber(
+    elements.observationWeeklyGain?.value,
+    configState.observationPool.maxWeeklyGainPercent,
+    { min: 0, max: 200 }
+  );
+  const observationRequireBigDeal = Boolean(elements.observationBigDeal?.checked);
   const aliasMap = collectAliasMap();
   configState.includeST = elements.includeSt.checked;
   configState.includeDelisted = elements.includeDelisted.checked;
@@ -582,6 +701,16 @@ async function saveConfig() {
     dailyChangePercent,
     maxRangePercent,
   };
+  configState.observationPool = {
+    lookbackDays: observationLookback,
+    minHistory: observationMinHistory,
+    breakoutBufferPercent: observationBreakout,
+    maxRangePercent: observationRange,
+    volumeRatioThreshold: observationVolumeRatio,
+    volumeAverageWindow: observationVolumeWindow,
+    maxWeeklyGainPercent: observationWeeklyGain,
+    requireBigDealInflow: observationRequireBigDeal,
+  };
   const payload = {
     includeST: elements.includeSt.checked,
     includeDelisted: elements.includeDelisted.checked,
@@ -594,6 +723,16 @@ async function saveConfig() {
       breakoutPercent,
       dailyChangePercent,
       maxRangePercent,
+    },
+    observationStrategyConfig: {
+      lookbackDays: observationLookback,
+      minHistory: observationMinHistory,
+      breakoutBufferPercent: observationBreakout,
+      maxRangePercent: observationRange,
+      volumeRatioThreshold: observationVolumeRatio,
+      volumeAverageWindow: observationVolumeWindow,
+      maxWeeklyGainPercent: observationWeeklyGain,
+      requireBigDealInflow: observationRequireBigDeal,
     },
   };
   elements.saveButton.disabled = true;

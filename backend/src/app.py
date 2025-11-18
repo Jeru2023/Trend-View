@@ -27,6 +27,7 @@ from zoneinfo import ZoneInfo
 from .config.runtime_config import (
     RuntimeConfig,
     VolumeSurgeConfig,
+    ObservationStrategyConfig,
     load_runtime_config,
     save_runtime_config,
     normalize_concept_alias_map,
@@ -3652,6 +3653,20 @@ class VolumeSurgeConfigPayload(BaseModel):
         allow_population_by_field_name = True
 
 
+class ObservationPoolConfigPayload(BaseModel):
+    lookback_days: int = Field(60, alias="lookbackDays", ge=20, le=360)
+    min_history: int = Field(45, alias="minHistory", ge=10, le=360)
+    breakout_buffer_percent: float = Field(0.5, alias="breakoutBufferPercent", ge=0.0, le=20.0)
+    max_range_percent: float = Field(15.0, alias="maxRangePercent", ge=1.0, le=200.0)
+    volume_ratio_threshold: float = Field(2.0, alias="volumeRatioThreshold", ge=0.5, le=200.0)
+    volume_average_window: int = Field(20, alias="volumeAverageWindow", ge=5, le=120)
+    max_weekly_gain_percent: float = Field(3.0, alias="maxWeeklyGainPercent", ge=0.0, le=200.0)
+    require_big_deal_inflow: bool = Field(False, alias="requireBigDealInflow")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class RuntimeConfigPayload(BaseModel):
     include_st: bool = Field(..., alias="includeST")
     include_delisted: bool = Field(..., alias="includeDelisted")
@@ -3677,6 +3692,11 @@ class RuntimeConfigPayload(BaseModel):
         default_factory=VolumeSurgeConfigPayload,
         alias="volumeSurgeConfig",
         description="Threshold controls for the volume surge breakout indicator.",
+    )
+    observation_strategy_config: ObservationPoolConfigPayload = Field(
+        default_factory=ObservationPoolConfigPayload,
+        alias="observationStrategyConfig",
+        description="Parameters for observation pool range-breakout screening.",
     )
 
     class Config:
@@ -3734,6 +3754,16 @@ def _runtime_config_to_payload(config: RuntimeConfig) -> RuntimeConfigPayload:
             breakout_threshold_percent=config.volume_surge_config.breakout_threshold_percent,
             daily_change_threshold_percent=config.volume_surge_config.daily_change_threshold_percent,
             max_range_percent=config.volume_surge_config.max_range_percent,
+        ),
+        observation_strategy_config=ObservationPoolConfigPayload(
+            lookback_days=config.observation_strategy_config.lookback_days,
+            min_history=config.observation_strategy_config.min_history,
+            breakout_buffer_percent=config.observation_strategy_config.breakout_buffer_percent,
+            max_range_percent=config.observation_strategy_config.max_range_percent,
+            volume_ratio_threshold=config.observation_strategy_config.volume_ratio_threshold,
+            volume_average_window=config.observation_strategy_config.volume_average_window,
+            max_weekly_gain_percent=config.observation_strategy_config.max_weekly_gain_percent,
+            require_big_deal_inflow=config.observation_strategy_config.require_big_deal_inflow,
         ),
     )
 
@@ -9968,7 +9998,6 @@ def get_market_insight(
     summary_payload: Optional[MarketInsightSummaryPayload] = None
     articles: List[MarketInsightArticleItem] = []
     summary_age_hours: Optional[float] = None
-    should_trigger_refresh = False
 
     try:
         summary = get_latest_market_insight()
@@ -9996,7 +10025,6 @@ def get_market_insight(
             summary = None
 
     if summary is None:
-        should_trigger_refresh = True
         try:
             recent_articles = collect_recent_market_headlines(
                 lookback_hours=lookback_hours,
@@ -10021,14 +10049,6 @@ def get_market_insight(
                     url=entry.get("url"),
                 )
             )
-
-    if should_trigger_refresh:
-        try:
-            payload = SyncMarketInsightRequest(lookback_hours=lookback_hours, article_limit=article_limit)
-            if not _submit_scheduler_task(safe_start_market_insight_job(payload)):
-                logger.debug("Market insight refresh could not be scheduled (no available event loop).")
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Unable to schedule market insight refresh: %s", exc)
 
     return MarketInsightResponse(summary=summary_payload, articles=articles)
 
@@ -10465,6 +10485,21 @@ def update_runtime_config(payload: RuntimeConfigPayload) -> RuntimeConfigPayload
         )
     else:
         volume_surge = existing.volume_surge_config
+    observation_field_provided = "observation_strategy_config" in payload.__fields_set__
+    if observation_field_provided and payload.observation_strategy_config is not None:
+        observation_payload = payload.observation_strategy_config
+        observation_config = ObservationStrategyConfig(
+            lookback_days=observation_payload.lookback_days,
+            min_history=observation_payload.min_history,
+            breakout_buffer_percent=observation_payload.breakout_buffer_percent,
+            max_range_percent=observation_payload.max_range_percent,
+            volume_ratio_threshold=observation_payload.volume_ratio_threshold,
+            volume_average_window=observation_payload.volume_average_window,
+            max_weekly_gain_percent=observation_payload.max_weekly_gain_percent,
+            require_big_deal_inflow=observation_payload.require_big_deal_inflow,
+        )
+    else:
+        observation_config = existing.observation_strategy_config
     config = RuntimeConfig(
         include_st=payload.include_st,
         include_delisted=payload.include_delisted,
@@ -10473,6 +10508,7 @@ def update_runtime_config(payload: RuntimeConfigPayload) -> RuntimeConfigPayload
         global_flash_frequency_minutes=frequency_value,
         concept_alias_map=alias_map,
         volume_surge_config=volume_surge,
+        observation_strategy_config=observation_config,
     )
     save_runtime_config(config)
     if scheduler.running:

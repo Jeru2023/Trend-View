@@ -131,6 +131,56 @@
           </div>
 
           <header class="config-subheader">
+            <h3 data-i18n="observationPoolSectionTitle">Observation pool – Range breakout</h3>
+            <p data-i18n="observationPoolSectionSubtitle">Manage filters for the watchlist strategy.</p>
+          </header>
+
+          <div class="config-grid">
+            <div class="config-field">
+              <label for="config-observation-lookback" data-i18n="observationLookbackLabel">Lookback window (days)</label>
+              <input type="number" id="config-observation-lookback" min="20" max="360" step="1" />
+              <small data-i18n="observationLookbackHint">How many recent sessions define the consolidation range.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-observation-min-history" data-i18n="observationMinHistoryLabel">Minimum history (days)</label>
+              <input type="number" id="config-observation-min-history" min="10" max="360" step="1" />
+              <small data-i18n="observationMinHistoryHint">Skip symbols without at least this many records.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-observation-breakout" data-i18n="observationBreakoutLabel">Breakout buffer (%)</label>
+              <input type="number" id="config-observation-breakout" min="0" max="20" step="0.1" />
+              <small data-i18n="observationBreakoutHint">Close must exceed the prior range high by this percent.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-observation-range" data-i18n="observationRangeLabel">Max range amplitude (%)</label>
+              <input type="number" id="config-observation-range" min="1" max="200" step="0.1" />
+              <small data-i18n="observationRangeHint">Reject bases wider than this percentage.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-observation-volume-ratio" data-i18n="observationVolumeRatioLabel">Volume multiple threshold</label>
+              <input type="number" id="config-observation-volume-ratio" min="0.5" max="200" step="0.1" />
+              <small data-i18n="observationVolumeRatioHint">Latest volume ÷ moving average must exceed this multiple.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-observation-volume-window" data-i18n="observationVolumeWindowLabel">Volume average window</label>
+              <input type="number" id="config-observation-volume-window" min="5" max="120" step="1" />
+              <small data-i18n="observationVolumeWindowHint">Number of sessions for the average volume baseline.</small>
+            </div>
+            <div class="config-field">
+              <label for="config-observation-weekly-gain" data-i18n="observationWeeklyGainLabel">Max 5-day gain (%)</label>
+              <input type="number" id="config-observation-weekly-gain" min="0" max="200" step="0.1" />
+              <small data-i18n="observationWeeklyGainHint">Skip symbols whose 5-day gain exceeds this cap.</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="config-observation-big-deal" />
+              <span>
+                <strong data-i18n="observationBigDealLabel">Require big-deal inflow</strong>
+                <small data-i18n="observationBigDealHint">Only keep stocks with positive net big-deal flow today.</small>
+              </span>
+            </label>
+          </div>
+
+          <header class="config-subheader">
             <h3 data-i18n="conceptAliasSectionTitle">Concept alias mapping</h3>
             <p data-i18n="conceptAliasSectionSubtitle">
               Select a concept on the left and enter space-separated aliases used in news tagging.
@@ -162,6 +212,6 @@
 
     <script src="i18n.js?v=20270420"></script>
     <script src="sidebar.js?v=20270478"></script>
-    <script src="config-center.js?v=20261105"></script>
+    <script src="config-center.js?v=20261106"></script>
   </body>
 </html>

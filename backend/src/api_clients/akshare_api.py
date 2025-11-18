@@ -1020,73 +1020,6 @@ def fetch_macro_social_financing() -> pd.DataFrame:
     return renamed.loc[:, list(MACRO_SOCIAL_FINANCING_COLUMN_MAP.values())]
 
 
-def _empty_macro_cpi_frame() -> pd.DataFrame:
-    return pd.DataFrame(columns=list(MACRO_CPI_COLUMN_MAP.values()))
-
-
-def fetch_macro_cpi_monthly() -> pd.DataFrame:
-    """Fetch monthly CPI report data from Jin10."""
-
-    try:
-        dataframe = ak.macro_china_cpi_monthly()
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch CPI data via AkShare: %s", exc)
-        return _empty_macro_cpi_frame()
-
-    if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no CPI data.")
-        return _empty_macro_cpi_frame()
-
-    renamed = dataframe.rename(columns=MACRO_CPI_COLUMN_MAP)
-    for column in MACRO_CPI_COLUMN_MAP.values():
-        if column not in renamed.columns:
-            renamed[column] = None
-
-    return renamed.loc[:, list(MACRO_CPI_COLUMN_MAP.values())]
-
-
-def fetch_macro_pmi_yearly() -> pd.DataFrame:
-    """Fetch official manufacturing PMI data from Jin10."""
-
-    try:
-        dataframe = ak.macro_china_pmi_yearly()
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch PMI data via AkShare: %s", exc)
-        return pd.DataFrame(columns=list(MACRO_PMI_COLUMN_MAP.values()))
-
-    if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no PMI data.")
-        return pd.DataFrame(columns=list(MACRO_PMI_COLUMN_MAP.values()))
-
-    renamed = dataframe.rename(columns=MACRO_PMI_COLUMN_MAP)
-    for column in MACRO_PMI_COLUMN_MAP.values():
-        if column not in renamed.columns:
-            renamed[column] = None
-
-    return renamed.loc[:, list(MACRO_PMI_COLUMN_MAP.values())]
-
-
-def fetch_macro_non_man_pmi() -> pd.DataFrame:
-    """Fetch official non-manufacturing PMI data from Jin10."""
-
-    try:
-        dataframe = ak.macro_china_non_man_pmi()
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.error("Failed to fetch non-manufacturing PMI data via AkShare: %s", exc)
-        return pd.DataFrame(columns=list(MACRO_PMI_COLUMN_MAP.values()))
-
-    if dataframe is None or dataframe.empty:
-        logger.warning("AkShare returned no non-manufacturing PMI data.")
-        return pd.DataFrame(columns=list(MACRO_PMI_COLUMN_MAP.values()))
-
-    renamed = dataframe.rename(columns=MACRO_PMI_COLUMN_MAP)
-    for column in MACRO_PMI_COLUMN_MAP.values():
-        if column not in renamed.columns:
-            renamed[column] = None
-
-    return renamed.loc[:, list(MACRO_PMI_COLUMN_MAP.values())]
-
-
 def fetch_macro_ppi_monthly() -> pd.DataFrame:
     """Fetch monthly PPI data from Jin10."""
 
@@ -1683,8 +1616,6 @@ __all__ = [
     "fetch_macro_leverage_ratios",
     "fetch_macro_social_financing",
     "fetch_macro_cpi_monthly",
-    "fetch_macro_pmi_yearly",
-    "fetch_macro_non_man_pmi",
     "fetch_macro_ppi_monthly",
     "fetch_macro_pbc_interest_rates",
     "fetch_global_flash_news",

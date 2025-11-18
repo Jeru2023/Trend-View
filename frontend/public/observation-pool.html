@@ -47,65 +47,115 @@
         </header>
 
         <section class="page" id="observation-pool-root">
-          <div class="insight-toolbar">
-            <div class="insight-toolbar__group insight-toolbar__group--actions">
-              <button id="observation-refresh" class="btn btn--primary">
-                <span class="btn__icon" aria-hidden="true">⟳</span>
-                <span class="btn__label" data-i18n="observationPool.refreshButton">刷新观察池</span>
+          <div class="observation-header">
+            <div class="detail-tabs observation-tabs" role="tablist">
+              <button class="detail-tabs__btn is-active" role="tab" data-tab="rangeBreakout" data-i18n="observationPool.tabRangeBreakout">
+                盘整突破
+              </button>
+              <button class="detail-tabs__btn" role="tab" data-tab="bottoming" data-i18n="observationPool.tabBottoming">
+                底部构筑
+              </button>
+              <button class="detail-tabs__btn" role="tab" data-tab="mainRally" data-i18n="observationPool.tabMainRally">
+                主升浪
+              </button>
+              <button class="detail-tabs__btn" role="tab" data-tab="vcp" data-i18n="observationPool.tabVcp">
+                波动收缩
               </button>
             </div>
-            <div class="insight-toolbar__group insight-toolbar__group--meta">
-              <div class="insight-toolbar__meta-item">
-                <span class="insight-toolbar__meta-label" data-i18n="observationPool.generatedLabel">生成时间</span>
-                <strong class="insight-toolbar__meta-value" id="observation-generated">--</strong>
+          </div>
+          <div class="observation-meta">
+            <div class="observation-meta__group">
+              <div class="observation-meta__item">
+                <span data-i18n="observationPool.generatedLabel">生成时间</span>
+                <strong id="observation-generated">--</strong>
               </div>
-              <div class="insight-toolbar__meta-item">
-                <span class="insight-toolbar__meta-label" data-i18n="observationPool.tradeDateLabel">数据日期</span>
-                <strong class="insight-toolbar__meta-value" id="observation-trade-date">--</strong>
+              <div class="observation-meta__item">
+                <span data-i18n="observationPool.tradeDateLabel">数据日期</span>
+                <strong id="observation-trade-date">--</strong>
               </div>
-              <div class="insight-toolbar__status" id="observation-status"></div>
+            </div>
+            <div class="observation-meta__group observation-meta__group--actions">
+              <button id="observation-refresh" class="btn btn--primary">
+                <span class="btn__icon" aria-hidden="true">⟳</span>
+                <span class="btn__label" data-i18n="observationPool.refreshButton">刷新</span>
+              </button>
+              <button id="observation-history" class="btn btn--ghost">
+                <span class="btn__icon" aria-hidden="true">🕒</span>
+                <span class="btn__label" data-i18n="observationPool.historyButton">历史记录</span>
+              </button>
+              <div class="observation-meta__item observation-meta__item--status" id="observation-status"></div>
             </div>
           </div>
 
           <section class="insight-section">
-            <header class="insight-section__header">
-              <div>
-                <h2 class="insight-section__title" data-i18n="observationPool.summaryTitle">策略摘要</h2>
-                <p class="insight-section__subtitle" data-i18n="observationPool.summarySubtitle">
-                  覆盖范围、候选数量和重点提示。
-                </p>
-              </div>
-            </header>
-            <div
-              id="observation-summary"
-              class="insight-summary"
-              data-empty-zh="暂无可用观察池。"
-              data-empty-en="No observation data available."
-            ></div>
-          </section>
-
-          <section class="insight-section">
-            <header class="insight-section__header">
-              <div>
-                <h2 class="insight-section__title" data-i18n="observationPool.strategyTitle">策略列表</h2>
-                <p class="insight-section__subtitle" data-i18n="observationPool.strategySubtitle">
-                  展示每个策略的候选明细，可按量能与区间特征筛选。
-                </p>
-              </div>
-            </header>
-            <div
-              id="observation-strategies"
-              class="observation-strategy-list"
-              data-empty-zh="暂无策略候选。"
-              data-empty-en="No strategies available."
-            ></div>
+            <div class="observation-tab-panel is-active" data-panel="rangeBreakout">
+              <header class="observation-panel__header">
+                <h2 data-i18n="observationPool.rangePanelTitle">盘整突破</h2>
+                <p data-i18n="observationPool.rangePanelSubtitle">扫描近30日横盘区间并放量突破上沿的个股。</p>
+              </header>
+              <div
+                id="observation-range-breakout"
+                class="observation-strategy-list"
+                data-empty-zh="暂无策略候选。"
+                data-empty-en="No strategies available."
+              ></div>
+            </div>
+            <div class="observation-tab-panel" data-panel="bottoming">
+              <header class="observation-panel__header">
+                <h2 data-i18n="observationPool.bottomingTitle">底部构筑</h2>
+                <p data-i18n="observationPool.bottomingSubtitle">第一阶段：底部构筑，重点关注年线走平、低位震荡与量能萎缩。</p>
+              </header>
+              <div
+                id="observation-bottoming"
+                class="observation-strategy-list"
+                data-empty-zh="暂未上线，敬请期待。"
+                data-empty-en="Bottoming strategy coming soon."
+              ></div>
+            </div>
+            <div class="observation-tab-panel" data-panel="mainRally">
+              <header class="observation-panel__header">
+                <h2 data-i18n="observationPool.mainRallyTitle">主升浪</h2>
+                <p data-i18n="observationPool.mainRallySubtitle">第二阶段：均线多头+新高突破+放量确认，定位主升浪起点。</p>
+              </header>
+              <div
+                id="observation-main-rally"
+                class="observation-strategy-list"
+                data-empty-zh="暂未上线，敬请期待。"
+                data-empty-en="Main rally strategy coming soon."
+              ></div>
+            </div>
+            <div class="observation-tab-panel" data-panel="vcp">
+              <header class="observation-panel__header">
+                <h2 data-i18n="observationPool.vcpTitle">波动收缩</h2>
+                <p data-i18n="observationPool.vcpSubtitle">第三阶段：回撤递减、ATR/成交量同步收敛后放量突破。</p>
+              </header>
+              <div
+                id="observation-vcp"
+                class="observation-strategy-list"
+                data-empty-zh="暂未上线，敬请期待。"
+                data-empty-en="Volatility contraction strategy coming soon."
+              ></div>
+            </div>
           </section>
         </section>
       </main>
     </div>
 
+    <div class="modal hidden" id="observation-history-modal" role="dialog" aria-modal="true">
+      <div class="modal__overlay" id="observation-history-overlay"></div>
+      <div class="modal__content observation-history">
+        <header class="modal__header">
+          <h3 data-i18n="observationPool.historyTitle">历史记录</h3>
+          <button class="modal__close" type="button" id="observation-history-close" aria-label="Close">×</button>
+        </header>
+        <div class="modal__body">
+          <div class="observation-history__list" id="observation-history-list" data-empty-zh="暂无历史记录。" data-empty-en="No history yet."></div>
+        </div>
+      </div>
+    </div>
+
     <script src="i18n.js?v=20270438"></script>
     <script src="sidebar.js?v=20270478"></script>
-    <script type="module" src="observation-pool.js?v=20270444"></script>
+    <script type="module" src="observation-pool.js?v=20270453"></script>
   </body>
 </html>

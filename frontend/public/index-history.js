@@ -222,7 +222,7 @@ function renderSelector() {
       button.setAttribute("aria-pressed", "false");
     }
     button.dataset.code = item.code;
-    button.textContent = item.name ? `${item.name} (${item.code})` : item.code;
+    button.textContent = item.name || item.code;
     button.addEventListener("click", () => {
       if (item.code !== selectedCode) {
         loadIndexHistory(item.code, { force: true });
@@ -380,7 +380,19 @@ function renderChart(items = []) {
               lines.push(`${dict.tooltipClose || "Close"}: ${formatNumber(close, { maximumFractionDigits: 2 })}`);
               lines.push(`${dict.tooltipHigh || "High"}: ${formatNumber(high, { maximumFractionDigits: 2 })}`);
               lines.push(`${dict.tooltipLow || "Low"}: ${formatNumber(low, { maximumFractionDigits: 2 })}`);
-              if (Number.isFinite(open) && Number.isFinite(close) && open !== 0) {
+              const sourceIdx = candle.dataIndex;
+              const source = Number.isInteger(sourceIdx) ? recentItems[sourceIdx] : null;
+              const pctFromSource = source
+                ? Number(source.pctChange ?? source.pct_change)
+                : null;
+              if (Number.isFinite(pctFromSource)) {
+                const pct = pctFromSource;
+                const formatted = `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+                const color = pct > 0 ? upColor : pct < 0 ? downColor : "#64748b";
+                lines.push(
+                  `${dict.tooltipChange || "Change (%)"}: <span style="color:${color};font-weight:600">${formatted}</span>`,
+                );
+              } else if (Number.isFinite(open) && Number.isFinite(close) && open !== 0) {
                 const pct = ((close - open) / open) * 100;
                 if (Number.isFinite(pct)) {
                   const formatted = `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;

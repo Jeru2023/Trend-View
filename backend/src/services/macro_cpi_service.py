@@ -31,9 +31,12 @@ def _prepare_macro_cpi_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
             frame[column] = None
 
     with pd.option_context("mode.chained_assignment", None):
-        period_series = pd.to_datetime(frame["period_label"], errors="coerce")
-        period_series = period_series + MonthEnd(0)
-        frame["period_date"] = period_series.dt.date
+        period_end = (
+            pd.to_datetime(frame["period_label"].astype(str) + "01", format="%Y%m%d", errors="coerce")
+            + MonthEnd(0)
+        )
+        frame["period_date"] = period_end.dt.date
+        frame["period_label"] = period_end.dt.strftime("%Y-%m-%d")
 
     numeric_columns = ["actual_value", "forecast_value", "previous_value"]
     for column in numeric_columns:
@@ -56,7 +59,15 @@ def sync_macro_cpi(*, settings_path: Optional[str] = None) -> dict[str, object]:
     settings = load_settings(settings_path)
     dao = MacroCpiDAO(settings.postgres)
 
-    raw = fetch_macro_cpi_monthly()
+    token = getattr(getattr(settings, "tushare", None), "token", None)
+    if not token:
+        raise RuntimeError("Tushare token is required to sync CPI data.")
+
+    raw = fetch_macro_cpi_monthly(
+        token=token,
+        start_month="201001",
+        end_month=pd.Timestamp.utcnow().strftime("%Y%m"),
+    )
     prepared = _prepare_macro_cpi_frame(raw)
     if prepared.empty:
         elapsed = time.perf_counter() - started

@@ -782,6 +782,101 @@ def fetch_trade_calendar(
     return frame.loc[:, list(TRADE_CALENDAR_FIELDS)]
 
 
+def _build_pro_client(token: str) -> ts.pro_api:
+    if not token:
+        raise ValueError("Tushare token is required to build pro client")
+    return ts.pro_api(token)
+
+
+def fetch_macro_pmi_yearly(
+    *,
+    token: str,
+    start_month: Optional[str] = None,
+    end_month: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Fetch manufacturing PMI (headline) from Tushare ``cn_pmi``.
+
+    Uses `pmi010000` (制造业PMI). Forecast/previous values are not provided by the
+    API and are set to ``None``.
+    """
+    try:
+        pro = _build_pro_client(token)
+        df = pro.cn_pmi(start_m=start_month, end_m=end_month, fields="month,pmi010000")
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch manufacturing PMI via Tushare: %s", exc)
+        return pd.DataFrame(columns=["period_label", "actual_value", "forecast_value", "previous_value"])
+
+    if df is None or df.empty:
+        logger.warning("Tushare returned no manufacturing PMI data.")
+        return pd.DataFrame(columns=["period_label", "actual_value", "forecast_value", "previous_value"])
+
+    renamed = df.rename(columns={"month": "period_label", "pmi010000": "actual_value"})
+    renamed["forecast_value"] = None
+    renamed["previous_value"] = None
+    renamed["actual_value"] = pd.to_numeric(renamed["actual_value"], errors="coerce")
+    return renamed.loc[:, ["period_label", "actual_value", "forecast_value", "previous_value"]]
+
+
+def fetch_macro_non_man_pmi(
+    *,
+    token: str,
+    start_month: Optional[str] = None,
+    end_month: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Fetch non-manufacturing PMI (headline) from Tushare ``cn_pmi``.
+
+    Uses `pmi030000` (综合PMI产出指数/非制造业景气度核心指标). Forecast/previous
+    values are set to ``None``.
+    """
+    try:
+        pro = _build_pro_client(token)
+        df = pro.cn_pmi(start_m=start_month, end_m=end_month, fields="month,pmi030000")
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch non-manufacturing PMI via Tushare: %s", exc)
+        return pd.DataFrame(columns=["period_label", "actual_value", "forecast_value", "previous_value"])
+
+    if df is None or df.empty:
+        logger.warning("Tushare returned no non-manufacturing PMI data.")
+        return pd.DataFrame(columns=["period_label", "actual_value", "forecast_value", "previous_value"])
+
+    renamed = df.rename(columns={"month": "period_label", "pmi030000": "actual_value"})
+    renamed["forecast_value"] = None
+    renamed["previous_value"] = None
+    renamed["actual_value"] = pd.to_numeric(renamed["actual_value"], errors="coerce")
+    return renamed.loc[:, ["period_label", "actual_value", "forecast_value", "previous_value"]]
+
+
+def fetch_macro_cpi_monthly(
+    *,
+    token: str,
+    start_month: Optional[str] = None,
+    end_month: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Fetch monthly CPI from Tushare ``cn_cpi``.
+
+    Uses ``nt_yoy`` (全国当月同比) 作为主要展示值；Forecast/Previous 无接口字段，置为 None。
+    """
+    try:
+        pro = _build_pro_client(token)
+        df = pro.cn_cpi(start_m=start_month, end_m=end_month, fields="month,nt_val,nt_yoy")
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.error("Failed to fetch CPI data via Tushare: %s", exc)
+        return pd.DataFrame(columns=["period_label", "actual_value", "forecast_value", "previous_value"])
+
+    if df is None or df.empty:
+        logger.warning("Tushare returned no CPI data.")
+        return pd.DataFrame(columns=["period_label", "actual_value", "forecast_value", "previous_value"])
+
+    renamed = df.rename(columns={"month": "period_label", "nt_yoy": "actual_value"})
+    renamed["forecast_value"] = None
+    renamed["previous_value"] = None
+    renamed["actual_value"] = pd.to_numeric(renamed["actual_value"], errors="coerce")
+    return renamed.loc[:, ["period_label", "actual_value", "forecast_value", "previous_value"]]
+
+
 __all__ = [
     "DATE_COLUMNS",
     "DAILY_TRADE_FIELDS",
@@ -806,4 +901,7 @@ __all__ = [
     "get_cashflow_statements",
     "get_balance_sheets",
     "TRADE_CALENDAR_FIELDS",
+    "fetch_macro_pmi_yearly",
+    "fetch_macro_non_man_pmi",
+    "fetch_macro_cpi_monthly",
 ]

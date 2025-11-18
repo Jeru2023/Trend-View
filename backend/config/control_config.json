@@ -14,5 +14,15 @@
     "breakout_threshold_percent": 2.0,
     "daily_change_threshold_percent": 2.0,
     "max_range_percent": 10.0
+  },
+  "observation_pool": {
+    "lookback_days": 30,
+    "min_history": 30,
+    "breakout_buffer_percent": 0.5,
+    "max_range_percent": 15.0,
+    "volume_ratio_threshold": 2.0,
+    "volume_average_window": 20,
+    "max_weekly_gain_percent": 10.0,
+    "require_big_deal_inflow": false
   }
 }

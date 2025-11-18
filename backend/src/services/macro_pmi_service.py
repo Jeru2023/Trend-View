@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import math
 import time
+from datetime import datetime
 from typing import Optional
 
 import pandas as pd
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 MANUFACTURING_SERIES = "manufacturing"
 NON_MANUFACTURING_SERIES = "non_manufacturing"
 NUMERIC_COLUMNS = ["actual_value", "forecast_value", "previous_value"]
+PMI_START_MONTH = "200801"
 
 
 def _prepare_macro_pmi_frame(dataframe: pd.DataFrame, series: str) -> pd.DataFrame:
@@ -39,9 +41,13 @@ def _prepare_macro_pmi_frame(dataframe: pd.DataFrame, series: str) -> pd.DataFra
             frame[column] = None
 
     with pd.option_context("mode.chained_assignment", None):
-        period_series = pd.to_datetime(frame["period_label"], errors="coerce")
-        period_series = period_series + MonthEnd(0)
-        frame["period_date"] = period_series.dt.date
+        # period_label from Tushare is YYYYMM; append last day to make a valid date
+        period_end = (
+            pd.to_datetime(frame["period_label"].astype(str) + "01", format="%Y%m%d", errors="coerce")
+            + MonthEnd(0)
+        )
+        frame["period_date"] = period_end.dt.date
+        frame["period_label"] = period_end.dt.strftime("%Y-%m-%d")
 
     for column in NUMERIC_COLUMNS:
         if column in frame.columns:
@@ -64,10 +70,20 @@ def sync_macro_pmi(*, settings_path: Optional[str] = None) -> dict[str, object]:
     started = time.perf_counter()
     settings = load_settings(settings_path)
     dao = MacroPmiDAO(settings.postgres)
+    token = getattr(getattr(settings, "tushare", None), "token", None)
+    if not token:
+        raise RuntimeError("Tushare token is required to sync PMI data.")
 
+    end_month = datetime.utcnow().strftime("%Y%m")
     frames = [
-        _prepare_macro_pmi_frame(fetch_macro_pmi_yearly(), MANUFACTURING_SERIES),
-        _prepare_macro_pmi_frame(fetch_macro_non_man_pmi(), NON_MANUFACTURING_SERIES),
+        _prepare_macro_pmi_frame(
+            fetch_macro_pmi_yearly(token=token, start_month=PMI_START_MONTH, end_month=end_month),
+            MANUFACTURING_SERIES,
+        ),
+        _prepare_macro_pmi_frame(
+            fetch_macro_non_man_pmi(token=token, start_month=PMI_START_MONTH, end_month=end_month),
+            NON_MANUFACTURING_SERIES,
+        ),
     ]
     non_empty = [frame for frame in frames if frame is not None and not frame.empty]
     if not non_empty:

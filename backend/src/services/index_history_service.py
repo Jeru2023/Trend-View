@@ -19,6 +19,7 @@ INDEX_CONFIG: Dict[str, Dict[str, str]] = {
     "399001.SZ": {"symbol": "399001", "ts_code": "399001.SZ", "name": "深证成指"},
     "399006.SZ": {"symbol": "399006", "ts_code": "399006.SZ", "name": "创业板指数"},
     "588040.SH": {"symbol": "000688", "ts_code": "000688.SH", "name": "科创50指数"},
+    "000300.SH": {"symbol": "000300", "ts_code": "000300.SH", "name": "沪深300"},
 }
 
 DEFAULT_START_DATE = date(2000, 1, 1)

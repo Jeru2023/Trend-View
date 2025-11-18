@@ -41,6 +41,67 @@ class VolumeSurgeConfig:
 
 
 @dataclass
+class ObservationStrategyConfig:
+    lookback_days: int = 60
+    min_history: int = 45
+    breakout_buffer_percent: float = 0.5
+    max_range_percent: float = 15.0
+    volume_ratio_threshold: float = 2.0
+    volume_average_window: int = 20
+    max_weekly_gain_percent: float = 3.0
+    require_big_deal_inflow: bool = False
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any] | None) -> "ObservationStrategyConfig":
+        data = data or {}
+        return cls(
+            lookback_days=_sanitize_int(data.get("lookback_days") or data.get("lookbackDays"), default=60, minimum=20),
+            min_history=_sanitize_int(data.get("min_history") or data.get("minHistory"), default=45, minimum=10),
+            breakout_buffer_percent=_sanitize_float(
+                data.get("breakout_buffer_percent") or data.get("breakoutBufferPercent"),
+                default=0.5,
+                minimum=0.0,
+            ),
+            max_range_percent=_sanitize_float(
+                data.get("max_range_percent") or data.get("maxRangePercent"),
+                default=15.0,
+                minimum=1.0,
+            ),
+            volume_ratio_threshold=_sanitize_float(
+                data.get("volume_ratio_threshold") or data.get("volumeRatioThreshold"),
+                default=2.0,
+                minimum=0.5,
+            ),
+            volume_average_window=_sanitize_int(
+                data.get("volume_average_window") or data.get("volumeAverageWindow"),
+                default=20,
+                minimum=5,
+            ),
+            max_weekly_gain_percent=_sanitize_float(
+                data.get("max_weekly_gain_percent") or data.get("maxWeeklyGainPercent"),
+                default=3.0,
+                minimum=0.0,
+            ),
+            require_big_deal_inflow=_sanitize_bool(
+                data.get("require_big_deal_inflow") if "require_big_deal_inflow" in data else data.get("requireBigDealInflow"),
+                default=False,
+            ),
+        )
+
+    def to_dict(self) -> Dict[str, float]:
+        return {
+            "lookback_days": int(self.lookback_days),
+            "min_history": int(self.min_history),
+            "breakout_buffer_percent": float(self.breakout_buffer_percent),
+            "max_range_percent": float(self.max_range_percent),
+            "volume_ratio_threshold": float(self.volume_ratio_threshold),
+            "volume_average_window": int(self.volume_average_window),
+            "max_weekly_gain_percent": float(self.max_weekly_gain_percent),
+            "require_big_deal_inflow": bool(self.require_big_deal_inflow),
+        }
+
+
+@dataclass
 class RuntimeConfig:
     include_st: bool = False
     include_delisted: bool = False
@@ -49,6 +110,7 @@ class RuntimeConfig:
     global_flash_frequency_minutes: int = 180
     concept_alias_map: Dict[str, List[str]] = field(default_factory=dict)
     volume_surge_config: VolumeSurgeConfig = field(default_factory=VolumeSurgeConfig)
+    observation_strategy_config: ObservationStrategyConfig = field(default_factory=ObservationStrategyConfig)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RuntimeConfig":
@@ -69,6 +131,9 @@ class RuntimeConfig:
             volume_surge_config=VolumeSurgeConfig.from_dict(
                 data.get("volume_surge_config") or data.get("volume_surge")
             ),
+            observation_strategy_config=ObservationStrategyConfig.from_dict(
+                data.get("observation_pool") or data.get("observation_strategy_config")
+            ),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -80,6 +145,7 @@ class RuntimeConfig:
             "global_flash_frequency_minutes": self.global_flash_frequency_minutes,
             "concept_alias_map": self.concept_alias_map,
             "volume_surge_config": self.volume_surge_config.to_dict(),
+            "observation_pool": self.observation_strategy_config.to_dict(),
         }
 
 
@@ -173,9 +239,34 @@ def _sanitize_float(value: Any, *, default: float, minimum: float) -> float:
     return numeric
 
 
+def _sanitize_int(value: Any, *, default: int, minimum: int) -> int:
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        numeric = default
+    if numeric < minimum:
+        numeric = minimum
+    return numeric
+
+
+def _sanitize_bool(value: Any, *, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "on"}:
+            return True
+        if lowered in {"false", "0", "no", "off"}:
+            return False
+    return default
+
+
 __all__ = [
     "RuntimeConfig",
     "VolumeSurgeConfig",
+    "ObservationStrategyConfig",
     "load_runtime_config",
     "save_runtime_config",
     "normalize_concept_alias_map",
